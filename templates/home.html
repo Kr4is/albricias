@@ -1,0 +1,241 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="grid grid-cols-12 gap-6 lg:gap-8 relative">
+
+    <!-- Column 1: Local Politics (3 cols wide on large, full on mobile) -->
+    <div class="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col">
+        <article class="mb-8">
+            <h2
+                class="font-headline text-2xl lg:text-3xl font-bold leading-tight mb-3 hover:opacity-70 cursor-pointer transition-opacity">
+                City Council Votes on Historic Zoning Reform Bill
+            </h2>
+            <div
+                class="flex items-center space-x-2 mb-4 text-[10px] font-sans font-bold uppercase text-stone-500 border-t border-b border-stone-300 py-1 w-full">
+                <span>By Eleanor Rigby</span>
+            </div>
+            <div class="text-sm font-body leading-relaxed justified-text text-ink-light space-y-4">
+                <p class="drop-cap">
+                    NEW YORK — In a move that could reshape the skyline for generations, the City Council last night
+                    approved a sweeping zoning reform package. The marathon session, lasting well into the early hours
+                    of the morning, saw fierce debate from both sides of the aisle. Proponents argue the changes are
+                    essential for affordable housing, while preservationists fear the loss of neighborhood character.
+                </p>
+                <p>
+                    "This is a victory for the future of our city," declared Council Speaker Adams moments after the
+                    gavel fell. The galleries erupted in a mix of applause and jeers, a testament to the contentious
+                    nature of the legislation known as the "City of Yes." The bill promises to unlock thousands of new
+                    units in areas previously restricted to single-family homes, a point of contention that has roiled
+                    community boards for months.
+                </p>
+                <p>
+                    Opposition leaders vowed to challenge the ruling in court, citing procedural errors during the
+                    public review period. "They rushed this through without listening to the people who actually live
+                    here," said Councilmember Roberts (D-Queens). Despite the pushback, the Mayor has indicated he will
+                    sign the bill into law immediately, setting the stage for a construction boom by early next spring.
+                </p>
+                <p>
+                    Analysts predict the new zoning laws could generate upwards of $4 billion in new economic activity
+                    over the next decade, though questions remain about the strain on existing infrastructure.
+                </p>
+            </div>
+        </article>
+
+        <div class="w-1/3 mx-auto border-t border-ink my-6"></div>
+
+        <article class="flex-grow">
+            <h3 class="font-headline text-xl font-bold mb-2 leading-tight">Transit Authority Announces Major Signal
+                Delays</h3>
+            <p class="text-[10px] font-sans text-stone-500 mb-3 uppercase">By The Editorial Board</p>
+            <div class="text-xs font-body leading-relaxed justified-text text-ink-light space-y-3">
+                <p>
+                    Commuters faced another morning of frustration as signal problems caused system-wide delays on the
+                    subway lines. The MTA cited "aging infrastructure" and a lack of overnight maintenance crews as the
+                    primary causes for the disruption that left thousands stranded on platforms across three boroughs.
+                </p>
+                <p>
+                    "It is unacceptable," stated commuter advocate Sarah Jenkins. "We pay higher fares every year for
+                    service that seems to get worse." The Authority has promised a full investigation and a rollout of
+                    new digital signaling technology, but completion is not expected until 2025.
+                </p>
+            </div>
+        </article>
+    </div>
+
+    <!-- Column 2: Main Story (6 cols wide on large) -->
+    <div class="col-span-12 lg:col-span-6 lg:border-r lg:border-stone-300 lg:px-6 flex flex-col">
+        <article class="mb-8">
+            <h2
+                class="font-headline text-5xl md:text-6xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 cursor-pointer transition-opacity">
+                Market Rebounds Amid Tech Rally
+            </h2>
+
+            <div class="border-y border-ink py-1 mb-5 flex justify-between items-center">
+                <h4 class="font-sans text-[10px] font-bold uppercase tracking-widest flex-1 text-center">Global Indices
+                    Hit Record Highs</h4>
+                <span class="w-px h-3 bg-ink mx-2"></span>
+                <h4 class="font-sans text-[10px] font-bold uppercase tracking-widest flex-1 text-center">Inflation Data
+                    Pending</h4>
+            </div>
+
+            <figure class="mb-6 grayscale hover:grayscale-0 transition-all duration-700 cursor-pointer">
+                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOp82N2UA5Yt2ETAkD-7pCS7T9M24ZqQQTdf4GzvrBRkuhQXw6pQBVGm2LpVrv4dZTuA-D-xiGmmZENWbGYJJQedrDaoU4sukeBXsl_V04uE0CAh3r90MpsPs14KPH-m6yWKcaOFCYOWMZZYb3jt-OegixRPk6ub3RfPZMpMPb4PP8QKoKVz6MfwY6KddN-uRi1T0wRoWJn9jq1lMAJ2p3NpC58VgaX0SXB4nlsd4waIFEEDez3jopekG8BUx2tlWAOgKdrzJ5Gro"
+                    alt="Stock exchange floor"
+                    class="w-full h-auto object-cover border border-stone-300 p-1 bg-white" />
+                <figcaption class="text-[10px] text-stone-500 font-sans mt-2 uppercase tracking-wide text-center">
+                    TRADING FRENZY: Brokers on the floor of the exchange react to the closing bell yesterday. (Photo by
+                    J. Doe)
+                </figcaption>
+            </figure>
+
+            <div
+                class="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink space-y-4 md:space-y-0">
+                <p class="mb-4 drop-cap">
+                    WASHINGTON, Oct. 23 — Wall Street surged on Tuesday, led by a resurgent technology sector that
+                    defied analyst expectations. The Dow Jones Industrial Average climbed 400 points, erasing losses
+                    from the previous week's volatility. The rally was fueled by earnings reports from major chip
+                    manufacturers, signaling continued demand for artificial intelligence infrastructure.
+                </p>
+                <p class="mb-4">
+                    The sudden uptick comes as a relief to investors who have been weathering a stormy quarter marked by
+                    geopolitical instability and fears of a looming recession. "The fundamentals are stronger than the
+                    sentiment," noted chief market strategist Alicia Moore. "We are seeing capital move back into growth
+                    stocks as the fear of interest rate hikes begins to subside."
+                </p>
+                <p class="mb-4">
+                    However, Federal Reserve officials urged caution. "While the numbers are encouraging, we are not out
+                    of the woods yet," stated Chair Powell in a brief press conference. The central bank is widely
+                    expected to hold interest rates steady at next month's meeting, pending the release of key inflation
+                    data on Friday.
+                </p>
+                <p class="mb-4">
+                    Analysts warn that geopolitical tensions in Europe and the Middle East could still derail the
+                    fragile recovery. Energy prices have fluctuated wildly in recent days, adding another layer of
+                    uncertainty for consumers heading into the winter months. Oil futures dipped slightly yesterday but
+                    remain near yearly highs.
+                </p>
+                <p class="mb-4">
+                    Tech giants, particularly those invested in AI, led the charge. Semiconductor stocks rose by an
+                    average of 4.5%, lifting the Nasdaq to a new monthly high. Retail investors appear to be following
+                    the institutional money, with trading volumes on retail platforms spiking by 20% in early morning
+                    trading.
+                </p>
+                <p>
+                    "It's a classic relief rally," said bond trader Mark Stevenson. "But volume is thin. The real test
+                    comes Friday." Until then, the market seems content to ride the wave of optimism.
+                </p>
+            </div>
+        </article>
+
+        <!-- International Briefs Section at bottom -->
+        <div class="border-t-4 border-double border-stone-300 pt-5 mt-auto">
+            <h3 class="font-sans text-xs font-bold uppercase text-center mb-5 tracking-[0.2em] bg-stone-100 py-1.5">
+                International News Briefs</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <article>
+                    <h4 class="font-headline font-bold text-lg leading-tight mb-2">Diplomatic Summit Begins in Geneva
+                    </h4>
+                    <p class="text-xs font-body justified-text leading-snug">
+                        World leaders gathered today to discuss climate protocols in a high-stakes summit. Initial
+                        reports suggest a breakthrough in carbon credit negotiations, though developing nations are
+                        demanding more financial support.
+                    </p>
+                </article>
+                <article>
+                    <h4 class="font-headline font-bold text-lg leading-tight mb-2">Rare Discovery in Egyptian Desert
+                    </h4>
+                    <p class="text-xs font-body justified-text leading-snug">
+                        Archeologists have unearthed a tomb dating back to the 4th Dynasty. The site, untouched for
+                        millennia, contains perfectly preserved frescoes and artifacts that may rewrite our
+                        understanding of the era's trade networks.
+                    </p>
+                </article>
+            </div>
+        </div>
+    </div>
+
+    <!-- Column 3: Sidebar & Ads (3 cols wide on large) -->
+    <div class="col-span-12 lg:col-span-3 lg:pl-6 flex flex-col">
+
+        <!-- Inside The Times Box -->
+        <div class="border border-ink p-4 mb-8 bg-white shadow-sm">
+            <h5
+                class="font-sans text-[10px] font-bold uppercase border-b border-stone-300 pb-2 mb-3 tracking-widest text-center">
+                Inside The Times</h5>
+            <ul class="space-y-2 text-xs font-headline">
+                <li class="flex justify-between border-b border-dotted border-stone-400 pb-1">
+                    <span>Books of The Times</span>
+                    <span class="font-sans font-bold text-stone-500 text-[10px]">C1</span>
+                </li>
+                <li class="flex justify-between border-b border-dotted border-stone-400 pb-1">
+                    <span>Bridge Column</span>
+                    <span class="font-sans font-bold text-stone-500 text-[10px]">C4</span>
+                </li>
+                <li class="flex justify-between border-b border-dotted border-stone-400 pb-1">
+                    <span>Crossword Puzzle</span>
+                    <span class="font-sans font-bold text-stone-500 text-[10px]">C6</span>
+                </li>
+                <li class="flex justify-between border-b border-dotted border-stone-400 pb-1">
+                    <span>Editorials</span>
+                    <span class="font-sans font-bold text-stone-500 text-[10px]">A18</span>
+                </li>
+                <li class="flex justify-between pb-1">
+                    <span>Weather Report</span>
+                    <span class="font-sans font-bold text-stone-500 text-[10px]">D2</span>
+                </li>
+            </ul>
+        </div>
+
+        <article class="mb-8">
+            <figure class="mb-4 grayscale">
+                <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2LjheQ60duhgORbAvmXif_lmk46GitSMQFyKK1ovXFracurNkrl7nTQl27OjYPxy9cFhhDzXfutuSQlyZwTzpRlApqZvSQfJqW3G_zaWvhD1GFf_Uom0N-diboE-kZ9-PMQG-pwhM7ehXvJ1Kzr8-LR1lWqsFAOcL32S7B0S3oWKObMkvsStGvJ3eoqkhMQpowTL2FUOieu5-iYE_9lglKC_tKXMRpIGpUAKVvSdQiUoM8QAibLU4V52EmyLw45XD7U1uYEKcL0E"
+                    alt="Artist portrait" class="w-full h-48 object-cover object-top border border-stone-300" />
+            </figure>
+            <h3 class="font-headline text-2xl font-bold leading-tight mb-2 italic">
+                An Artist's Quiet Revolution
+            </h3>
+            <p class="text-[10px] font-sans text-stone-500 mb-3 uppercase border-b border-stone-300 pb-1">By Roberta
+                Smith</p>
+            <div class="text-xs font-body justified-text leading-relaxed text-ink-light space-y-2">
+                <p>
+                    In a loft in SoHo, far from the bright lights of the uptown galleries, a movement is brewing. We
+                    visit the studio of the reclusive sculptor redefining modernism through the use of discarded
+                    industrial materials.
+                </p>
+                <p>
+                    "I want the rust to speak," says the artist, wiping clay from her hands. Her latest exhibition,
+                    'Ferrous,' opens next week at the Whitney, challenging viewers to find beauty in decay.
+                </p>
+            </div>
+        </article>
+
+        <div class="w-1/2 mx-auto border-t border-stone-300 my-6"></div>
+
+        <article class="mb-6 flex-grow">
+            <h3 class="font-headline text-lg font-bold italic mb-2">Op-Ed: The Case for Silence</h3>
+            <div class="text-xs font-body justified-text leading-relaxed space-y-2">
+                <p>
+                    In an age of constant noise, perhaps the most radical act is simply to listen. Why our democracy
+                    depends on a little more quiet contemplation and a little less reaction.
+                </p>
+                <p>
+                    We are drowning in opinions, yet starving for wisdom. The ancient Stoics knew the value of holding
+                    one's tongue.
+                </p>
+            </div>
+            <p class="text-right mt-3 text-[10px] font-sans uppercase font-bold text-stone-600">A. Lewis — Page A19</p>
+        </article>
+
+        <!-- Ad Block -->
+        <div class="border-4 border-double border-stone-400 p-8 mt-auto text-center bg-stone-50">
+            <p class="font-masthead text-4xl mb-2 tracking-tight">Tiffany & Co.</p>
+            <p class="font-headline text-xs italic mb-4 text-stone-600">Fine Jewelry & Silverware</p>
+            <div class="w-8 h-px bg-ink mx-auto mb-4"></div>
+            <p class="font-sans text-[10px] uppercase tracking-widest font-bold text-ink">Fifth Avenue & 57th Street</p>
+            <p class="font-sans text-[9px] uppercase tracking-wider mt-1 text-stone-500">Established 1837</p>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

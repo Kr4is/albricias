@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+
+{% block title %}Archive - Albricias{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto pb-12">
+
+    <!-- Archive Header -->
+    <div
+        class="flex flex-col items-center justify-center text-center pb-8 border-b-4 border-double border-ink mb-10 relative">
+        <span
+            class="mb-4 font-display text-sm font-bold uppercase tracking-[0.2em] text-ink border border-ink px-3 py-1 bg-white">Est.
+            1924</span>
+        <h2 class="font-display text-5xl md:text-7xl font-black tracking-tight text-ink uppercase mb-6">Past Editions
+            Archive</h2>
+        <div class="w-24 h-1 bg-ink mb-6"></div>
+        <p class="max-w-2xl text-lg md:text-xl text-stone-700 italic font-headline leading-relaxed">
+            "History is a vast early warning system." — A complete record of daily dispatches, opinions, and historical
+            records from 2020 to the present day.
+        </p>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-6 border-b border-ink pb-4 mb-10">
+        <div class="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide w-full sm:w-auto">
+            <span class="mr-3 text-sm font-bold font-serif text-ink uppercase tracking-wide whitespace-nowrap">Select
+                Year:</span>
+            {% for year in years %}
+            {% if not loop.first %}
+            <span class="text-stone-300 mx-2">|</span>
+            {% endif %}
+            <button onclick="setSelectedYear('{{ year }}')" id="year-{{ year | replace(' ', '-') }}"
+                class="text-lg transition-colors year-btn {{ 'font-bold border-b-2 border-ink' if loop.first else 'font-normal text-stone-500 hover:text-ink' }}">
+                {{ year }}
+            </button>
+            {% endfor %}
+        </div>
+
+        <div class="flex items-center gap-2 border border-stone-300 px-3 py-1 bg-white">
+            <span class="text-xs font-serif italic text-stone-500 mr-2">Display:</span>
+            <button onclick="setViewMode('grid')" id="view-grid" class="p-1 rounded text-ink bg-stone-200">
+                <span class="material-icons text-xl">grid_view</span>
+            </button>
+            <button onclick="setViewMode('list')" id="view-list" class="p-1 rounded text-stone-400 hover:text-ink">
+                <span class="material-icons text-xl">view_list</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Issues Grid -->
+    <div id="issues-container" class="grid gap-x-8 gap-y-12 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        {% for issue in issues %}
+        <article class="group flex flex-col items-start issue-card" data-id="{{ issue.id }}">
+
+            <!-- Image Container - Linked -->
+            <a href="{{ url_for('home') }}"
+                class="block relative overflow-hidden bg-stone-100 border border-stone-300 transition-all duration-500 group-hover:border-ink w-full mb-5 aspect-[3/4]">
+                <div class="absolute inset-0 bg-cover bg-center grayscale contrast-125 transition-all duration-700 group-hover:scale-105 group-hover:grayscale-0"
+                    style="background-image: url('{{ issue.cover_image }}')"></div>
+                <div class="absolute inset-0 bg-black/10 mix-blend-multiply transition-opacity group-hover:opacity-0">
+                </div>
+
+                <!-- Date Tag -->
+                <div
+                    class="absolute top-0 right-0 bg-ink text-white px-3 py-1 font-display font-bold text-xs tracking-wider z-10">
+                    {{ issue.date_short }}
+                </div>
+            </a>
+
+            <!-- Content -->
+            <div class="flex w-full flex-col gap-3">
+                <div class="flex items-baseline justify-between border-t-2 border-ink pt-2">
+                    <a href="{{ url_for('home') }}">
+                        <h3
+                            class="font-display text-2xl font-bold leading-none text-ink group-hover:underline decoration-2 cursor-pointer">
+                            {{ issue.date }}
+                        </h3>
+                    </a>
+                </div>
+                <p class="font-display text-[10px] font-bold uppercase tracking-widest text-stone-500">{{ issue.vol }}
+                </p>
+                <p class="line-clamp-4 text-sm font-body leading-relaxed text-stone-800 justified-text">
+                    <span class="float-left mr-1 text-3xl font-bold leading-none font-masthead">{{ issue.lead_story.deck
+                        }}</span>
+                    {{ issue.lead_story.content[1:] }}
+                </p>
+                <a href="{{ url_for('home') }}"
+                    class="mt-2 inline-flex items-center text-xs font-bold uppercase tracking-widest text-ink border-b border-ink pb-0.5 hover:bg-ink hover:text-white transition-colors self-start">
+                    Read Issue <span class="material-icons ml-1 text-[14px]">arrow_forward</span>
+                </a>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    <div class="mt-20 flex flex-col items-center justify-center border-t border-ink pt-8">
+        <div class="flex items-center gap-4">
+            <button
+                class="group flex items-center gap-2 px-4 py-2 text-sm font-bold uppercase tracking-widest text-ink hover:bg-stone-100 transition-colors">
+                <span class="material-icons text-sm transition-transform group-hover:-translate-x-1">arrow_back</span>
+                Prev
+            </button>
+            <div class="flex items-center border border-ink p-1 bg-white">
+                <button class="w-8 h-8 flex items-center justify-center bg-ink text-white text-sm font-bold">1</button>
+                <button
+                    class="w-8 h-8 flex items-center justify-center text-ink hover:bg-stone-200 text-sm font-bold transition-colors">2</button>
+                <button
+                    class="w-8 h-8 flex items-center justify-center text-ink hover:bg-stone-200 text-sm font-bold transition-colors">3</button>
+                <span class="w-8 h-8 flex items-center justify-center text-ink">...</span>
+                <button
+                    class="w-8 h-8 flex items-center justify-center text-ink hover:bg-stone-200 text-sm font-bold transition-colors">12</button>
+            </div>
+            <button
+                class="group flex items-center gap-2 px-4 py-2 text-sm font-bold uppercase tracking-widest text-ink hover:bg-stone-100 transition-colors">
+                Next
+                <span class="material-icons text-sm transition-transform group-hover:translate-x-1">arrow_forward</span>
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let selectedYear = 'All Years';
+    let viewMode = 'grid';
+
+    function setSelectedYear(year) {
+        selectedYear = year;
+        // Update button styles
+        document.querySelectorAll('.year-btn').forEach(btn => {
+            btn.classList.remove('font-bold', 'border-b-2', 'border-ink');
+            btn.classList.add('font-normal', 'text-stone-500');
+        });
+        const activeBtn = document.getElementById('year-' + year.replace(' ', '-'));
+        if (activeBtn) {
+            activeBtn.classList.remove('font-normal', 'text-stone-500');
+            activeBtn.classList.add('font-bold', 'border-b-2', 'border-ink');
+        }
+    }
+
+    function setViewMode(mode) {
+        viewMode = mode;
+        const container = document.getElementById('issues-container');
+        const gridBtn = document.getElementById('view-grid');
+        const listBtn = document.getElementById('view-list');
+
+        if (mode === 'grid') {
+            container.classList.remove('grid-cols-1');
+            container.classList.add('grid-cols-1', 'sm:grid-cols-2', 'lg:grid-cols-4');
+            gridBtn.classList.remove('text-stone-400');
+            gridBtn.classList.add('text-ink', 'bg-stone-200');
+            listBtn.classList.remove('text-ink', 'bg-stone-200');
+            listBtn.classList.add('text-stone-400');
+
+            document.querySelectorAll('.issue-card').forEach(card => {
+                card.classList.remove('flex-row', 'gap-6', 'items-start', 'border-b', 'border-stone-200', 'pb-6');
+                card.classList.add('flex-col', 'items-start');
+                const imgContainer = card.querySelector('a');
+                imgContainer.classList.remove('w-48', 'shrink-0');
+                imgContainer.classList.add('w-full', 'mb-5', 'aspect-[3/4]');
+                const contentDiv = card.querySelector('.flex.w-full > div:first-child');
+                if (contentDiv) {
+                    contentDiv.classList.add('border-t-2', 'border-ink', 'pt-2');
+                }
+            });
+        } else {
+            container.classList.remove('sm:grid-cols-2', 'lg:grid-cols-4');
+            container.classList.add('grid-cols-1');
+            gridBtn.classList.remove('text-ink', 'bg-stone-200');
+            gridBtn.classList.add('text-stone-400');
+            listBtn.classList.remove('text-stone-400');
+            listBtn.classList.add('text-ink', 'bg-stone-200');
+
+            document.querySelectorAll('.issue-card').forEach(card => {
+                card.classList.remove('flex-col', 'items-start');
+                card.classList.add('flex-row', 'gap-6', 'items-start', 'border-b', 'border-stone-200', 'pb-6');
+                const imgContainer = card.querySelector('a');
+                imgContainer.classList.remove('w-full', 'mb-5', 'aspect-[3/4]');
+                imgContainer.classList.add('w-48', 'shrink-0');
+                const contentDiv = card.querySelector('.flex.w-full > div:first-child');
+                if (contentDiv) {
+                    contentDiv.classList.remove('border-t-2', 'border-ink', 'pt-2');
+                }
+            });
+        }
+    }
+</script>
+{% endblock %}

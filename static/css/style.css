@@ -1,0 +1,63 @@
+/* Paper Texture Effect */
+body {
+  background-color: #f4f1ea;
+  background-image: url("https://www.transparenttextures.com/patterns/cream-paper.png");
+}
+
+/* Custom Utilities */
+.drop-cap::first-letter {
+  float: left;
+  font-family: 'UnifrakturMaguntia', serif;
+  font-size: 3.8rem;
+  line-height: 0.8;
+  padding-right: 8px;
+  padding-top: 8px;
+  margin-bottom: -4px;
+}
+
+.justified-text {
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+/* Print Specifics */
+@media print {
+  @page {
+    margin: 0.5cm;
+    size: A3;
+  }
+  body {
+    background-color: white;
+    background-image: none;
+    color: black;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-break-inside-avoid {
+    break-inside: avoid;
+  }
+  .text-gray-500, .text-gray-400, .text-gray-600 {
+    color: #333 !important;
+  }
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Custom Scrollbar for screen */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
