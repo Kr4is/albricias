@@ -42,10 +42,11 @@
     }
   </script>
 
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
-<body class="text-ink antialiased min-h-screen flex flex-col">
+<body class="text-ink antialiased min-h-screen flex flex-col fade-in">
   <div
     class="max-w-[1400px] mx-auto bg-paper shadow-2xl min-h-screen flex flex-col border-x border-stone-200 print:shadow-none print:border-none print:max-w-none">
     {% include 'partials/header.html' %}

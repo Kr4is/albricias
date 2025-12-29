@@ -37,9 +37,9 @@
 
     <!-- Article Content -->
     <div class="font-body text-lg leading-relaxed justified-text text-ink-light space-y-6">
-        <p class="drop-cap">
-            {{ article.content }}
-        </p>
+        <div class="drop-cap">
+            {{ article.content | markdown | safe }}
+        </div>
 
         <!-- Extended content for better reading experience -->
         <p>
