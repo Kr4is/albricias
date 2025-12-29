@@ -129,36 +129,37 @@ def seed_database():
 def home():
     """Render the current issue (home page) using the issue template."""
     # Get the most recent issue
-    # Sort by year desc, then implicitly by date logic or just grab the "latest" by ID if needed, 
-    # but here we rely on the filesystem/db order. 
-    # Since IDs are strings like 'week-oct-23-2023', pure alphabetical might be wrong for dates.
-    # But let's assume the DB order or explicit date field is what we want.
-    # For now, relying on Issue.year desc and maybe we should parse date.
-    # Actually, the best way for now given the current data is to trust the import order or sort by ID if they are ISO-like?
-    # IDs are 'week-oct-23-2023'. 
-    # Let's rely on the query used in archive:
-    latest_issue = Issue.query.order_by(Issue.year.desc(), Issue.id.desc()).first() # Approximation
+    latest_issue = Issue.query.order_by(Issue.year.desc(), Issue.id.desc()).first()
     
     if latest_issue is None:
         return render_template("404.html"), 404
 
     # Get prev/next navigation
-    # specific logic for latest issue: next is None.
-    prev_issue = Issue.query.filter(Issue.id != latest_issue.id).order_by(Issue.year.desc(), Issue.id.desc()).offset(1).first() # Just the next one in list
-    # Actually, let's just reuse the logic:
-    # We want the one immediately 'before' this one in time.
-    # Since we picked the FIRST one (latest), the 'prev' is the second one.
-    prev_issue = Issue.query.filter(Issue.id < latest_issue.id).order_by(Issue.id.desc()).first() # ID string comparison might be flaky but let's stick to simple for now or fetch all and pick.
-    # Better:
-    all_issues = Issue.query.all()
-    # Sort them in python to be sure about date if needed, but ID sort is what we have used.
-    # Let's stick to the same logic as issue_detail if possible.
-    
-    # Re-fetching based on ID for consistency with issue_detail logic
     prev_issue = Issue.query.filter(Issue.id < latest_issue.id).order_by(Issue.id.desc()).first()
-    next_issue = None # Latest has no next
+    
+    # Dynamic Layout Selection (1 to 5)
+    # Use week number for deterministic rotation
+    layout_index = 1
+    try:
+        # issue.id format: week-YYYY-MM-DD
+        if latest_issue.id.startswith('week-'):
+            date_str = latest_issue.id[5:]
+            date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            # ISO Calendar week number
+            week_num = date_obj.isocalendar()[1]
+            layout_index = (week_num % 5) + 1
+    except Exception as e:
+        print(f"Layout selection error: {e}")
+        
+    template_name = f"issue_v{layout_index}.html"
+    print(f"Home displaying {latest_issue.id} with layout {template_name}")
 
-    return render_template("issue.html", issue=latest_issue, prev_issue=prev_issue, next_issue=None, Article=Article, is_current_issue=True)
+    return render_template(template_name, 
+                         issue=latest_issue, 
+                         prev_issue=prev_issue, 
+                         next_issue=None, 
+                         Article=Article, 
+                         is_current_issue=True)
 
 
 @app.route("/archive")
@@ -229,15 +230,30 @@ def archive():
 @app.route("/issue/<issue_id>")
 def issue_detail(issue_id):
     """Render an individual issue page with all its articles."""
+    # The issue_id is a string like "week-YYYY-MM-DD"
     issue = db.session.get(Issue, issue_id)
     if issue is None:
         return render_template("404.html"), 404
 
-    # Get previous and next issues for navigation
-    prev_issue = Issue.query.filter(Issue.id < issue.id).order_by(Issue.id.desc()).first()
-    next_issue = Issue.query.filter(Issue.id > issue.id).order_by(Issue.id.asc()).first()
+    # Get previous and next issues for navigation based on date
+    prev_issue = Issue.query.filter(Issue.date < issue.date).order_by(Issue.date.desc()).first()
+    next_issue = Issue.query.filter(Issue.date > issue.date).order_by(Issue.date.asc()).first()
 
-    return render_template("issue.html", issue=issue, prev_issue=prev_issue, next_issue=next_issue, Article=Article)
+    # Dynamic Layout Selection (1 to 5)
+    layout_index = 1
+    try:
+        if issue.id.startswith('week-'):
+            date_str = issue.id[5:]
+            date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            week_num = date_obj.isocalendar()[1]
+            layout_index = (week_num % 5) + 1
+    except Exception as e:
+        print(f"Layout selection error: {e}")
+
+    template_name = f"issue_v{layout_index}.html"
+    print(f"Issue {issue.id} displaying layout {template_name}")
+
+    return render_template(template_name, issue=issue, prev_issue=prev_issue, next_issue=next_issue, Article=Article, is_current_issue=False)
 
 
 @app.route("/article/<int:article_id>")
