@@ -3,7 +3,13 @@
     <div
         class="grid grid-cols-1 md:grid-cols-3 items-center py-2 border-b border-ink border-double text-[10px] sm:text-xs font-sans font-bold uppercase tracking-widest gap-y-2 md:gap-y-0">
         <div class="text-center md:text-left order-2 md:order-1">
-            <span>Vol. CLXXIII . . No. 60,124</span>
+            {% if issue %}
+            <span>{{ issue.vol }}</span>
+            {% elif article and article.issue %}
+            <span>{{ article.issue.vol }}</span>
+            {% else %}
+            <span>VOL. {{ now.year }} . . NO. {{ now.isocalendar()[1] * 123 }}</span>
+            {% endif %}
         </div>
         <div class="text-center order-1 md:order-2">
             {% if request.endpoint in ['archive', 'article_detail'] %}
@@ -11,7 +17,7 @@
             {% elif request.endpoint == 'issue_detail' %}
             <span>{{ issue.date if issue else 'Issue Detail' }}</span>
             {% else %}
-            <span>New York, Tuesday, October 24, 2023</span>
+            <span>{{ now.strftime('%A, %B %d, %Y') }}</span>
             {% endif %}
         </div>
         <div class="flex justify-center md:justify-end gap-6 no-print order-3">
@@ -28,7 +34,7 @@
         <a href="{{ url_for('home') }}" class="inline-block">
             <h1
                 class="font-masthead text-6xl md:text-8xl lg:text-[7.5rem] leading-none text-ink drop-shadow-sm tracking-tight hover:opacity-90 transition-opacity">
-                ¡Albricias!
+                {{ newspaper.name }}
             </h1>
         </a>
     </div>
@@ -38,7 +44,7 @@
         <div
             class="grid grid-cols-3 items-center text-[9px] sm:text-[10px] font-sans font-bold uppercase tracking-wider">
             <div class="text-left italic font-serif normal-case font-normal text-stone-600">
-                "All the News That's Fit to Print"
+                "{{ newspaper.tagline }}"
             </div>
             <div class="text-center">
                 {% if request.endpoint in ['archive', 'article_detail'] %}
@@ -50,7 +56,14 @@
                 {% endif %}
             </div>
             <div class="text-right">
-                Weather: Rainy, High 56.
+                {% if issue %}
+                {{ issue.weather }}
+                {% elif article and article.issue %}
+                {{ article.issue.weather }}
+                {% else %}
+                <!-- Show configurable default or basic current fallback -->
+                {{ newspaper.metadata_right }}
+                {% endif %}
             </div>
         </div>
     </div>

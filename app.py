@@ -23,6 +23,18 @@ db.init_app(app)
 def markdown_filter(text):
     return markdown.markdown(text, extensions=['fenced_code', 'tables'])
 
+# Context processors to inject variables into all templates
+@app.context_processor
+def inject_newspaper_config():
+    return dict(
+        newspaper={
+            "name": os.getenv("NEWSPAPER_NAME", "¡Albricias!"),
+            "tagline": os.getenv("NEWSPAPER_TAGLINE", "All the News That's Fit to Print"),
+            "price": os.getenv("NEWSPAPER_PRICE", "Two Cents")
+        },
+        now=datetime.datetime.now()
+    )
+
 
 import json
 import glob
@@ -204,7 +216,8 @@ def archive():
         )
     else:
         # Browse by issues (default)
-        query = Issue.query.order_by(Issue.year.desc(), Issue.date_short.desc())
+        # Sort by ID (week-YYYY-MM-DD) which is chronologically correct
+        query = Issue.query.order_by(Issue.id.desc())
 
         if selected_year != "All Years":
             try:

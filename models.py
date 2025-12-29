@@ -27,6 +27,44 @@ class Issue(db.Model):
     def lead_article(self):
         """Return the first/lead article of this issue."""
         return self.articles.order_by(Article.order).first()
+        
+    @property
+    def weather(self):
+        """Generate a deterministic weather report based on the issue date."""
+        import hashlib
+        
+        # Parse month from date (date_str is "Week of Month D, YYYY" or id has date)
+        # We store year and could parse date. reliable way is id "week-YYYY-MM-DD"
+        try:
+            date_part = self.id.replace("week-", "")
+            y, m, d = map(int, date_part.split("-"))
+        except:
+            return "Clear, 20°C"
+
+        # Deterministic random seed based on date
+        seed = int(hashlib.sha256(self.id.encode()).hexdigest(), 16) % 100
+        
+        # Base temps (Celsius) by Season (Northern Hemisphere)
+        if m in [12, 1, 2]: # Winter
+            base_temp = 2
+            conditions = ["Snowy", "Frigid", "Clear", "Overcast"]
+        elif m in [3, 4, 5]: # Spring
+            base_temp = 15
+            conditions = ["Rainy", "Cloudy", "Breezy", "Mild"]
+        elif m in [6, 7, 8]: # Summer
+            base_temp = 28
+            conditions = ["Sunny", "Hot", "Humid", "Clear"]
+        else: # Fall
+            base_temp = 12
+            conditions = ["Windy", "Rainy", "Crisp", "Foggy"]
+            
+        # Add variation (-5 to +5)
+        temp_variation = (seed % 11) - 5
+        final_temp = base_temp + temp_variation
+        
+        condition = conditions[seed % len(conditions)]
+        
+        return f"{condition}, {final_temp}°C"
 
 
 class Article(db.Model):
