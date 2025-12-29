@@ -3,139 +3,172 @@
 {% block title %}{{ article.title }} - Albricias{% endblock %}
 
 {% block content %}
-<article class="max-w-3xl mx-auto">
+<!-- Article Layout: Matching Issue Grid -->
+<div class="grid grid-cols-12 gap-6 lg:gap-8 relative">
 
-    <!-- Breadcrumb -->
-    <div class="flex items-center gap-2 mb-6 text-xs font-sans uppercase tracking-widest text-stone-500">
-        <a href="{{ url_for('archive') }}" class="hover:text-ink">Archive</a>
-        <span>→</span>
-        <a href="{{ url_for('issue_detail', issue_id=article.issue.id) }}" class="hover:text-ink">{{
-            article.issue.date_short }}</a>
-        <span>→</span>
-        <span class="text-ink">{{ article.category }}</span>
-    </div>
+    <!-- Sidebar (Left): Navigation & Context (3 Cols) -->
+    <aside class="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col order-2 lg:order-1">
 
-    <!-- Article Header -->
-    <header class="mb-10">
-        <span
-            class="inline-block text-[10px] font-sans font-bold uppercase tracking-widest text-white bg-ink px-3 py-1 mb-4">
-            {{ article.category }}
-        </span>
+        <!-- Back Link -->
+        <div class="mb-8 border-b border-ink pb-4">
+            <a href="{{ url_for('issue_detail', issue_id=article.issue.id) }}" class="flex items-center group">
+                <span
+                    class="material-icons text-sm mr-2 group-hover:-translate-x-1 transition-transform">arrow_back</span>
+                <div class="flex flex-col">
+                    <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">Back to Edition</span>
+                    <span class="font-headline font-bold text-lg leading-none">{{ article.issue.date_short }}</span>
+                </div>
+            </a>
+        </div>
 
-        <h1 class="font-headline text-4xl md:text-5xl font-black leading-tight mb-4">
+        <!-- In This Issue List -->
+        <div class="mb-8">
+            <h5
+                class="font-sans text-[10px] font-bold uppercase tracking-widest border-b border-stone-300 pb-2 mb-3 text-stone-500">
+                In This Issue
+            </h5>
+            <ul class="space-y-3 text-xs font-headline">
+                {% for item in article.issue.articles %}
+                <li
+                    class="{% if item.id == article.id %}pl-2 border-l-2 border-ink font-bold{% else %}opacity-70 hover:opacity-100{% endif %}">
+                    <a href="{{ url_for('article_detail', article_id=item.id) }}" class="block leading-snug">
+                        {{ item.title }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Next/Prev specific links -->
+        <div class="mt-auto hidden lg:block border-t border-stone-300 pt-4">
+            {% if prev_article %}
+            <a href="{{ url_for('article_detail', article_id=prev_article.id) }}"
+                class="block mb-4 group opacity-60 hover:opacity-100">
+                <span class="text-[9px] uppercase tracking-widest text-stone-500">Previous Article</span>
+                <p class="font-bold leading-tight group-hover:underline">{{ prev_article.title }}</p>
+            </a>
+            {% endif %}
+
+            {% if next_article %}
+            <a href="{{ url_for('article_detail', article_id=next_article.id) }}"
+                class="block group opacity-60 hover:opacity-100 text-right">
+                <span class="text-[9px] uppercase tracking-widest text-stone-500">Next Article</span>
+                <p class="font-bold leading-tight group-hover:underline">{{ next_article.title }}</p>
+            </a>
+            {% endif %}
+        </div>
+    </aside>
+
+    <!-- Main Content (Right/Center): 9 Cols -->
+    <article class="col-span-12 lg:col-span-9 lg:pl-2 order-1 lg:order-2">
+
+        <!-- Category & Meta -->
+        <div class="flex items-center gap-4 mb-6 border-b border-dotted border-stone-400 pb-2">
+            <span
+                class="inline-block text-[10px] font-sans font-bold uppercase tracking-widest text-white bg-ink px-2 py-0.5">
+                {{ article.category }}
+            </span>
+            <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">
+                {{ article.issue.date }}
+            </span>
+            {% if article.author %}
+            <span class="ml-auto font-sans text-[10px] uppercase tracking-widest text-stone-500">By {{ article.author
+                }}</span>
+            {% endif %}
+        </div>
+
+        <!-- Headline -->
+        <h1 class="font-headline text-5xl md:text-6xl font-black leading-none mb-8">
             {{ article.title }}
         </h1>
 
-        <div class="flex items-center gap-4 text-sm text-stone-600 border-b border-stone-300 pb-4">
-            {% if article.author %}
-            <span class="font-sans">By <strong>{{ article.author }}</strong></span>
-            <span>•</span>
-            {% endif %}
-            <span>{{ article.issue.date }}</span>
-        </div>
-    </header>
-
-    <!-- Article Content -->
-    <div class="font-body text-lg leading-relaxed justified-text text-ink-light space-y-6">
-
-        <!-- Rich Media: Video -->
-        {% if article.video %}
-        <div class="mb-6">
-            <video controls class="w-full border border-stone-300 p-1 bg-white">
-                <source src="{{ article.video }}">
-                Your browser does not support the video tag.
-            </video>
-        </div>
-        {% endif %}
-
-        <!-- Rich Media: Audio -->
-        {% if article.audio %}
-        <div class="mb-6 bg-stone-100 p-4 border border-stone-300">
-            <div class="flex items-center gap-3">
-                <span class="material-icons text-stone-500">headphones</span>
-                <span class="text-xs font-bold uppercase text-stone-500">Audio Experience</span>
-            </div>
-            <audio controls class="w-full mt-2">
-                <source src="{{ article.audio }}">
-                Your browser does not support the audio element.
-            </audio>
-        </div>
-        {% endif %}
-
-        <!-- Rich Media: Image -->
+        <!-- Media/Lead Image -->
         {% if article.image %}
-        <figure class="mb-6">
+        <figure class="mb-8 w-full">
             <img src="{{ article.image }}" alt="{{ article.title }}"
-                class="w-full h-auto border border-stone-300 p-1 bg-white">
+                class="w-full h-auto border border-stone-300 p-1 bg-white grayscale hover:grayscale-0 transition-all duration-1000">
+            {% if article.image_caption %}
+            <figcaption class="text-[10px] font-sans text-stone-500 mt-2 uppercase tracking-wide">
+                {{ article.image_caption }}
+            </figcaption>
+            {% endif %}
         </figure>
         {% endif %}
 
-        <div class="drop-cap">
-            {{ article.content | markdown | safe }}
-        </div>
+        <!-- Two Column Text Layout for Content -->
+        <!-- Using columns-1 md:columns-2 for the newspaper text flow feel, similar to the main story in issue.html -->
+        <div
+            class="content-body font-body text-lg leading-relaxed justified-text text-ink-light space-y-6 md:columns-2 md:gap-8 md:space-y-0 text-justify">
 
-        <!-- Extended content for better reading experience -->
-        <p>
-            The significance of this development cannot be overstated. Experts across various fields have weighed in on
-            the potential ramifications, with most agreeing that the coming months will be crucial in determining the
-            long-term impact.
-        </p>
-
-        <p>
-            "We are witnessing a pivotal moment," said Professor James Hartford of the Metropolitan Institute. "The
-            decisions made now will echo for generations to come. It is incumbent upon all stakeholders to approach this
-            matter with the gravity it deserves."
-        </p>
-
-        <p>
-            Local officials have begun preparations for what many anticipate will be a period of significant transition.
-            Community meetings have been scheduled throughout the district, offering residents the opportunity to voice
-            their concerns and contribute to the ongoing dialogue.
-        </p>
-
-        <p>
-            As this story continues to unfold, our correspondents remain committed to providing comprehensive coverage.
-            Additional developments will be reported in subsequent editions.
-        </p>
-    </div>
-
-    <!-- Article Footer -->
-    <footer class="mt-12 pt-8 border-t border-stone-300">
-        <!-- Related articles in same issue -->
-        <div class="mb-8">
-            <h3 class="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-4">
-                More from this edition
-            </h3>
-            <div class="flex items-center gap-4">
-                {% if prev_article %}
-                <a href="{{ url_for('article_detail', article_id=prev_article.id) }}"
-                    class="flex-1 p-4 border border-stone-200 hover:border-ink transition-colors group">
-                    <span class="text-[10px] uppercase tracking-widest text-stone-500">← Previous</span>
-                    <p class="font-headline font-bold mt-1 group-hover:underline">{{ prev_article.title }}</p>
-                </a>
+            <!-- Rich Media Injections (Video/Audio) - Place at top of first column -->
+            {% if article.video or article.audio %}
+            <div class="break-inside-avoid mb-6">
+                {% if article.video %}
+                <div class="mb-4">
+                    <video controls class="w-full border border-stone-300 p-1 bg-white">
+                        <source src="{{ article.video }}">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
                 {% endif %}
-                {% if next_article %}
-                <a href="{{ url_for('article_detail', article_id=next_article.id) }}"
-                    class="flex-1 p-4 border border-stone-200 hover:border-ink transition-colors group text-right">
-                    <span class="text-[10px] uppercase tracking-widest text-stone-500">Next →</span>
-                    <p class="font-headline font-bold mt-1 group-hover:underline">{{ next_article.title }}</p>
-                </a>
+
+                {% if article.audio %}
+                <div class="bg-stone-100 p-3 border border-stone-300">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-stone-500 text-sm">headphones</span>
+                        <span class="text-[10px] font-bold uppercase text-stone-500">Audio Content</span>
+                    </div>
+                    <audio controls class="w-full h-8">
+                        <source src="{{ article.audio }}">
+                    </audio>
+                </div>
                 {% endif %}
             </div>
+            {% endif %}
+
+            <!-- Drop Cap for first P -->
+            <div class="first-p-drop-cap">
+                {{ article.content | markdown | safe }}
+            </div>
+
         </div>
 
-        <!-- Back links -->
-        <div class="flex items-center justify-center gap-6">
-            <a href="{{ url_for('issue_detail', issue_id=article.issue.id) }}"
-                class="text-xs font-bold uppercase tracking-widest text-ink border border-ink px-4 py-2 hover:bg-ink hover:text-white transition-colors">
-                View Full Edition
-            </a>
-            <a href="{{ url_for('archive', view='articles') }}"
-                class="text-xs font-bold uppercase tracking-widest text-stone-500 hover:text-ink transition-colors">
-                Browse All Articles
-            </a>
+        <!-- Footer / End Mark -->
+        <div class="mt-12 flex justify-center">
+            <span class="text-stone-400">###</span>
         </div>
-    </footer>
 
-</article>
+        <!-- Mobile Nav (Visible only on small screens) -->
+        <div class="lg:hidden mt-12 pt-6 border-t border-stone-300 flex justify-between">
+            {% if prev_article %}
+            <a href="{{ url_for('article_detail', article_id=prev_article.id) }}"
+                class="text-xs font-bold uppercase text-stone-500">
+                ← Previous
+            </a>
+            {% else %}<span></span>{% endif %}
+            {% if next_article %}
+            <a href="{{ url_for('article_detail', article_id=next_article.id) }}"
+                class="text-xs font-bold uppercase text-stone-500">
+                Next →
+            </a>
+            {% endif %}
+        </div>
+
+    </article>
+</div>
+
+<style>
+    /* Custom CSS to force drop cap on the Markdown output */
+    /* The markdown filter wraps content in <p> tags. We target the first one. */
+    .first-p-drop-cap p:first-of-type::first-letter {
+        float: left;
+        font-family: 'Playfair Display', serif;
+        font-weight: 900;
+        font-size: 3.5rem;
+        line-height: 0.85;
+        margin-right: 0.5rem;
+        margin-top: 0.2rem;
+        color: var(--ink);
+    }
+</style>
 {% endblock %}
