@@ -1,32 +1,28 @@
-# Use an official Python runtime as a parent image
+# Final stage
 FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Set work directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# Install uv
+RUN pip install uv
 
-# Install python dependencies
-COPY pyproject.toml .
-# We use pip to install dependencies from pyproject.toml converted to requirements.txt logic or directly
-# Since we are using 'uv' in dev, let's just install based on a generated requirements.txt or directly if simple.
-# For simplicity here, we'll install dependencies directly. 
-# In a real UV workflow, we'd use `uv export` to generate requirements.txt
-RUN pip install --upgrade pip
-RUN pip install flask flask-sqlalchemy python-dotenv gunicorn markdown
+# Install dependencies using uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy project
+# Ensure the app uses the virtualenv
+ENV PATH="/app/.venv/bin:$PATH"
+
+
+# Copy project files
 COPY . .
+
+# Create instance directory for the database if it doesn't exist
+RUN mkdir -p instance content/articles
 
 # Expose port
 EXPOSE 8000
 
 # Run gunicorn
-CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--config", "gunicorn_config.py", "app:app"]
+

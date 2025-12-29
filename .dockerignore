@@ -1,0 +1,10 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+instance/albricias.db
+content/articles/*.md
+.python-version
+# uv.lock is needed for Docker build!
+

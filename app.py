@@ -41,8 +41,14 @@ import glob
 import frontmatter
 import datetime
 import re
+from werkzeug.utils import secure_filename
 
-# ... (Previous imports remain, ensure frontmatter is imported)
+def slugify(text):
+    """Simple slugify function."""
+    text = text.lower()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[\s_-]+', '-', text).strip('-')
+    return text
 
 def load_content_from_files():
     """Load articles from content/articles/ and generate weekly issues dynamically."""
@@ -134,6 +140,13 @@ def seed_database():
     """Seed the database with initial issues and articles."""
     # Always reload to reflect filesystem state
     load_content_from_files()
+
+# Create tables and seed on startup
+with app.app_context():
+    db.create_all()
+    # On first boot or whenever files change, we might want to seed.
+    # Since we are adding an API that calls this, we can just seed once here.
+    seed_database()
 
 
 
@@ -295,8 +308,59 @@ def article_detail(article_id):
     )
 
 
+@app.route("/api/articles", methods=["POST"])
+def create_article():
+    """API endpoint to create a new article."""
+    data = request.get_json()
+    
+    if not data:
+        return {"error": "No data provided"}, 400
+        
+    required_fields = ["title", "content", "category", "date"]
+    for field in required_fields:
+        if field not in data:
+            return {"error": f"Missing required field: {field}"}, 400
+            
+    title = data.get("title")
+    content = data.get("content")
+    category = data.get("category")
+    date_str = data.get("date") # Expected YYYY-MM-DD
+    author = data.get("author", "Staff Writer")
+    
+    # Validate date format
+    try:
+        datetime.datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return {"error": "Invalid date format. Use YYYY-MM-DD"}, 400
+        
+    # Generate filename
+    slug = slugify(title)
+    filename = f"{date_str}-{slug}.md"
+    filepath = os.path.join(app.root_path, "content", "articles", filename)
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Prepare frontmatter
+    post = frontmatter.Post(content, title=title, date=date_str, category=category, author=author)
+    
+    # Save to file
+    with open(filepath, "wb") as f:
+        frontmatter.dump(post, f)
+        
+    # Refresh database
+    try:
+        with app.app_context():
+            seed_database()
+    except Exception as e:
+        return {"error": f"Article saved but database refresh failed: {str(e)}"}, 500
+        
+    return {
+        "message": "Article created successfully",
+        "filename": filename,
+        "status": "success"
+    }, 201
+
+
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        seed_database()
     app.run(debug=True)

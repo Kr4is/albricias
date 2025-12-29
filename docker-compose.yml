@@ -1,0 +1,17 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./instance:/app/instance
+      - ./content:/app/content
+    env_file:
+      - .env
+    environment:
+      - SQLALCHEMY_DATABASE_URI=sqlite:////app/instance/albricias.db
+    restart: unless-stopped
+
+volumes:
+  instance:
+  content:
