@@ -4,6 +4,7 @@
 
 {% block content %}
 <!-- Issue Navigation Bar -->
+{% if not is_current_issue %}
 <div class="flex items-center justify-between mb-6 border-b border-stone-300 pb-4 no-print">
     <a href="{{ url_for('archive') }}"
         class="inline-flex items-center text-xs font-bold uppercase tracking-widest text-ink hover:underline">
@@ -27,6 +28,7 @@
         {% endif %}
     </div>
 </div>
+{% endif %}
 
 <!-- Front Page Layout (3 columns like home.html) -->
 <div class="grid grid-cols-12 gap-6 lg:gap-8 relative">
@@ -55,10 +57,6 @@
                     {{ article.content }}
                 </p>
             </div>
-            <a href="{{ url_for('article_detail', article_id=article.id) }}"
-                class="inline-flex items-center text-[10px] font-bold uppercase tracking-widest text-ink mt-3 hover:underline">
-                Continue Reading →
-            </a>
         </article>
         {% if not loop.last %}
         <div class="w-1/3 mx-auto border-t border-ink my-6"></div>
@@ -110,13 +108,6 @@
                     "We are witnessing a pivotal moment," said Professor James Hartford of the Metropolitan Institute.
                     "The decisions made now will echo for generations to come."
                 </p>
-            </div>
-
-            <div class="text-center mt-6">
-                <a href="{{ url_for('article_detail', article_id=main_article.id) }}"
-                    class="inline-flex items-center px-6 py-2 text-xs font-bold uppercase tracking-widest text-ink border border-ink hover:bg-ink hover:text-white transition-colors">
-                    Read Full Story <span class="material-icons ml-2 text-sm">arrow_forward</span>
-                </a>
             </div>
         </article>
         {% endif %}
@@ -205,32 +196,4 @@
 
     </div>
 </div>
-
-<!-- Bottom Navigation -->
-<nav class="flex items-center justify-between border-t border-ink pt-6 mt-12 no-print">
-    {% if prev_issue %}
-    <a href="{{ url_for('issue_detail', issue_id=prev_issue.id) }}"
-        class="group flex flex-col items-start text-left hover:bg-stone-100 p-3 -m-3 transition-colors">
-        <span class="text-[10px] uppercase tracking-widest text-stone-500 mb-1">← Previous Edition</span>
-        <span class="font-headline font-bold text-lg group-hover:underline">{{ prev_issue.date_short }}</span>
-    </a>
-    {% else %}
-    <div></div>
-    {% endif %}
-
-    <a href="{{ url_for('archive') }}"
-        class="font-sans text-xs font-bold uppercase tracking-widest text-ink border border-ink px-4 py-2 hover:bg-ink hover:text-white transition-colors">
-        All Editions
-    </a>
-
-    {% if next_issue %}
-    <a href="{{ url_for('issue_detail', issue_id=next_issue.id) }}"
-        class="group flex flex-col items-end text-right hover:bg-stone-100 p-3 -m-3 transition-colors">
-        <span class="text-[10px] uppercase tracking-widest text-stone-500 mb-1">Next Edition →</span>
-        <span class="font-headline font-bold text-lg group-hover:underline">{{ next_issue.date_short }}</span>
-    </a>
-    {% else %}
-    <div></div>
-    {% endif %}
-</nav>
 {% endblock %}

@@ -128,7 +128,7 @@ def home():
     prev_issue = Issue.query.filter(Issue.id < latest_issue.id).order_by(Issue.id.desc()).first()
     next_issue = None # Latest has no next
 
-    return render_template("issue.html", issue=latest_issue, prev_issue=prev_issue, next_issue=None, Article=Article)
+    return render_template("issue.html", issue=latest_issue, prev_issue=prev_issue, next_issue=None, Article=Article, is_current_issue=True)
 
 
 @app.route("/archive")
