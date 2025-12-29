@@ -6,14 +6,20 @@
             <span>Vol. CLXXIII . . No. 60,124</span>
         </div>
         <div class="text-center order-1 md:order-2">
+            {% if request.endpoint in ['archive', 'article_detail'] %}
+            <span>Past Editions Archive</span>
+            {% elif request.endpoint == 'issue_detail' %}
+            <span>{{ issue.date if issue else 'Issue Detail' }}</span>
+            {% else %}
             <span>New York, Tuesday, October 24, 2023</span>
+            {% endif %}
         </div>
         <div class="flex justify-center md:justify-end gap-6 no-print order-3">
             <a href="{{ url_for('home') }}"
                 class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint == 'home' else '' }}">Current
                 Issue</a>
             <a href="{{ url_for('archive') }}"
-                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint == 'archive' else '' }}">Archive</a>
+                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint in ['archive', 'issue_detail', 'article_detail'] else '' }}">Archive</a>
         </div>
     </div>
 
@@ -35,7 +41,13 @@
                 "All the News That's Fit to Print"
             </div>
             <div class="text-center">
+                {% if request.endpoint in ['archive', 'article_detail'] %}
+                Browse Collection
+                {% elif request.endpoint == 'issue_detail' %}
+                Weekly Edition
+                {% else %}
                 Late City Edition
+                {% endif %}
             </div>
             <div class="text-right">
                 Weather: Rainy, High 56.

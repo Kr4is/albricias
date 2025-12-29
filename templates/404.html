@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block title %}Page Not Found - Albricias{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center py-20 text-center">
+    <h1 class="font-masthead text-8xl mb-4">404</h1>
+    <h2 class="font-headline text-3xl font-bold mb-4">Edition Not Found</h2>
+    <p class="font-body text-lg text-stone-600 mb-8 max-w-md">
+        We regret to inform you that the requested edition could not be located in our archives.
+    </p>
+    <a href="{{ url_for('archive') }}"
+        class="inline-flex items-center font-sans text-sm font-bold uppercase tracking-widest text-ink border border-ink px-6 py-3 hover:bg-ink hover:text-white transition-colors">
+        <span class="material-icons mr-2 text-lg">archive</span>
+        Browse Our Archives
+    </a>
+</div>
+{% endblock %}

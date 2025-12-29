@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ article.title }} - Albricias{% endblock %}
+
+{% block content %}
+<article class="max-w-3xl mx-auto">
+
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-2 mb-6 text-xs font-sans uppercase tracking-widest text-stone-500">
+        <a href="{{ url_for('archive') }}" class="hover:text-ink">Archive</a>
+        <span>→</span>
+        <a href="{{ url_for('issue_detail', issue_id=article.issue.id) }}" class="hover:text-ink">{{
+            article.issue.date_short }}</a>
+        <span>→</span>
+        <span class="text-ink">{{ article.category }}</span>
+    </div>
+
+    <!-- Article Header -->
+    <header class="mb-10">
+        <span
+            class="inline-block text-[10px] font-sans font-bold uppercase tracking-widest text-white bg-ink px-3 py-1 mb-4">
+            {{ article.category }}
+        </span>
+
+        <h1 class="font-headline text-4xl md:text-5xl font-black leading-tight mb-4">
+            {{ article.title }}
+        </h1>
+
+        <div class="flex items-center gap-4 text-sm text-stone-600 border-b border-stone-300 pb-4">
+            {% if article.author %}
+            <span class="font-sans">By <strong>{{ article.author }}</strong></span>
+            <span>•</span>
+            {% endif %}
+            <span>{{ article.issue.date }}</span>
+        </div>
+    </header>
+
+    <!-- Article Content -->
+    <div class="font-body text-lg leading-relaxed justified-text text-ink-light space-y-6">
+        <p class="drop-cap">
+            {{ article.content }}
+        </p>
+
+        <!-- Extended content for better reading experience -->
+        <p>
+            The significance of this development cannot be overstated. Experts across various fields have weighed in on
+            the potential ramifications, with most agreeing that the coming months will be crucial in determining the
+            long-term impact.
+        </p>
+
+        <p>
+            "We are witnessing a pivotal moment," said Professor James Hartford of the Metropolitan Institute. "The
+            decisions made now will echo for generations to come. It is incumbent upon all stakeholders to approach this
+            matter with the gravity it deserves."
+        </p>
+
+        <p>
+            Local officials have begun preparations for what many anticipate will be a period of significant transition.
+            Community meetings have been scheduled throughout the district, offering residents the opportunity to voice
+            their concerns and contribute to the ongoing dialogue.
+        </p>
+
+        <p>
+            As this story continues to unfold, our correspondents remain committed to providing comprehensive coverage.
+            Additional developments will be reported in subsequent editions.
+        </p>
+    </div>
+
+    <!-- Article Footer -->
+    <footer class="mt-12 pt-8 border-t border-stone-300">
+        <!-- Related articles in same issue -->
+        <div class="mb-8">
+            <h3 class="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-4">
+                More from this edition
+            </h3>
+            <div class="flex items-center gap-4">
+                {% if prev_article %}
+                <a href="{{ url_for('article_detail', article_id=prev_article.id) }}"
+                    class="flex-1 p-4 border border-stone-200 hover:border-ink transition-colors group">
+                    <span class="text-[10px] uppercase tracking-widest text-stone-500">← Previous</span>
+                    <p class="font-headline font-bold mt-1 group-hover:underline">{{ prev_article.title }}</p>
+                </a>
+                {% endif %}
+                {% if next_article %}
+                <a href="{{ url_for('article_detail', article_id=next_article.id) }}"
+                    class="flex-1 p-4 border border-stone-200 hover:border-ink transition-colors group text-right">
+                    <span class="text-[10px] uppercase tracking-widest text-stone-500">Next →</span>
+                    <p class="font-headline font-bold mt-1 group-hover:underline">{{ next_article.title }}</p>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Back links -->
+        <div class="flex items-center justify-center gap-6">
+            <a href="{{ url_for('issue_detail', issue_id=article.issue.id) }}"
+                class="text-xs font-bold uppercase tracking-widest text-ink border border-ink px-4 py-2 hover:bg-ink hover:text-white transition-colors">
+                View Full Edition
+            </a>
+            <a href="{{ url_for('archive', view='articles') }}"
+                class="text-xs font-bold uppercase tracking-widest text-stone-500 hover:text-ink transition-colors">
+                Browse All Articles
+            </a>
+        </div>
+    </footer>
+
+</article>
+{% endblock %}
