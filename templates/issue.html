@@ -30,48 +30,57 @@
 </div>
 {% endif %}
 
-<!-- Front Page Layout (3 columns like home.html) -->
+<!-- Main Grid Layout -->
 <div class="grid grid-cols-12 gap-6 lg:gap-8 relative">
 
-    <!-- Column 1: Left Sidebar (3 cols wide on large, full on mobile) -->
-    <div class="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col">
-        {% set left_articles = issue.articles.filter(Article.order >= 1).limit(2).all() %}
-        {% for article in left_articles %}
-        <article class="{% if not loop.last %}mb-8{% else %}flex-grow{% endif %}">
+    <!-- Query Logic: Distribute Articles -->
+    <!-- Fetch all articles for this issue -->
+    {% set all_articles = issue.articles.all() %}
+
+    <!-- Main/Lead Article is the first one -->
+    {% set main_article = all_articles[0] if all_articles else None %}
+
+    <!-- All other articles are the rest -->
+    {% set other_articles = all_articles[1:] %}
+
+    <!-- Column 1: Left Stream (approx 1/3 of remainder) -->
+    <!-- Logic: Slice list. [0::3] -->
+    <div class="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col gap-8">
+        {% for article in other_articles[0::3] %}
+        <article>
+            <!-- Meta / Category -->
+            <div class="flex items-center justify-between mb-1 border-b border-stone-300 pb-1">
+                <span class="font-sans text-[9px] font-bold uppercase tracking-widest text-stone-600">{{
+                    article.category }}</span>
+                {% if article.author %}
+                <span class="font-sans text-[9px] uppercase text-stone-400">{{ article.author }}</span>
+                {% endif %}
+            </div>
+
             <a href="{{ url_for('article_detail', article_id=article.id) }}">
                 <h2
-                    class="font-headline text-{% if loop.first %}2xl lg:text-3xl{% else %}xl{% endif %} font-bold leading-tight mb-3 hover:opacity-70 cursor-pointer transition-opacity">
+                    class="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
                     {{ article.title }}
                 </h2>
             </a>
-            <div
-                class="flex items-center space-x-2 mb-4 text-[10px] font-sans font-bold uppercase text-stone-500 border-t border-b border-stone-300 py-1 w-full">
-                {% if article.author %}
-                <span>By {{ article.author }}</span>
-                {% endif %}
-                <span class="ml-auto">{{ article.category }}</span>
-            </div>
-            <div
-                class="text-{% if loop.first %}sm{% else %}xs{% endif %} font-body leading-relaxed justified-text text-ink-light space-y-4">
-                <p class="{% if loop.first %}drop-cap{% endif %}">
-                    {{ article.content }}
-                </p>
+
+            <div class="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text">
+                <p>{{ article.content[:200] }}...</p>
             </div>
         </article>
-        {% if not loop.last %}
-        <div class="w-1/3 mx-auto border-t border-ink my-6"></div>
-        {% endif %}
+        {% if not loop.last %}<div class="w-16 h-px bg-stone-200 mx-auto"></div>{% endif %}
         {% endfor %}
     </div>
 
-    <!-- Column 2: Main Story (6 cols wide on large) -->
+    <!-- Column 2: Center (Lead + Stream) -->
     <div class="col-span-12 lg:col-span-6 lg:border-r lg:border-stone-300 lg:px-6 flex flex-col">
-        {% set main_article = issue.articles.filter(Article.order == 0).first() %}
+
+        <!-- LEAD ARTICLE -->
         {% if main_article %}
-        <article class="mb-8">
+        <article class="mb-12 border-b-4 border-double border-stone-300 pb-8">
             <a href="{{ url_for('article_detail', article_id=main_article.id) }}">
                 <h2
-                    class="font-headline text-5xl md:text-6xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 cursor-pointer transition-opacity">
+                    class="font-headline text-5xl md:text-7xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 transition-opacity">
                     {{ main_article.title }}
                 </h2>
             </a>
@@ -89,111 +98,64 @@
             <figure class="mb-6 grayscale hover:grayscale-0 transition-all duration-700 cursor-pointer">
                 <img src="{{ issue.cover_image }}" alt="{{ main_article.title }}"
                     class="w-full h-auto object-cover border border-stone-300 p-1 bg-white" />
-                <figcaption class="text-[10px] text-stone-500 font-sans mt-2 uppercase tracking-wide text-center">
-                    Cover photograph for the {{ issue.date_short }} edition.
-                </figcaption>
             </figure>
 
             <div
-                class="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink space-y-4 md:space-y-0">
-                <p class="mb-4 drop-cap">
-                    {{ main_article.content }}
-                </p>
-                <p class="mb-4">
-                    The significance of this development cannot be overstated. Experts across various fields have
-                    weighed in on the potential ramifications, with most agreeing that the coming months will be crucial
-                    in determining the long-term impact.
-                </p>
-                <p class="mb-4">
-                    "We are witnessing a pivotal moment," said Professor James Hartford of the Metropolitan Institute.
-                    "The decisions made now will echo for generations to come."
-                </p>
+                class="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap">
+                <p>{{ main_article.content[:500] }}...</p>
             </div>
         </article>
         {% endif %}
 
-        <!-- More In This Issue Section at bottom -->
-        {% set other_articles = issue.articles.filter(Article.order > 2).limit(2).all() %}
-        {% if other_articles %}
-        <div class="border-t-4 border-double border-stone-300 pt-5 mt-auto">
-            <h3 class="font-sans text-xs font-bold uppercase text-center mb-5 tracking-[0.2em] bg-stone-100 py-1.5">
-                Also In This Edition</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {% for article in other_articles %}
-                <article>
-                    <a href="{{ url_for('article_detail', article_id=article.id) }}">
-                        <h4 class="font-headline font-bold text-lg leading-tight mb-2 hover:underline">{{ article.title
-                            }}</h4>
-                    </a>
-                    <p class="text-xs font-body justified-text leading-snug">
-                        {{ article.content[:150] }}...
-                    </p>
-                </article>
-                {% endfor %}
-            </div>
+        <!-- SECONDARY STREAM (Center Bottom) -->
+        <div class="flex flex-col gap-8">
+            {% for article in other_articles[1::3] %}
+            <article>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="inline-block w-2 h-2 bg-ink"></span>
+                    <span class="font-sans text-[10px] font-bold uppercase tracking-widest">{{ article.category
+                        }}</span>
+                </div>
+                <a href="{{ url_for('article_detail', article_id=article.id) }}">
+                    <h2 class="font-headline text-2xl font-bold leading-tight mb-2 hover:underline">
+                        {{ article.title }}
+                    </h2>
+                </a>
+                <p class="text-sm font-body leading-relaxed text-ink-light">
+                    {{ article.content[:250] }}...
+                </p>
+            </article>
+            {% if not loop.last %}<div class="border-t border-dotted border-stone-300 w-full"></div>{% endif %}
+            {% endfor %}
         </div>
-        {% endif %}
     </div>
 
-    <!-- Column 3: Right Sidebar & Ads (3 cols wide on large) -->
-    <div class="col-span-12 lg:col-span-3 lg:pl-6 flex flex-col">
+    <!-- Column 3: Right Stream (approx 1/3 of remainder) -->
+    <div class="col-span-12 lg:col-span-3 lg:pl-6 flex flex-col gap-8">
 
-        <!-- Issue Info Box -->
-        <div class="border border-ink p-4 mb-8 bg-white shadow-sm">
-            <h5
-                class="font-sans text-[10px] font-bold uppercase border-b border-stone-300 pb-2 mb-3 tracking-widest text-center">
-                In This Edition</h5>
-            <ul class="space-y-2 text-xs font-headline">
-                {% for article in issue.articles %}
-                <li class="flex justify-between border-b border-dotted border-stone-400 pb-1">
-                    <a href="{{ url_for('article_detail', article_id=article.id) }}"
-                        class="hover:underline flex-1 truncate">
-                        {{ article.title }}
-                    </a>
-                    <span class="font-sans font-bold text-stone-500 text-[10px] ml-2 shrink-0">{{
-                        article.category[:3]|upper }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
+        <!-- Info Box (Kept for context, but smaller) -->
+        <!-- <div class="border-b-2 border-ink pb-4 text-center">
+            <p class="font-masthead text-xl">Index</p>
+        </div> -->
 
-        <!-- Featured Article from Issue -->
-        {% set sidebar_article = issue.articles.filter(Article.order >= 1).offset(2).first() %}
-        {% if sidebar_article %}
-        <article class="mb-8">
-            <figure class="mb-4 grayscale">
-                <img src="{{ issue.cover_image }}" alt="{{ sidebar_article.title }}"
-                    class="w-full h-48 object-cover object-top border border-stone-300" />
-            </figure>
-            <a href="{{ url_for('article_detail', article_id=sidebar_article.id) }}">
-                <h3 class="font-headline text-2xl font-bold leading-tight mb-2 italic hover:underline">
-                    {{ sidebar_article.title }}
+        {% for article in other_articles[2::3] %}
+        <article>
+            <div class="mb-1">
+                <span class="font-sans text-[9px] font-bold uppercase tracking-widest bg-stone-100 px-1">{{
+                    article.category }}</span>
+            </div>
+            <a href="{{ url_for('article_detail', article_id=article.id) }}">
+                <h3 class="font-headline text-lg font-bold leading-tight mb-2 hover:opacity-70">
+                    {{ article.title }}
                 </h3>
             </a>
-            {% if sidebar_article.author %}
-            <p class="text-[10px] font-sans text-stone-500 mb-3 uppercase border-b border-stone-300 pb-1">
-                By {{ sidebar_article.author }}
+            <p class="text-xs font-body justified-text leading-snug text-stone-600">
+                {{ article.content[:150] }}...
             </p>
-            {% endif %}
-            <div class="text-xs font-body justified-text leading-relaxed text-ink-light">
-                <p>{{ sidebar_article.content[:200] }}...</p>
-            </div>
         </article>
-        {% endif %}
-
-        <div class="w-1/2 mx-auto border-t border-stone-300 my-6"></div>
-
-        <!-- Edition Details -->
-        <div class="border-4 border-double border-stone-400 p-8 mt-auto text-center bg-stone-50">
-            <p class="font-masthead text-3xl mb-2 tracking-tight">¡Albricias!</p>
-            <p class="font-headline text-xs italic mb-4 text-stone-600">{{ issue.vol }}</p>
-            <div class="w-8 h-px bg-ink mx-auto mb-4"></div>
-            <p class="font-sans text-[10px] uppercase tracking-widest font-bold text-ink">{{ issue.date }}</p>
-            <p class="font-sans text-[9px] uppercase tracking-wider mt-1 text-stone-500">
-                {{ issue.articles.count() }} Articles
-            </p>
-        </div>
-
+        <div class="w-full border-t border-stone-200"></div>
+        {% endfor %}
     </div>
+
 </div>
 {% endblock %}
