@@ -37,6 +37,39 @@
 
     <!-- Article Content -->
     <div class="font-body text-lg leading-relaxed justified-text text-ink-light space-y-6">
+
+        <!-- Rich Media: Video -->
+        {% if article.video %}
+        <div class="mb-6">
+            <video controls class="w-full border border-stone-300 p-1 bg-white">
+                <source src="{{ article.video }}">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        {% endif %}
+
+        <!-- Rich Media: Audio -->
+        {% if article.audio %}
+        <div class="mb-6 bg-stone-100 p-4 border border-stone-300">
+            <div class="flex items-center gap-3">
+                <span class="material-icons text-stone-500">headphones</span>
+                <span class="text-xs font-bold uppercase text-stone-500">Audio Experience</span>
+            </div>
+            <audio controls class="w-full mt-2">
+                <source src="{{ article.audio }}">
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+        {% endif %}
+
+        <!-- Rich Media: Image -->
+        {% if article.image %}
+        <figure class="mb-6">
+            <img src="{{ article.image }}" alt="{{ article.title }}"
+                class="w-full h-auto border border-stone-300 p-1 bg-white">
+        </figure>
+        {% endif %}
+
         <div class="drop-cap">
             {{ article.content | markdown | safe }}
         </div>

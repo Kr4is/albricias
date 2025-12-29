@@ -42,6 +42,12 @@ class Article(db.Model):
     author = db.Column(db.String(100), nullable=True)
     deck = db.Column(db.String(10), nullable=False)  # First letter for drop cap
     order = db.Column(db.Integer, nullable=False, default=0)  # Order within issue
+    
+    # New fields for dynamic continuous feed
+    date = db.Column(db.Date, nullable=True)
+    image = db.Column(db.String(500), nullable=True)
+    audio = db.Column(db.String(500), nullable=True)
+    video = db.Column(db.String(500), nullable=True)
 
     def __repr__(self):
         return f"<Article {self.id}: {self.title[:30]}>"

@@ -27,71 +27,101 @@ def markdown_filter(text):
 import json
 import glob
 import frontmatter
+import datetime
+import re
 
 # ... (Previous imports remain, ensure frontmatter is imported)
 
 def load_content_from_files():
-    """Load issues and articles from the content/ directory."""
-    issues_path = os.path.join(app.root_path, "content", "issues")
-    if not os.path.exists(issues_path):
-        print(f"No content directory found at {issues_path}")
+    """Load articles from content/articles/ and generate weekly issues dynamically."""
+    articles_path = os.path.join(app.root_path, "content", "articles")
+    if not os.path.exists(articles_path):
+        print(f"No content directory found at {articles_path}")
         return
 
-    # Find all issue directories
-    issue_dirs = sorted(glob.glob(os.path.join(issues_path, "*")))
+    # Clear existing data for fresh seed (optional, but safer for dev)
+    # In production, we might want upsert, but here we wipe to sync state.
+    db.session.query(Article).delete()
+    db.session.query(Issue).delete()
+    
+    # Memoize created issues in this session
+    issues_cache = {}
 
-    for issue_dir in issue_dirs:
-        if not os.path.isdir(issue_dir):
-            continue
-
-        issue_id = os.path.basename(issue_dir)
-        metadata_path = os.path.join(issue_dir, "metadata.json")
-
-        if not os.path.exists(metadata_path):
-            continue
-
-        # Load Issue Metadata
-        with open(metadata_path, 'r') as f:
-            metadata = json.load(f)
-
-        # check if issue exists
-        if db.session.get(Issue, issue_id):
-           continue
+    # Scan article files
+    article_files = sorted(glob.glob(os.path.join(articles_path, "*.md")))
+    
+    for article_file in article_files:
+        filename = os.path.basename(article_file)
+        # Parse date from filename: YYYY-MM-DD-slug.md
+        match = re.match(r"(\d{4})-(\d{2})-(\d{2})-(.*)\.md", filename)
         
-        issue = Issue(
-            id=issue_id,
-            date=metadata.get("date"),
-            date_short=metadata.get("date_short"),
-            vol=metadata.get("vol"),
-            year=metadata.get("year"),
-            cover_image=metadata.get("cover_image")
-        )
-        db.session.add(issue)
-
-        # Load Articles
-        article_files = sorted(glob.glob(os.path.join(issue_dir, "*.md")))
-        for article_file in article_files:
-            post = frontmatter.load(article_file)
+        if not match:
+            print(f"Skipping {filename}: Invalid date format")
+            continue
             
-            article = Article(
-                issue_id=issue.id,
-                title=post.get("title"),
-                content=post.content,
-                category=post.get("category"),
-                author=post.get("author"),
-                deck=post.get("deck"),
-                order=post.get("order", 0)
+        year, month, day, slug = match.groups()
+        article_date = datetime.date(int(year), int(month), int(day))
+        
+        # Calculate Issue (Monday of the week)
+        monday_date = article_date - datetime.timedelta(days=article_date.weekday())
+        issue_id = f"week-{monday_date.isoformat()}"
+        
+        # Get or Create Issue
+        if issue_id not in issues_cache:
+            # Check DB (though we wiped, cache handles current session)
+            # issue = db.session.get(Issue, issue_id) 
+            # We wiped, so it won't exist in DB unless we added it in this loop.
+            # But we check cache first.
+            
+            # Format dates
+            date_str = f"Week of {monday_date.strftime('%B %-d, %Y')}"
+            date_short = monday_date.strftime('%b %-d')
+            
+            # Placeholder for Volume/Cover
+            vol_num = monday_date.isocalendar()[1]
+            vol_str = f"VOL. {year} NO. {vol_num}"
+            
+            default_cover = "https://lh3.googleusercontent.com/aida-public/AB6AXuBp3_J4xTlbxtZw42osuYRDnHGOd68V4IJa_RWYpfIh4vfpy5Z722y_gXtCeyrHyz77I1cGAqKqr3puXjqr4tMfMBzfZsulCzp--KZj3bY_2b9E2AIW-I5HPj90Bv3iRbyRIb4QOwjPwHwMWi92l1tGn_836XzkN1_h2DBxM7H-OrHayMrdtzSgWsP6XV9MTSgrcjE2GTuYpM4fs970igX5Er1nRdKvs_1rO68D3UMuLm4Tu5rr2K-7XGo-2gV8gpbL2ST-8Fd7mmM"
+
+            issue = Issue(
+                id=issue_id,
+                date=date_str,
+                date_short=date_short,
+                vol=vol_str,
+                year=monday_date.year,
+                cover_image=default_cover
             )
-            db.session.add(article)
+            db.session.add(issue)
+            issues_cache[issue_id] = issue
+        else:
+            issue = issues_cache[issue_id]
+            
+        # Parse Frontmatter
+        post = frontmatter.load(article_file)
+        
+        # Create Article
+        article = Article(
+            issue_id=issue.id,
+            title=post.get("title"),
+            content=post.content,
+            category=post.get("category", "General"),
+            author=post.get("author", "Staff Writer"),
+            deck=post.get("deck", post.get("title", "A")[0]),
+            order=post.get("order", 0), # Fallback order
+            date=article_date,
+            image=post.get("image"),
+            audio=post.get("audio"),
+            video=post.get("video")
+        )
+        db.session.add(article)
 
     db.session.commit()
-    print("Database seeded from filesystem content.")
+    print("Database seeded from continuous article feed.")
 
 def seed_database():
-    """Seed the database with initial issues and articles if empty."""
-    # Check if we have any data, if not, try to load from files
-    if Issue.query.first() is None:
-        load_content_from_files()
+    """Seed the database with initial issues and articles."""
+    # Always reload to reflect filesystem state
+    load_content_from_files()
 
 
 
