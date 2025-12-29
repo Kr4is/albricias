@@ -42,6 +42,7 @@ import frontmatter
 import datetime
 import re
 from werkzeug.utils import secure_filename
+from functools import wraps
 
 def slugify(text):
     """Simple slugify function."""
@@ -49,6 +50,26 @@ def slugify(text):
     text = re.sub(r'[^\w\s-]', '', text)
     text = re.sub(r'[\s_-]+', '-', text).strip('-')
     return text
+
+def require_api_token(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = os.getenv("API_TOKEN")
+        if not token:
+            # If no token is configured, we allow it (or we could block it)
+            # But the user asked to securize it, so we should probably require it if set.
+            return f(*args, **kwargs)
+            
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return {"error": "Unauthorized: Missing or invalid token"}, 401
+            
+        token_sent = auth_header.split(" ")[1]
+        if token_sent != token:
+            return {"error": "Unauthorized: Invalid token"}, 401
+            
+        return f(*args, **kwargs)
+    return decorated_function
 
 def load_content_from_files():
     """Load articles from content/articles/ and generate weekly issues dynamically."""
@@ -309,6 +330,7 @@ def article_detail(article_id):
 
 
 @app.route("/api/articles", methods=["POST"])
+@require_api_token
 def create_article():
     """API endpoint to create a new article."""
     data = request.get_json()

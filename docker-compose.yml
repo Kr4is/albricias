@@ -10,6 +10,7 @@ services:
       - .env
     environment:
       - SQLALCHEMY_DATABASE_URI=sqlite:////app/instance/albricias.db
+      - API_TOKEN=${API_TOKEN:-dev-token}
     restart: unless-stopped
 
 volumes:
