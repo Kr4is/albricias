@@ -86,7 +86,7 @@
         {% for issue in items %}
         <article class="group flex flex-col items-start issue-card" data-id="{{ issue.id }}">
             <!-- Image Container -->
-            <a href="{{ url_for('issue_detail', issue_id=issue.id) }}"
+            <a href="{{ url_for('edition_detail', edition_id=issue.id) }}"
                 class="block relative overflow-hidden bg-stone-100 border border-stone-300 transition-all duration-500 group-hover:border-ink w-full mb-5 aspect-[3/4]">
                 <div class="absolute inset-0 bg-cover bg-center grayscale contrast-125 transition-all duration-700 group-hover:scale-105 group-hover:grayscale-0"
                     style="background-image: url('{{ issue.cover_image }}')"></div>
@@ -107,7 +107,7 @@
             <!-- Content -->
             <div class="flex w-full flex-col gap-3">
                 <div class="flex items-baseline justify-between border-t-2 border-ink pt-2">
-                    <a href="{{ url_for('issue_detail', issue_id=issue.id) }}">
+                    <a href="{{ url_for('edition_detail', edition_id=issue.id) }}">
                         <h3
                             class="font-display text-xl font-bold leading-tight text-ink group-hover:underline decoration-2">
                             {{ issue.date }}
@@ -125,9 +125,9 @@
                 </p>
                 {% endif %}
 
-                <a href="{{ url_for('issue_detail', issue_id=issue.id) }}"
+                <a href="{{ url_for('edition_detail', edition_id=issue.id) }}"
                     class="mt-2 inline-flex items-center text-xs font-bold uppercase tracking-widest text-ink border-b border-ink pb-0.5 hover:bg-ink hover:text-white transition-colors self-start">
-                    Read Issue <span class="material-icons ml-1 text-[14px]">arrow_forward</span>
+                    Read Edition <span class="material-icons ml-1 text-[14px]">arrow_forward</span>
                 </a>
             </div>
         </article>

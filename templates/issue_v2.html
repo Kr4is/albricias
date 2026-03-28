@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ issue.date }} - Albricias (Broadsheet){% endblock %}
+{% block title %}{{ issue.date }} - ¡Albricias!{% endblock %}
 
 {% block content %}
 {% include 'issue_nav.html' %}
@@ -40,4 +40,6 @@
     </article>
     {% endfor %}
 </div>
+
+{% include 'admin/preview_toolbar.html' %}
 {% endblock %}

@@ -10,6 +10,21 @@
             <p class="font-sans text-xs uppercase tracking-[0.3em] font-bold text-ink-light">New Article Composition</p>
         </div>
 
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-6 space-y-2">
+            {% for category, message in messages %}
+            <div class="px-4 py-3 text-sm font-sans border-l-4
+                {{ 'border-green-600 bg-green-50 text-green-900' if category == 'success' else
+                   'border-red-600 bg-red-50 text-red-900' if category == 'error' else
+                   'border-amber-500 bg-amber-50 text-amber-900' }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
         <form method="POST" enctype="multipart/form-data" class="space-y-8 font-serif">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <!-- Left Column -->
@@ -35,7 +50,11 @@
                                 <option value="Front Page">Front Page</option>
                                 <option value="Politics">Politics</option>
                                 <option value="Business">Business</option>
-                                <option value="Arts & Letters">Arts & Letters</option>
+                                <option value="Arts & Letters">Arts &amp; Letters</option>
+                                <option value="Open Source">Open Source</option>
+                                <option value="Project Updates">Project Updates</option>
+                                <option value="Community">Community</option>
+                                <option value="Technology">Technology</option>
                                 <option value="Obituaries">Obituaries</option>
                                 <option value="Editorial">Editorial</option>
                                 <option value="General" selected>General</option>
@@ -60,10 +79,29 @@
                             class="w-full bg-transparent border-b-2 border-ink-light focus:border-ink px-2 py-2 text-lg italic"
                             placeholder="Your name...">
                     </div>
+
+                    <div>
+                        <label for="edition_id"
+                            class="block text-xs font-sans font-extrabold uppercase tracking-widest mb-2 border-b border-ink pb-1">
+                            Add to Edition
+                        </label>
+                        <select name="edition_id" id="edition_id"
+                            class="w-full bg-transparent border-b-2 border-ink-light focus:border-ink px-2 py-2 text-sm font-sans appearance-none">
+                            <option value="">— Create / match by date —</option>
+                            {% for edition in editions %}
+                            <option value="{{ edition.id }}">
+                                {{ edition.title }} ({{ edition.status }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-[9px] font-sans text-stone-400 uppercase tracking-wider">
+                            Leave blank to auto-assign by article date
+                        </p>
+                    </div>
                 </div>
 
                 <!-- Right Column: Media -->
-                <div class="space-y-6 bg-stone-100/50 p-6 border-l-2 border-ink border-dotted">
+                <div class="space-y-5 bg-stone-100/50 p-6 border-l-2 border-ink border-dotted">
                     <h3
                         class="text-xs font-sans font-extrabold uppercase tracking-widest mb-4 text-center border-b border-ink pb-2 italic">
                         Supporting Media</h3>
@@ -74,6 +112,7 @@
                         </label>
                         <input type="file" name="image" id="image" accept="image/*"
                             class="w-full text-xs font-serif text-stone-600 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:font-sans file:font-bold file:uppercase file:bg-ink file:text-paper hover:file:bg-ink-light transition-all">
+                        <p class="mt-1 text-[9px] text-stone-400 font-sans">Auto-compressed to max 1200px wide.</p>
                     </div>
 
                     <div>
@@ -86,17 +125,19 @@
                     </div>
 
                     <div>
-                        <label for="video"
+                        <label for="video_url"
                             class="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1 mt-4">
-                            Cinematographic Reel (MP4)
+                            Video URL (YouTube / Vimeo embed)
                         </label>
-                        <input type="file" name="video" id="video" accept="video/*"
-                            class="w-full text-xs font-serif text-stone-600 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:font-sans file:font-bold file:uppercase file:bg-ink file:text-paper hover:file:bg-ink-light transition-all">
+                        <input type="url" name="video_url" id="video_url"
+                            placeholder="https://youtube.com/watch?v=..."
+                            class="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-xs font-sans">
+                        <p class="mt-1 text-[9px] text-stone-400 font-sans">Paste a video URL — no file upload for video.</p>
                     </div>
 
                     <div
                         class="mt-4 pt-4 border-t border-ink border-dotted text-[9px] text-stone-500 italic uppercase tracking-wider text-center">
-                        Maximum file size: 50MB
+                        Image &amp; audio max: 50MB
                     </div>
                 </div>
             </div>
@@ -112,7 +153,6 @@
                         class="w-full bg-transparent border-2 border-ink p-6 font-serif text-lg leading-relaxed justified-text focus:ring-0 focus:border-ink-light placeholder:italic shadow-inner"
                         placeholder="Once upon a time in the heart of the city..."></textarea>
 
-                    <!-- Decorative corner for the textarea -->
                     <div class="absolute bottom-4 right-4 text-ink-light opacity-50 select-none pointer-events-none">
                         <span class="material-symbols-outlined text-4xl">edit_square</span>
                     </div>
@@ -125,7 +165,7 @@
             <div class="pt-6 border-t-4 border-ink border-double">
                 <button type="submit"
                     class="w-full bg-ink text-paper py-4 font-sans font-extrabold uppercase tracking-[0.4em] text-xl hover:bg-ink-light hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 shadow-2xl">
-                    Publish to Press
+                    Save to Edition
                 </button>
             </div>
         </form>
@@ -139,12 +179,9 @@
 </div>
 
 <script>
-    // Simple beforeunload warning to prevent losing content
     const form = document.querySelector('form');
     let isSubmitting = false;
-
     form.addEventListener('submit', () => { isSubmitting = true; });
-
     window.addEventListener('beforeunload', (e) => {
         if (!isSubmitting && (document.getElementById('content').value || document.getElementById('title').value)) {
             e.preventDefault();

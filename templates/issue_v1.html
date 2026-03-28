@@ -1,34 +1,9 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ issue.date }} - Albricias{% endblock %}
+{% block title %}{{ issue.date }} - ¡Albricias!{% endblock %}
 
 {% block content %}
-<!-- Issue Navigation Bar -->
-{% if not is_current_issue %}
-<div class="flex items-center justify-between mb-6 border-b border-stone-300 pb-4 no-print">
-    <a href="{{ url_for('archive') }}"
-        class="inline-flex items-center text-xs font-bold uppercase tracking-widest text-ink hover:underline">
-        <span class="material-icons text-sm mr-1">arrow_back</span>
-        Back to Archive
-    </a>
-    <div class="flex items-center gap-4">
-        {% if prev_issue %}
-        <a href="{{ url_for('issue_detail', issue_id=prev_issue.id) }}"
-            class="inline-flex items-center text-xs font-bold uppercase tracking-widest text-stone-500 hover:text-ink transition-colors">
-            <span class="material-icons text-sm mr-1">chevron_left</span>
-            {{ prev_issue.date_short }}
-        </a>
-        {% endif %}
-        {% if next_issue %}
-        <a href="{{ url_for('issue_detail', issue_id=next_issue.id) }}"
-            class="inline-flex items-center text-xs font-bold uppercase tracking-widest text-stone-500 hover:text-ink transition-colors">
-            {{ next_issue.date_short }}
-            <span class="material-icons text-sm ml-1">chevron_right</span>
-        </a>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
+{% include 'issue_nav.html' %}
 
 <!-- Main Grid Layout -->
 <div class="grid grid-cols-12 gap-6 lg:gap-8 relative">
@@ -158,4 +133,6 @@
     </div>
 
 </div>
+
+{% include 'admin/preview_toolbar.html' %}
 {% endblock %}

@@ -5,17 +5,19 @@
         <div class="text-center md:text-left order-2 md:order-1">
             {% if issue %}
             <span>{{ issue.vol }}</span>
-            {% elif article and article.issue %}
-            <span>{{ article.issue.vol }}</span>
+            {% elif article and article.edition %}
+            <span>{{ article.edition.vol }}</span>
             {% else %}
-            <span>VOL. {{ now.year }} . . NO. {{ now.isocalendar()[1] * 123 }}</span>
+            <span>VOL. {{ now.year }} . NO. {{ now.month }}</span>
             {% endif %}
         </div>
         <div class="text-center order-1 md:order-2">
             {% if request.endpoint in ['archive', 'article_detail'] %}
             <span>Past Editions Archive</span>
-            {% elif request.endpoint == 'issue_detail' %}
-            <span>{{ issue.date if issue else 'Issue Detail' }}</span>
+            {% elif request.endpoint == 'edition_detail' %}
+            <span>{{ issue.date if issue else 'Edition' }}</span>
+            {% elif request.endpoint and request.endpoint.startswith('admin') %}
+            <span>Editorial Office</span>
             {% else %}
             <span>{{ now.strftime('%A, %B %d, %Y') }}</span>
             {% endif %}
@@ -23,12 +25,12 @@
         <div class="flex justify-center md:justify-end gap-6 no-print order-3">
             <a href="{{ url_for('home') }}"
                 class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint == 'home' else '' }}">Current
-                Issue</a>
+                Edition</a>
             <a href="{{ url_for('archive') }}"
-                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint in ['archive', 'issue_detail', 'article_detail'] else '' }}">Archive</a>
+                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint in ['archive', 'edition_detail', 'article_detail'] else '' }}">Archive</a>
             {% if session.get('logged_in') %}
-            <a href="{{ url_for('compose_article') }}"
-                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint == 'compose_article' else '' }}">Compose</a>
+            <a href="{{ url_for('admin_editions') }}"
+                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint and request.endpoint.startswith('admin') else '' }}">Admin</a>
             <a href="{{ url_for('logout') }}"
                 class="hover:underline decoration-2 underline-offset-4 text-red-800">Logout</a>
             {% endif %}
@@ -55,8 +57,10 @@
             <div class="text-center">
                 {% if request.endpoint in ['archive', 'article_detail'] %}
                 Browse Collection
-                {% elif request.endpoint == 'issue_detail' %}
-                Weekly Edition
+                {% elif request.endpoint == 'edition_detail' %}
+                Monthly Edition
+                {% elif request.endpoint and request.endpoint.startswith('admin') %}
+                Editorial Office
                 {% else %}
                 Late City Edition
                 {% endif %}
@@ -64,10 +68,9 @@
             <div class="text-right">
                 {% if issue %}
                 {{ issue.weather }}
-                {% elif article and article.issue %}
-                {{ article.issue.weather }}
+                {% elif article and article.edition %}
+                {{ article.edition.weather }}
                 {% else %}
-                <!-- Show configurable default or basic current fallback -->
                 {{ newspaper.metadata_right }}
                 {% endif %}
             </div>

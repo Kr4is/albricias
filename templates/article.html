@@ -11,12 +11,12 @@
 
         <!-- Back Link -->
         <div class="mb-8 border-b border-ink pb-4">
-            <a href="{{ url_for('issue_detail', issue_id=article.issue.id) }}" class="flex items-center group">
+            <a href="{{ url_for('edition_detail', edition_id=article.edition.id) }}" class="flex items-center group">
                 <span
                     class="material-icons text-sm mr-2 group-hover:-translate-x-1 transition-transform">arrow_back</span>
                 <div class="flex flex-col">
                     <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">Back to Edition</span>
-                    <span class="font-headline font-bold text-lg leading-none">{{ article.issue.date_short }}</span>
+                    <span class="font-headline font-bold text-lg leading-none">{{ article.edition.date_short }}</span>
                 </div>
             </a>
         </div>
@@ -28,7 +28,7 @@
                 In This Issue
             </h5>
             <ul class="space-y-3 text-xs font-headline">
-                {% for item in article.issue.articles %}
+                {% for item in article.edition.articles %}
                 <li
                     class="{% if item.id == article.id %}pl-2 border-l-2 border-ink font-bold{% else %}opacity-70 hover:opacity-100{% endif %}">
                     <a href="{{ url_for('article_detail', article_id=item.id) }}" class="block leading-snug">
@@ -68,9 +68,9 @@
                 class="inline-block text-[10px] font-sans font-bold uppercase tracking-widest text-white bg-ink px-2 py-0.5">
                 {{ article.category }}
             </span>
-            <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">
-                {{ article.issue.date }}
-            </span>
+                <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">
+                    {{ article.edition.date }}
+                </span>
             {% if article.author %}
             <span class="ml-auto font-sans text-[10px] uppercase tracking-widest text-stone-500">By {{ article.author
                 }}</span>
