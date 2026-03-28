@@ -217,4 +217,4 @@ __marimo__/
 
 # Content
 content/articles/*
-static/uploads/*
+app/static/uploads/*
