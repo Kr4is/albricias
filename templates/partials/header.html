@@ -26,6 +26,12 @@
                 Issue</a>
             <a href="{{ url_for('archive') }}"
                 class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint in ['archive', 'issue_detail', 'article_detail'] else '' }}">Archive</a>
+            {% if session.get('logged_in') %}
+            <a href="{{ url_for('compose_article') }}"
+                class="hover:underline decoration-2 underline-offset-4 {{ 'underline' if request.endpoint == 'compose_article' else '' }}">Compose</a>
+            <a href="{{ url_for('logout') }}"
+                class="hover:underline decoration-2 underline-offset-4 text-red-800">Logout</a>
+            {% endif %}
         </div>
     </div>
 

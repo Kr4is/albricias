@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Editor Login - ¡Albricias!{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto my-12 fade-in">
+    <div class="border-4 border-ink p-8 bg-paper shadow-lg relative">
+        <!-- Corner accents -->
+        <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-ink"></div>
+        <div class="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-ink"></div>
+        <div class="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-ink"></div>
+        <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-ink"></div>
+
+        <div class="text-center mb-8">
+            <h2 class="font-masthead text-4xl mb-2">Editor Access</h2>
+            <div class="border-b border-ink border-double w-24 mx-auto mb-4"></div>
+            <p class="font-sans text-xs uppercase tracking-widest text-ink-light">Authorized Personnel Only</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-6 p-3 border border-red-800 bg-red-50 text-red-800 text-sm font-serif italic text-center">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" class="space-y-6">
+            <div>
+                <label for="password" class="block text-xs font-sans font-bold uppercase tracking-widest mb-2">
+                    Access Code
+                </label>
+                <input type="password" name="password" id="password" required
+                    class="w-full bg-transparent border-2 border-ink px-4 py-3 font-serif focus:ring-0 focus:border-ink-light transition-colors"
+                    placeholder="••••••••">
+            </div>
+
+            <button type="submit"
+                class="w-full bg-ink text-paper py-3 font-sans font-bold uppercase tracking-widest hover:bg-ink-light transition-colors">
+                Enter Newsroom
+            </button>
+        </form>
+
+        <div class="mt-8 text-center">
+            <div class="border-t border-ink border-dotted pt-4">
+                <p class="font-serif text-xs italic text-stone-500">
+                    "Accuracy is to a newspaper what virtue is to a lady."
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

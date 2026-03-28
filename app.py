@@ -1,7 +1,7 @@
 """Albricias - A vintage newspaper-style web application."""
 
 import os
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session, redirect, url_for, flash
 from models import db, Issue, Article
 from dotenv import load_dotenv
 import markdown
@@ -15,6 +15,8 @@ app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("SQLALCHEMY_DATABASE_URI", "sqlite:///albricias.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
+app.config["UPLOAD_FOLDER"] = os.path.join(app.root_path, "static", "uploads")
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB limit
 
 db.init_app(app)
 
@@ -68,6 +70,14 @@ def require_api_token(f):
         if token_sent != token:
             return {"error": "Unauthorized: Invalid token"}, 401
             
+        return f(*args, **kwargs)
+    return decorated_function
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for('login', next=request.url))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -170,6 +180,86 @@ with app.app_context():
     seed_database()
 
 
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        password = request.form.get("password")
+        admin_password = os.getenv("ADMIN_PASSWORD", "admin")
+        if password == admin_password:
+            session["logged_in"] = True
+            return redirect(request.args.get("next") or url_for('home'))
+        else:
+            flash("Invalid password", "error")
+            
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("logged_in", None)
+    return redirect(url_for('home'))
+
+@app.route("/compose", methods=["GET", "POST"])
+@login_required
+def compose_article():
+    if request.method == "POST":
+        title = request.form.get("title")
+        category = request.form.get("category")
+        author = request.form.get("author", "Staff Writer")
+        date_str = request.form.get("date")
+        content = request.form.get("content")
+        
+        if not title or not content:
+            flash("Headline and Narrative are required!", "error")
+            return redirect(url_for('compose_article'))
+
+        # Handle File Uploads
+        media_paths = {"image": None, "audio": None, "video": None}
+        for media_type in media_paths.keys():
+            file = request.files.get(media_type)
+            if file and file.filename != '':
+                filename = secure_filename(file.filename)
+                # Ensure unique filename to avoid collisions
+                base, ext = os.path.splitext(filename)
+                unique_filename = f"{date_str}-{slugify(title)}-{media_type}{ext}"
+                
+                upload_path = os.path.join(app.config["UPLOAD_FOLDER"], media_type + "s")
+                os.makedirs(upload_path, exist_ok=True)
+                
+                file_path = os.path.join(upload_path, unique_filename)
+                file.save(file_path)
+                
+                # Store relative path for markdown
+                media_paths[media_type] = f"/static/uploads/{media_type}s/{unique_filename}"
+
+        # Generate markdown frontmatter
+        post = frontmatter.Post(content)
+        post['title'] = title
+        post['category'] = category
+        post['author'] = author
+        post['date'] = date_str
+        if media_paths['image']: post['image'] = media_paths['image']
+        if media_paths['audio']: post['audio'] = media_paths['audio']
+        if media_paths['video']: post['video'] = media_paths['video']
+
+        # Save to filesystem
+        slug = slugify(title)
+        filename = f"{date_str}-{slug}.md"
+        filepath = os.path.join(app.root_path, "content", "articles", filename)
+        
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "wb") as f:
+            frontmatter.dump(post, f)
+
+        # Sync Database
+        with app.app_context():
+            seed_database()
+
+        flash("Article published to press successfully!", "success")
+        return redirect(url_for('home'))
+
+    return render_template("compose.html", now=datetime.datetime.now())
 
 @app.route("/")
 def home():
