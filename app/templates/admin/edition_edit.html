@@ -119,14 +119,14 @@
                 </button>
             </form>
 
-            {% set gh_count = edition.github_activities.count() %}
+            {% set gh_count = edition.service_activities.count() %}
             {% if gh_count %}
             <div class="mt-8 border-t border-stone-200 pt-5">
                 <h4 class="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-3">
                     GitHub Activity ({{ gh_count }} events)
                 </h4>
                 <ul class="space-y-1.5 max-h-48 overflow-y-auto">
-                    {% for act in edition.github_activities.limit(15) %}
+                    {% for act in edition.service_activities.limit(15) %}
                     <li class="text-[10px] font-sans text-stone-600 flex items-start gap-1.5">
                         <span class="font-bold uppercase text-stone-400 shrink-0">{{ act.event_type }}</span>
                         <span class="truncate">{{ act.title }}</span>

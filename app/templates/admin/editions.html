@@ -67,7 +67,7 @@
                 <div class="flex items-center gap-2 text-xs font-sans text-stone-500 mb-4">
                     <span class="material-icons text-sm">article</span>
                     {{ edition.articles.count() }} articles
-                    {% set gh_count = edition.github_activities.count() %}
+                    {% set gh_count = edition.service_activities.count() %}
                     {% if gh_count %}
                     <span class="ml-2 material-icons text-sm">code</span>
                     {{ gh_count }} GitHub events
