@@ -18,7 +18,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY . .
 
 # Create instance directory for the database if it doesn't exist
-RUN mkdir -p instance content/articles
+RUN mkdir -p instance
 
 # Expose port
 EXPOSE 8000

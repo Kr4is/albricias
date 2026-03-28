@@ -215,6 +215,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Content
-content/articles/*
+# Uploads
 app/static/uploads/*
