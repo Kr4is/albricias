@@ -21,7 +21,7 @@ from app.helpers import layout_index, save_media_file
 from app.models import (
     Edition,
     Article,
-    GitHubActivity,
+    ServiceActivity,
     EDITION_STATUS_DRAFT,
     EDITION_STATUS_PUBLISHED,
 )
@@ -139,8 +139,9 @@ def edition_generate():
             )
             for act in activities:
                 db.session.add(
-                    GitHubActivity(
+                    ServiceActivity(
                         edition_id=edition.id,
+                        source="github",
                         event_type=act["event_type"],
                         repo=act.get("repo"),
                         title=act.get("title", ""),
@@ -160,6 +161,52 @@ def edition_generate():
 
     db.session.flush()
 
+    # --- Spotify fetch ---
+    spotify_fetched = 0
+    from app.models import ServiceToken
+
+    spotify_token = ServiceToken.get("spotify")
+    if spotify_token:
+        try:
+            from app.services.spotify import refresh_access_token, fetch_monthly_listening
+
+            if spotify_token.is_expired and spotify_token.refresh_token:
+                token_data = refresh_access_token(spotify_token.refresh_token)
+                ServiceToken.upsert(
+                    service="spotify",
+                    access_token=token_data["access_token"],
+                    refresh_token=token_data.get("refresh_token"),
+                    expires_in=token_data.get("expires_in"),
+                )
+                db.session.flush()
+                spotify_token = ServiceToken.get("spotify")
+
+            spotify_items = fetch_monthly_listening(spotify_token.access_token)
+            for item in spotify_items:
+                db.session.add(
+                    ServiceActivity(
+                        edition_id=edition.id,
+                        source="spotify",
+                        event_type=item["event_type"],
+                        repo=None,
+                        title=item.get("title", ""),
+                        url=item.get("url"),
+                        timestamp=item.get("timestamp"),
+                        raw_json=json.dumps(item.get("raw", {})),
+                    )
+                )
+            spotify_fetched = len(spotify_items)
+            fetched_count += spotify_fetched
+        except Exception as exc:
+            flash(f"Spotify fetch warning: {exc}", "warning")
+    else:
+        flash(
+            "Spotify not connected — visit /admin/spotify/connect to link your account.",
+            "info",
+        )
+
+    db.session.flush()
+
     # --- AI generation ---
     openai_key = os.getenv("OPENAI_API_KEY")
     generated_count = 0
@@ -173,13 +220,15 @@ def edition_generate():
         except Exception as exc:
             flash(f"AI writer warning: {exc}", "warning")
     elif fetched_count == 0:
-        flash("No GitHub activity fetched — AI generation skipped.", "info")
+        flash("No activity fetched from any service — AI generation skipped.", "info")
     else:
         flash("OPENAI_API_KEY not configured — AI generation skipped.", "warning")
 
     db.session.commit()
     flash(
-        f"Draft edition '{edition.title}' created with {fetched_count} GitHub events "
+        f"Draft edition '{edition.title}' created with "
+        f"{fetched_count - spotify_fetched} GitHub events, "
+        f"{spotify_fetched} Spotify items, "
         f"and {generated_count} AI-generated articles.",
         "success",
     )
@@ -458,3 +507,76 @@ def article_regenerate(edition_id: int, article_id: int):
     return redirect(
         url_for("admin.article_edit", edition_id=edition_id, article_id=article_id)
     )
+
+
+# ---------------------------------------------------------------------------
+# Spotify OAuth
+# ---------------------------------------------------------------------------
+
+
+@admin_bp.route("/spotify/connect")
+@login_required
+def spotify_connect():
+    """Redirect the admin to Spotify's authorization page."""
+    if not os.getenv("SPOTIFY_CLIENT_ID") or not os.getenv("SPOTIFY_CLIENT_SECRET"):
+        flash(
+            "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in .env "
+            "before connecting Spotify.",
+            "error",
+        )
+        return redirect(url_for("admin.editions"))
+
+    from app.services.spotify import get_auth_url
+
+    return redirect(get_auth_url())
+
+
+@admin_bp.route("/spotify/callback")
+@login_required
+def spotify_callback():
+    """Handle the OAuth callback: exchange code for tokens and persist them."""
+    error = request.args.get("error")
+    if error:
+        flash(f"Spotify authorization denied: {error}", "error")
+        return redirect(url_for("admin.editions"))
+
+    code = request.args.get("code")
+    if not code:
+        flash("Spotify callback received no authorization code.", "error")
+        return redirect(url_for("admin.editions"))
+
+    try:
+        from app.services.spotify import exchange_code
+        from app.models import ServiceToken
+
+        token_data = exchange_code(code)
+        ServiceToken.upsert(
+            service="spotify",
+            access_token=token_data["access_token"],
+            refresh_token=token_data.get("refresh_token"),
+            expires_in=token_data.get("expires_in"),
+            scope=token_data.get("scope"),
+        )
+        db.session.commit()
+        flash("Spotify connected successfully.", "success")
+    except Exception as exc:
+        flash(f"Spotify token exchange failed: {exc}", "error")
+
+    return redirect(url_for("admin.editions"))
+
+
+@admin_bp.route("/spotify/disconnect", methods=["POST"])
+@login_required
+def spotify_disconnect():
+    """Remove stored Spotify tokens."""
+    from app.models import ServiceToken
+
+    token = ServiceToken.get("spotify")
+    if token:
+        db.session.delete(token)
+        db.session.commit()
+        flash("Spotify disconnected.", "success")
+    else:
+        flash("Spotify was not connected.", "info")
+    return redirect(url_for("admin.editions"))
+

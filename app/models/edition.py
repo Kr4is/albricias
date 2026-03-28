@@ -41,8 +41,8 @@ class Edition(db.Model):
         order_by="Article.order",
         cascade="all, delete-orphan",
     )
-    github_activities = db.relationship(
-        "GitHubActivity",
+    service_activities = db.relationship(
+        "ServiceActivity",
         backref="edition",
         lazy="dynamic",
         cascade="all, delete-orphan",
