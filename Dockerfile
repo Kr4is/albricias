@@ -24,5 +24,5 @@ RUN mkdir -p instance content/articles
 EXPOSE 8000
 
 # Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--config", "gunicorn_config.py", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--config", "gunicorn_config.py", "wsgi:application"]
 

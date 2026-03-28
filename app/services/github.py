@@ -32,11 +32,15 @@ def _month_range(year: int, month: int) -> tuple[str, str]:
     """Return ISO8601 start and end datetime strings for the given month."""
     _, last_day = calendar.monthrange(year, month)
     start = datetime.datetime(year, month, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-    end = datetime.datetime(year, month, last_day, 23, 59, 59, tzinfo=datetime.timezone.utc)
+    end = datetime.datetime(
+        year, month, last_day, 23, 59, 59, tzinfo=datetime.timezone.utc
+    )
     return start.isoformat(), end.isoformat()
 
 
-def _paginate(client: "httpx.Client", url: str, params: dict | None = None) -> list[dict]:
+def _paginate(
+    client: "httpx.Client", url: str, params: dict | None = None
+) -> list[dict]:
     """Follow GitHub pagination and return all items."""
     results: list[dict] = []
     next_url: str | None = url
@@ -44,14 +48,13 @@ def _paginate(client: "httpx.Client", url: str, params: dict | None = None) -> l
 
     while next_url:
         resp = client.get(next_url, params=params)
-        if resp.status_code == 422 or resp.status_code == 404:
+        if resp.status_code in (404, 422):
             break
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, list):
             results.extend(data)
         elif isinstance(data, dict):
-            # Search results wrap items
             results.extend(data.get("items", []))
 
         link_header = resp.headers.get("Link", "")
@@ -60,7 +63,7 @@ def _paginate(client: "httpx.Client", url: str, params: dict | None = None) -> l
             part = part.strip()
             if 'rel="next"' in part:
                 next_url = part.split(";")[0].strip().strip("<>")
-                params = {}  # URL already contains params
+                params = {}
                 break
 
     return results
@@ -73,6 +76,14 @@ def _parse_timestamp(ts: str | None) -> datetime.datetime | None:
         return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
+
+
+def _repo_from_url(repository_url: str) -> str:
+    """Convert https://api.github.com/repos/owner/name → owner/name."""
+    prefix = f"{GITHUB_API}/repos/"
+    if repository_url.startswith(prefix):
+        return repository_url[len(prefix) :]
+    return repository_url
 
 
 def fetch_monthly_activity(
@@ -92,23 +103,20 @@ def fetch_monthly_activity(
         timeout=30.0,
         follow_redirects=True,
     ) as client:
-        # ------------------------------------------------------------------ #
-        # 1. Commits (search API)
-        # ------------------------------------------------------------------ #
+        # Commits (search API)
         try:
             q = f"author:{username} author-date:{start_iso[:10]}..{end_iso[:10]}"
-            commits = _paginate(
-                client,
-                f"{GITHUB_API}/search/commits",
-                {"q": q, "per_page": 100},
-            )
-            for c in commits:
+            for c in _paginate(
+                client, f"{GITHUB_API}/search/commits", {"q": q, "per_page": 100}
+            ):
                 repo = c.get("repository", {}).get("full_name", "unknown")
                 activities.append(
                     {
                         "event_type": "commit",
                         "repo": repo,
-                        "title": c.get("commit", {}).get("message", "").split("\n")[0][:200],
+                        "title": c.get("commit", {})
+                        .get("message", "")
+                        .split("\n")[0][:200],
                         "url": c.get("html_url"),
                         "timestamp": _parse_timestamp(
                             c.get("commit", {}).get("author", {}).get("date")
@@ -119,17 +127,12 @@ def fetch_monthly_activity(
         except Exception as exc:
             print(f"[github] Commits fetch failed: {exc}")
 
-        # ------------------------------------------------------------------ #
-        # 2. Pull Requests (search API)
-        # ------------------------------------------------------------------ #
+        # Pull Requests (search API)
         try:
             q = f"author:{username} type:pr created:{start_iso[:10]}..{end_iso[:10]}"
-            prs = _paginate(
-                client,
-                f"{GITHUB_API}/search/issues",
-                {"q": q, "per_page": 100},
-            )
-            for pr in prs:
+            for pr in _paginate(
+                client, f"{GITHUB_API}/search/issues", {"q": q, "per_page": 100}
+            ):
                 activities.append(
                     {
                         "event_type": "pr",
@@ -143,17 +146,12 @@ def fetch_monthly_activity(
         except Exception as exc:
             print(f"[github] PRs fetch failed: {exc}")
 
-        # ------------------------------------------------------------------ #
-        # 3. Issues created (search API)
-        # ------------------------------------------------------------------ #
+        # Issues created (search API)
         try:
             q = f"author:{username} type:issue created:{start_iso[:10]}..{end_iso[:10]}"
-            issues = _paginate(
-                client,
-                f"{GITHUB_API}/search/issues",
-                {"q": q, "per_page": 100},
-            )
-            for iss in issues:
+            for iss in _paginate(
+                client, f"{GITHUB_API}/search/issues", {"q": q, "per_page": 100}
+            ):
                 activities.append(
                     {
                         "event_type": "issue",
@@ -167,9 +165,7 @@ def fetch_monthly_activity(
         except Exception as exc:
             print(f"[github] Issues fetch failed: {exc}")
 
-        # ------------------------------------------------------------------ #
-        # 4. Releases published by the user across their repos
-        # ------------------------------------------------------------------ #
+        # Releases published across user repos
         try:
             user_repos = _paginate(
                 client,
@@ -178,19 +174,24 @@ def fetch_monthly_activity(
             )
             for repo_obj in user_repos:
                 repo_name = repo_obj.get("full_name", "")
-                releases = _paginate(
+                for rel in _paginate(
                     client,
                     f"{GITHUB_API}/repos/{repo_name}/releases",
                     {"per_page": 20},
-                )
-                for rel in releases:
+                ):
                     published_at = _parse_timestamp(rel.get("published_at"))
-                    if published_at and published_at.year == year and published_at.month == month:
+                    if (
+                        published_at
+                        and published_at.year == year
+                        and published_at.month == month
+                    ):
                         activities.append(
                             {
                                 "event_type": "release",
                                 "repo": repo_name,
-                                "title": rel.get("name") or rel.get("tag_name", "")[:200],
+                                "title": (
+                                    rel.get("name") or rel.get("tag_name", "")
+                                )[:200],
                                 "url": rel.get("html_url"),
                                 "timestamp": published_at,
                                 "raw": rel,
@@ -200,11 +201,3 @@ def fetch_monthly_activity(
             print(f"[github] Releases fetch failed: {exc}")
 
     return activities
-
-
-def _repo_from_url(repository_url: str) -> str:
-    """Convert https://api.github.com/repos/owner/name → owner/name."""
-    prefix = f"{GITHUB_API}/repos/"
-    if repository_url.startswith(prefix):
-        return repository_url[len(prefix):]
-    return repository_url

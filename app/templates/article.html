@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ article.title }} - Albricias{% endblock %}
+
+{% block content %}
+<!-- Article Layout: Matching Issue Grid -->
+<div class="grid grid-cols-12 gap-6 lg:gap-8 relative">
+
+    <!-- Sidebar (Left): Navigation & Context (3 Cols) -->
+    <aside class="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col order-2 lg:order-1">
+
+        <!-- Back Link -->
+        <div class="mb-8 border-b border-ink pb-4">
+            <a href="{{ url_for('public.edition_detail', edition_id=article.edition.id) }}" class="flex items-center group">
+                <span
+                    class="material-icons text-sm mr-2 group-hover:-translate-x-1 transition-transform">arrow_back</span>
+                <div class="flex flex-col">
+                    <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">Back to Edition</span>
+                    <span class="font-headline font-bold text-lg leading-none">{{ article.edition.date_short }}</span>
+                </div>
+            </a>
+        </div>
+
+        <!-- In This Issue List -->
+        <div class="mb-8">
+            <h5
+                class="font-sans text-[10px] font-bold uppercase tracking-widest border-b border-stone-300 pb-2 mb-3 text-stone-500">
+                In This Issue
+            </h5>
+            <ul class="space-y-3 text-xs font-headline">
+                {% for item in article.edition.articles %}
+                <li
+                    class="{% if item.id == article.id %}pl-2 border-l-2 border-ink font-bold{% else %}opacity-70 hover:opacity-100{% endif %}">
+                    <a href="{{ url_for('public.article_detail', article_id=item.id) }}" class="block leading-snug">
+                        {{ item.title }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Next/Prev specific links -->
+        <div class="mt-auto hidden lg:block border-t border-stone-300 pt-4">
+            {% if prev_article %}
+            <a href="{{ url_for('public.article_detail', article_id=prev_article.id) }}"
+                class="block mb-4 group opacity-60 hover:opacity-100">
+                <span class="text-[9px] uppercase tracking-widest text-stone-500">Previous Article</span>
+                <p class="font-bold leading-tight group-hover:underline">{{ prev_article.title }}</p>
+            </a>
+            {% endif %}
+
+            {% if next_article %}
+            <a href="{{ url_for('public.article_detail', article_id=next_article.id) }}"
+                class="block group opacity-60 hover:opacity-100 text-right">
+                <span class="text-[9px] uppercase tracking-widest text-stone-500">Next Article</span>
+                <p class="font-bold leading-tight group-hover:underline">{{ next_article.title }}</p>
+            </a>
+            {% endif %}
+        </div>
+    </aside>
+
+    <!-- Main Content (Right/Center): 9 Cols -->
+    <article class="col-span-12 lg:col-span-9 lg:pl-2 order-1 lg:order-2">
+
+        <!-- Category & Meta -->
+        <div class="flex items-center gap-4 mb-6 border-b border-dotted border-stone-400 pb-2">
+            <span
+                class="inline-block text-[10px] font-sans font-bold uppercase tracking-widest text-white bg-ink px-2 py-0.5">
+                {{ article.category }}
+            </span>
+                <span class="font-sans text-[10px] uppercase tracking-widest text-stone-500">
+                    {{ article.edition.date }}
+                </span>
+            {% if article.author %}
+            <span class="ml-auto font-sans text-[10px] uppercase tracking-widest text-stone-500">By {{ article.author
+                }}</span>
+            {% endif %}
+        </div>
+
+        <!-- Headline -->
+        <h1 class="font-headline text-5xl md:text-6xl font-black leading-none mb-8">
+            {{ article.title }}
+        </h1>
+
+        <!-- Media/Lead Image -->
+        {% if article.image %}
+        <figure class="mb-8 w-full">
+            <img src="{{ article.image }}" alt="{{ article.title }}"
+                class="w-full h-auto border border-stone-300 p-1 bg-white grayscale hover:grayscale-0 transition-all duration-1000">
+            {% if article.image_caption %}
+            <figcaption class="text-[10px] font-sans text-stone-500 mt-2 uppercase tracking-wide">
+                {{ article.image_caption }}
+            </figcaption>
+            {% endif %}
+        </figure>
+        {% endif %}
+
+        <!-- Two Column Text Layout for Content -->
+        <!-- Using columns-1 md:columns-2 for the newspaper text flow feel, similar to the main story in issue.html -->
+        <div
+            class="content-body font-body text-lg leading-relaxed justified-text text-ink-light space-y-6 md:columns-2 md:gap-8 md:space-y-0 text-justify">
+
+            <!-- Rich Media Injections (Video/Audio) - Place at top of first column -->
+            {% if article.video or article.audio %}
+            <div class="break-inside-avoid mb-6">
+                {% if article.video %}
+                <div class="mb-4">
+                    <video controls class="w-full border border-stone-300 p-1 bg-white">
+                        <source src="{{ article.video }}">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                {% endif %}
+
+                {% if article.audio %}
+                <div class="bg-stone-100 p-3 border border-stone-300">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-stone-500 text-sm">headphones</span>
+                        <span class="text-[10px] font-bold uppercase text-stone-500">Audio Content</span>
+                    </div>
+                    <audio controls class="w-full h-8">
+                        <source src="{{ article.audio }}">
+                    </audio>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Drop Cap for first P -->
+            <div class="first-p-drop-cap">
+                {{ article.content | markdown | safe }}
+            </div>
+
+        </div>
+
+        <!-- Footer / End Mark -->
+        <div class="mt-12 flex justify-center">
+            <span class="text-stone-400">###</span>
+        </div>
+
+        <!-- Mobile Nav (Visible only on small screens) -->
+        <div class="lg:hidden mt-12 pt-6 border-t border-stone-300 flex justify-between">
+            {% if prev_article %}
+            <a href="{{ url_for('public.article_detail', article_id=prev_article.id) }}"
+                class="text-xs font-bold uppercase text-stone-500">
+                ← Previous
+            </a>
+            {% else %}<span></span>{% endif %}
+            {% if next_article %}
+            <a href="{{ url_for('public.article_detail', article_id=next_article.id) }}"
+                class="text-xs font-bold uppercase text-stone-500">
+                Next →
+            </a>
+            {% endif %}
+        </div>
+
+    </article>
+</div>
+
+<style>
+    /* Custom CSS to force drop cap on the Markdown output */
+    /* The markdown filter wraps content in <p> tags. We target the first one. */
+    .first-p-drop-cap p:first-of-type::first-letter {
+        float: left;
+        font-family: 'Playfair Display', serif;
+        font-weight: 900;
+        font-size: 3.5rem;
+        line-height: 0.85;
+        margin-right: 0.5rem;
+        margin-top: 0.2rem;
+        color: var(--ink);
+    }
+</style>
+{% endblock %}

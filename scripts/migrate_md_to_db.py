@@ -23,8 +23,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app import app
-from models import db, Edition, Article, EDITION_STATUS_PUBLISHED
+from app import create_app
+from app.extensions import db
+from app.models import Edition, Article, EDITION_STATUS_PUBLISHED
+
+app = create_app()
 
 
 def slugify(text: str) -> str:

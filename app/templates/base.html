@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}¡Albricias!{% endblock %}</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400&family=Libre+Franklin:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap"
+    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Symbols+Outlined" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            paper: '#f4f1ea',
+            ink: '#1a1a1a',
+            'ink-light': '#4a4a4a',
+          },
+          fontFamily: {
+            masthead: ['"UnifrakturMaguntia"', 'cursive'],
+            headline: ['"Playfair Display"', 'serif'],
+            body: ['"Merriweather"', 'serif'],
+            sans: ['"Libre Franklin"', 'sans-serif'],
+            display: ['"Newsreader"', 'serif'],
+          },
+          screens: {
+            'print': { 'raw': 'print' },
+          }
+        }
+      }
+    }
+  </script>
+
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="text-ink antialiased min-h-screen flex flex-col fade-in">
+  <div
+    class="max-w-[1400px] mx-auto bg-paper shadow-2xl min-h-screen flex flex-col border-x border-stone-200 print:shadow-none print:border-none print:max-w-none">
+    {% include 'partials/header.html' %}
+    <main class="flex-grow px-6 sm:px-8 lg:px-10 py-6 print:px-0">
+      {% block content %}{% endblock %}
+    </main>
+    {% block footer %}{% endblock %}
+  </div>
+</body>
+
+</html>
