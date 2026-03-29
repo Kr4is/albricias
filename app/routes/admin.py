@@ -510,6 +510,111 @@ def article_regenerate(edition_id: int, article_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Assisted content generation
+# ---------------------------------------------------------------------------
+
+ARTICLE_CATEGORIES = [
+    "Front Page", "Politics", "Business", "Arts & Letters",
+    "Open Source", "Project Updates", "Community", "Technology",
+    "Obituaries", "Editorial", "General",
+]
+
+
+@admin_bp.route(
+    "/editions/<int:edition_id>/articles/generate",
+    methods=["GET", "POST"],
+)
+@login_required
+def article_generate(edition_id: int):
+    """Show and process the assisted article generation form."""
+    edition = db.session.get(Edition, edition_id)
+    if edition is None:
+        abort(404)
+
+    if request.method == "GET":
+        from app.services.sources import SOURCES
+        from app.services.generators import GENERATORS
+
+        return render_template(
+            "admin/article_generate.html",
+            edition=edition,
+            sources=SOURCES,
+            generators=GENERATORS,
+        )
+
+    # POST — run the pipeline
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        flash("OPENAI_API_KEY is not configured.", "error")
+        return redirect(url_for("admin.edition_edit", edition_id=edition_id))
+
+    source_type = request.form.get("source_type", "")
+    generator_type = request.form.get("generator_type", "")
+
+    if not source_type or not generator_type:
+        flash("Please select both a source type and an article type.", "error")
+        return redirect(url_for("admin.article_generate", edition_id=edition_id))
+
+    # Collect inputs depending on source type
+    audio_file = None
+    audio_filename = ""
+    text_input = ""
+
+    if source_type.startswith("audio_"):
+        audio_file = request.files.get("audio_file")
+        if not audio_file or not audio_file.filename:
+            flash("Please upload an audio file.", "error")
+            return redirect(url_for("admin.article_generate", edition_id=edition_id))
+        audio_filename = audio_file.filename
+    else:
+        text_input = request.form.get("text_input", "").strip()
+        if not text_input:
+            flash("Please paste some text or notes.", "error")
+            return redirect(url_for("admin.article_generate", edition_id=edition_id))
+
+    # Optional generator hints
+    topic_hint = request.form.get("topic_hint", "").strip()
+    subject_name = request.form.get("subject_name", "").strip()
+    subject_type = request.form.get("subject_type", "other").strip()
+    interviewee_name = request.form.get("interviewee_name", "").strip()
+    author = request.form.get("author", "The Albricias Correspondent").strip() or "The Albricias Correspondent"
+
+    date_str = request.form.get("date", "")
+    try:
+        article_date = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        article_date = datetime.date(edition.year, edition.month, 1)
+
+    try:
+        from app.services.ai_writer import generate_article_from_source
+
+        article = generate_article_from_source(
+            edition_id=edition_id,
+            source_type=source_type,
+            generator_type=generator_type,
+            api_key=openai_key,
+            audio_file=audio_file,
+            audio_filename=audio_filename,
+            text_input=text_input,
+            topic_hint=topic_hint,
+            subject_name=subject_name,
+            subject_type=subject_type,
+            interviewee_name=interviewee_name,
+            article_date=article_date,
+            author=author,
+        )
+        db.session.commit()
+        flash("Article generated successfully. Review and save your changes below.", "success")
+        return redirect(
+            url_for("admin.article_edit", edition_id=edition_id, article_id=article.id)
+        )
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Generation failed: {exc}", "error")
+        return redirect(url_for("admin.article_generate", edition_id=edition_id))
+
+
+# ---------------------------------------------------------------------------
 # Spotify OAuth
 # ---------------------------------------------------------------------------
 

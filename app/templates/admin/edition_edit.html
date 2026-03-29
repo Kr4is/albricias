@@ -142,14 +142,20 @@
 
         <!-- Right: Articles list + add form -->
         <div class="lg:col-span-2">
-            <div class="flex items-center justify-between mb-5">
-                <h3 class="font-headline text-lg font-bold border-b border-ink pb-2 flex-1">
+            <div class="flex items-center justify-between mb-5 gap-3 flex-wrap">
+                <h3 class="font-headline text-lg font-bold border-b border-ink pb-2 flex-1 min-w-0">
                     Articles ({{ articles|length }})
                 </h3>
-                <button onclick="document.getElementById('add-article-section').classList.toggle('hidden')"
-                        class="ml-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors shrink-0">
-                    <span class="material-icons text-sm">add</span> Add Article
-                </button>
+                <div class="flex gap-2 shrink-0">
+                    <a href="{{ url_for('admin.article_generate', edition_id=edition.id) }}"
+                       class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest bg-purple-700 text-white hover:bg-purple-800 transition-colors">
+                        <span class="material-icons text-sm">auto_awesome</span> Generate
+                    </a>
+                    <button onclick="document.getElementById('add-article-section').classList.toggle('hidden')"
+                            class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors">
+                        <span class="material-icons text-sm">add</span> Add Article
+                    </button>
+                </div>
             </div>
 
             <!-- Add article inline form (hidden by default) -->

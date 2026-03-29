@@ -1,141 +1,202 @@
-"""AI-assisted article generation for Albricias.
+"""AI-assisted article generation orchestrator for Albricias.
 
-Uses the OpenAI API to transform raw service activity (GitHub, Spotify, etc.)
-into vintage-style newspaper articles grouped thematically.
+This module is the central entry point for all AI generation flows:
 
-Usage:
-    articles = generate_edition_draft(edition_id, openai_api_key)
+* :func:`generate_edition_draft` — existing pipeline: GitHub/Spotify activity
+  rows → chronicle articles.  Kept for backward compatibility with admin routes.
+* :func:`regenerate_article` — re-run generation for an existing AI article.
+* :func:`generate_article_from_source` — new pipeline: accepts a source type
+  (audio, text, notes) + generator type (reflection, interview, review, profile)
+  and orchestrates the two-stage source → generator flow.
 """
+
+from __future__ import annotations
 
 import datetime
 from typing import Any
 
-try:
-    from openai import OpenAI
-except ImportError:
-    raise ImportError("openai is required: uv add openai")
 
-NEWSPAPER_PERSONA = (
-    "You are the chief editor of ¡Albricias!, a whimsical vintage newspaper "
-    "published in the style of early 20th-century broadsheets. "
-    "Your writing is eloquent, slightly dramatic, and uses the grandiloquent "
-    "journalistic voice of a bygone era — yet the content is accurate and grounded "
-    "in the actual activity provided. "
-    "Use markdown for formatting. Keep each article between 150 and 350 words."
-)
-
-CATEGORIES = [
-    "Open Source",
-    "Project Updates",
-    "Community",
-    "Technology",
-    "Discoveries",
-    "Culture",
-    "General",
-]
-
-EVENT_CATEGORY_MAP: dict[str, str] = {
-    # GitHub
-    "commit": "Open Source",
-    "pr": "Open Source",
-    "review": "Open Source",
-    "issue": "Community",
-    "release": "Project Updates",
-    "repo_created": "Project Updates",
-    "gist": "Technology",
-    "star": "Discoveries",
-    # Spotify
-    "spotify_track": "Culture",
-    "spotify_artist": "Culture",
-    "spotify_played": "Culture",
-}
-
-# Per-category prompt fragments that customise the AI voice for each section
-CATEGORY_PROMPTS: dict[str, str] = {
-    "Open Source": (
-        "Focus on the coding craftsmanship: the commits pushed, the pull requests "
-        "opened and reviewed, the careful labour of the software artisan."
-    ),
-    "Project Updates": (
-        "Celebrate the milestones: new repositories brought into the world and "
-        "software releases proclaimed to the public."
-    ),
-    "Community": (
-        "Chronicle the discourse: issues raised, questions posed, conversations "
-        "had in the great bazaar of open-source collaboration."
-    ),
-    "Technology": (
-        "Illuminate the craft: gists shared, snippets of wisdom distributed to "
-        "the wider technical community."
-    ),
-    "Discoveries": (
-        "Write a 'Repos of the Month' roundup in the style of a society column — "
-        "each starred repository introduced as a remarkable new acquaintance. "
-        "Include the repo name and a brief description of why it is worthy of note."
-    ),
-    "Culture": (
-        "Write a 'Sounds of the Month' column. Report the top tracks and artists "
-        "as though reviewing a concert season — grandiloquent, opinionated, and "
-        "enthusiastic. List the top tracks and artists with their Spotify URLs."
-    ),
-    "General": (
-        "Cover the miscellaneous happenings of the month with characteristic flair."
-    ),
-}
+# ---------------------------------------------------------------------------
+# Public orchestrator — new assisted generation pipeline
+# ---------------------------------------------------------------------------
 
 
-def _group_activities(activities: list[dict]) -> dict[str, list[dict]]:
-    groups: dict[str, list[dict]] = {cat: [] for cat in CATEGORIES}
-    for act in activities:
-        cat = EVENT_CATEGORY_MAP.get(act.get("event_type", ""), "General")
-        groups[cat].append(act)
-    return {k: v for k, v in groups.items() if v}
+def generate_article_from_source(
+    *,
+    edition_id: int,
+    source_type: str,
+    generator_type: str,
+    api_key: str,
+    # Source inputs (only the relevant one will be non-None)
+    audio_file=None,
+    audio_filename: str = "",
+    text_input: str = "",
+    # Generator options
+    topic_hint: str = "",
+    subject_name: str = "",
+    subject_type: str = "other",
+    interviewee_name: str = "",
+    article_date: datetime.date | None = None,
+    author: str = "The Albricias Correspondent",
+) -> Any:
+    """Orchestrate a source → generator pipeline and persist the resulting Article.
 
+    Parameters
+    ----------
+    edition_id:
+        Target edition.
+    source_type:
+        One of ``"audio_monologue"``, ``"audio_conversation"``, ``"text"``,
+        ``"notes"``.
+    generator_type:
+        One of ``"reflection"``, ``"interview"``, ``"review"``, ``"profile"``.
+    api_key:
+        OpenAI API key.
+    audio_file:
+        Werkzeug ``FileStorage`` object (only when source_type starts with
+        ``"audio"``).
+    audio_filename:
+        Original filename of the audio upload.
+    text_input:
+        Pasted text (used when source_type is ``"text"`` or ``"notes"``).
+    topic_hint:
+        Optional extra instruction passed to all generators.
+    subject_name:
+        Name of the subject (review / profile generators).
+    subject_type:
+        Subject category for review generator.
+    interviewee_name:
+        Name of the interviewee (interview generator).
+    article_date:
+        Date to stamp on the article; defaults to the first of the edition month.
+    author:
+        By-line for the article.
 
-def _summarise_group(group: list[dict]) -> str:
-    lines = []
-    for act in group[:25]:
-        ts = ""
-        if act.get("timestamp") and isinstance(act["timestamp"], datetime.datetime):
-            ts = act["timestamp"].strftime("%b %d")
-        elif isinstance(act.get("timestamp"), str):
-            ts = act["timestamp"][:10]
-        repo = act.get("repo") or ""
-        lines.append(
-            f"- [{act.get('event_type', '?')}] {repo}: "
-            f"{act.get('title', '')} ({ts}) {act.get('url', '')}"
+    Returns
+    -------
+    Article
+        The newly created and flushed Article record.
+    """
+    from app.extensions import db
+    from app.models import Article, Edition
+    from sqlalchemy import func
+
+    # ------------------------------------------------------------------
+    # 1. Process source → get normalized text
+    # ------------------------------------------------------------------
+    if source_type in ("audio_monologue", "audio_conversation"):
+        from app.services.sources.audio import process as audio_process
+
+        mode = "monologue" if source_type == "audio_monologue" else "conversation"
+        source_result = audio_process(
+            file_obj=audio_file,
+            filename=audio_filename,
+            mode=mode,
+            api_key=api_key,
         )
-    return "\n".join(lines)
+    elif source_type in ("text", "notes"):
+        from app.services.sources.text import process_text
+
+        source_result = process_text(raw=text_input, source_type=source_type)
+    else:
+        raise ValueError(f"Unknown source_type: {source_type!r}")
+
+    # ------------------------------------------------------------------
+    # 2. Generate article → get structured result
+    # ------------------------------------------------------------------
+    if generator_type == "reflection":
+        from app.services.generators.reflection import generate
+
+        result = generate(text=source_result.text, api_key=api_key, topic_hint=topic_hint)
+
+    elif generator_type == "interview":
+        from app.services.generators.interview import generate
+
+        result = generate(
+            text=source_result.text,
+            api_key=api_key,
+            interviewee_name=interviewee_name,
+            topic_hint=topic_hint,
+        )
+
+    elif generator_type == "review":
+        from app.services.generators.review import generate
+
+        result = generate(
+            text=source_result.text,
+            api_key=api_key,
+            subject_name=subject_name,
+            subject_type=subject_type,
+            topic_hint=topic_hint,
+        )
+
+    elif generator_type == "profile":
+        from app.services.generators.profile import generate
+
+        result = generate(
+            text=source_result.text,
+            api_key=api_key,
+            subject_name=subject_name,
+            topic_hint=topic_hint,
+        )
+    else:
+        raise ValueError(f"Unknown generator_type: {generator_type!r}")
+
+    # ------------------------------------------------------------------
+    # 3. Persist Article
+    # ------------------------------------------------------------------
+    edition = db.session.get(Edition, edition_id)
+    if article_date is None:
+        article_date = (
+            datetime.date(edition.year, edition.month, 1) if edition else datetime.date.today()
+        )
+
+    max_order = (
+        db.session.query(func.max(Article.order)).filter_by(edition_id=edition_id).scalar()
+    )
+
+    article = Article(
+        edition_id=edition_id,
+        title=result.title,
+        content=result.content,
+        category=result.category,
+        author=author,
+        deck=result.content[0] if result.content else "A",
+        order=(max_order or 0) + 1,
+        date=article_date,
+        source_type="ai_generated",
+    )
+    article.set_source_data(
+        {
+            **result.source_data,
+            "source_type": source_type,
+            "source_metadata": source_result.metadata,
+            "transcription": source_result.text,
+        }
+    )
+    db.session.add(article)
+    db.session.flush()
+    return article
 
 
-def _parse_ai_response(raw: str, fallback_headline: str) -> tuple[str, str]:
-    """Extract headline and body from an LLM response."""
-    lines = raw.strip().split("\n")
-    headline = ""
-    body_lines: list[str] = []
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            headline = stripped[2:].strip()
-            body_lines = lines[i + 1:]
-            break
-    if not headline:
-        headline = fallback_headline
-        body_lines = lines
-    body = "\n".join(body_lines).strip() or raw.strip()
-    return headline, body
+# ---------------------------------------------------------------------------
+# Backward-compatible edition pipeline (delegates to chronicle generator)
+# ---------------------------------------------------------------------------
 
 
 def generate_edition_draft(edition_id: int, api_key: str) -> list[Any]:
     """Generate AI article drafts for all service activity in an edition.
 
     Saves new Article records to the database and returns them.
+    Delegates to :mod:`app.services.generators.chronicle`.
     """
     from app.extensions import db
     from app.models import Article, ServiceActivity, Edition
+    from app.services.generators.chronicle import generate_from_activities
+    from sqlalchemy import func
 
-    activities = ServiceActivity.query.filter_by(edition_id=edition_id).all()
-    if not activities:
+    activities_qs = ServiceActivity.query.filter_by(edition_id=edition_id).all()
+    if not activities_qs:
         return []
 
     act_dicts = [
@@ -146,47 +207,20 @@ def generate_edition_draft(edition_id: int, api_key: str) -> list[Any]:
             "url": sa.url,
             "timestamp": sa.timestamp,
         }
-        for sa in activities
+        for sa in activities_qs
     ]
 
-    groups = _group_activities(act_dicts)
     edition = db.session.get(Edition, edition_id)
-    month_year = edition.date if edition else "this month"
-    client = OpenAI(api_key=api_key)
+    month_year = str(edition.date) if edition else "this month"
+
+    results = generate_from_activities(
+        activities=act_dicts,
+        month_year=month_year,
+        api_key=api_key,
+    )
+
     created: list[Article] = []
-
-    for category, group_acts in groups.items():
-        summary = _summarise_group(group_acts)
-        category_instruction = CATEGORY_PROMPTS.get(category, CATEGORY_PROMPTS["General"])
-        prompt = (
-            f"Write a newspaper article for the '{category}' section of the "
-            f"{month_year} edition of ¡Albricias!.\n\n"
-            f"{category_instruction}\n\n"
-            f"Base it on the following activity:\n{summary}\n\n"
-            f"Give the article a compelling headline (as a markdown H1), then the "
-            f"body text. Do not include a byline or date — those are added separately."
-        )
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": NEWSPAPER_PERSONA},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.8,
-                max_tokens=600,
-            )
-            raw_content = response.choices[0].message.content or ""
-        except Exception as exc:
-            print(f"[ai_writer] OpenAI call failed for '{category}': {exc}")
-            continue
-
-        fallback = f"{category} Dispatch — {month_year}"
-        headline, body = _parse_ai_response(raw_content, fallback)
-
-        from sqlalchemy import func
-
+    for result in results:
         max_order = (
             db.session.query(func.max(Article.order))
             .filter_by(edition_id=edition_id)
@@ -194,11 +228,11 @@ def generate_edition_draft(edition_id: int, api_key: str) -> list[Any]:
         )
         article = Article(
             edition_id=edition_id,
-            title=headline,
-            content=body,
-            category=category,
+            title=result.title,
+            content=result.content,
+            category=result.category,
             author="The Albricias Correspondent",
-            deck=body[0] if body else "A",
+            deck=result.content[0] if result.content else "A",
             order=(max_order or 0) + 1,
             date=(
                 datetime.date(edition.year, edition.month, 1)
@@ -207,14 +241,7 @@ def generate_edition_draft(edition_id: int, api_key: str) -> list[Any]:
             ),
             source_type="ai_generated",
         )
-        article.set_source_data(
-            {
-                "prompt": prompt,
-                "response": raw_content,
-                "model": "gpt-4o-mini",
-                "activity_count": len(group_acts),
-            }
-        )
+        article.set_source_data(result.source_data)
         db.session.add(article)
         db.session.flush()
         created.append(article)
@@ -226,26 +253,23 @@ def regenerate_article(article: Any, api_key: str) -> None:
     """Re-run AI generation for a single article.
 
     Updates title, content, and source_data in place.
-    The caller is responsible for db.session.commit().
+    The caller is responsible for ``db.session.commit()``.
     """
+    from app.services.generators._base import NEWSPAPER_PERSONA, call_openai, parse_response
+
     source = article.get_source_data()
     original_prompt = source.get("prompt") or (
         f"Rewrite and improve this vintage newspaper article titled "
         f"'{article.title}':\n\n{article.content}"
     )
 
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": NEWSPAPER_PERSONA},
-            {"role": "user", "content": original_prompt},
-        ],
+    raw = call_openai(
+        system=NEWSPAPER_PERSONA,
+        user=original_prompt,
+        api_key=api_key,
         temperature=0.9,
-        max_tokens=600,
     )
-    raw_content = response.choices[0].message.content or ""
-    headline, body = _parse_ai_response(raw_content, article.title)
+    headline, body = parse_response(raw, article.title)
 
     article.title = headline or article.title
     article.content = body
@@ -254,182 +278,7 @@ def regenerate_article(article: Any, api_key: str) -> None:
     article.set_source_data(
         {
             **source,
-            "last_regeneration_response": raw_content,
-            "last_regenerated_at": datetime.datetime.utcnow().isoformat(),
-        }
-    )
-
-
-
-def _group_activities(activities: list[dict]) -> dict[str, list[dict]]:
-    groups: dict[str, list[dict]] = {cat: [] for cat in CATEGORIES}
-    for act in activities:
-        cat = EVENT_CATEGORY_MAP.get(act.get("event_type", ""), "General")
-        groups[cat].append(act)
-    return {k: v for k, v in groups.items() if v}
-
-
-def _summarise_group(group: list[dict]) -> str:
-    lines = []
-    for act in group[:20]:
-        ts = ""
-        if act.get("timestamp") and isinstance(act["timestamp"], datetime.datetime):
-            ts = act["timestamp"].strftime("%b %d")
-        elif isinstance(act.get("timestamp"), str):
-            ts = act["timestamp"][:10]
-        lines.append(
-            f"- [{act.get('event_type', '?')}] {act.get('repo', '')}: "
-            f"{act.get('title', '')} ({ts}) {act.get('url', '')}"
-        )
-    return "\n".join(lines)
-
-
-def _parse_ai_response(raw: str, fallback_headline: str) -> tuple[str, str]:
-    """Extract headline and body from an LLM response."""
-    lines = raw.strip().split("\n")
-    headline = ""
-    body_lines: list[str] = []
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            headline = stripped[2:].strip()
-            body_lines = lines[i + 1 :]
-            break
-    if not headline:
-        headline = fallback_headline
-        body_lines = lines
-    body = "\n".join(body_lines).strip() or raw.strip()
-    return headline, body
-
-
-def generate_edition_draft(edition_id: int, api_key: str) -> list[Any]:
-    """Generate AI article drafts for all GitHub activity in an edition.
-
-    Saves new Article records to the database and returns them.
-    """
-    from app.extensions import db
-    from app.models import Article, ServiceActivity, Edition
-
-    activities = ServiceActivity.query.filter_by(edition_id=edition_id).all()
-    if not activities:
-        return []
-
-    act_dicts = [
-        {
-            "event_type": ga.event_type,
-            "repo": ga.repo,
-            "title": ga.title,
-            "url": ga.url,
-            "timestamp": ga.timestamp,
-        }
-        for ga in activities
-    ]
-
-    groups = _group_activities(act_dicts)
-    edition = db.session.get(Edition, edition_id)
-    month_year = edition.date if edition else "this month"
-    client = OpenAI(api_key=api_key)
-    created: list[Article] = []
-
-    for category, group_acts in groups.items():
-        summary = _summarise_group(group_acts)
-        prompt = (
-            f"Write a newspaper article for the '{category}' section of the "
-            f"{month_year} edition of ¡Albricias!.\n\n"
-            f"Base it on the following activity:\n{summary}\n\n"
-            f"The article should be in the vintage journalistic style described. "
-            f"Give it a compelling headline (as a markdown H1), then the body text. "
-            f"Do not include a byline or date — those are added separately."
-        )
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": NEWSPAPER_PERSONA},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.8,
-                max_tokens=600,
-            )
-            raw_content = response.choices[0].message.content or ""
-        except Exception as exc:
-            print(f"[ai_writer] OpenAI call failed for '{category}': {exc}")
-            continue
-
-        fallback = f"{category} Dispatch — {month_year}"
-        headline, body = _parse_ai_response(raw_content, fallback)
-
-        from sqlalchemy import func
-
-        max_order = (
-            db.session.query(func.max(Article.order))
-            .filter_by(edition_id=edition_id)
-            .scalar()
-        )
-        article = Article(
-            edition_id=edition_id,
-            title=headline,
-            content=body,
-            category=category,
-            author="The Albricias Correspondent",
-            deck=body[0] if body else "A",
-            order=(max_order or 0) + 1,
-            date=(
-                datetime.date(edition.year, edition.month, 1)
-                if edition
-                else datetime.date.today()
-            ),
-            source_type="ai_generated",
-        )
-        article.set_source_data(
-            {
-                "prompt": prompt,
-                "response": raw_content,
-                "model": "gpt-4o-mini",
-                "activity_count": len(group_acts),
-            }
-        )
-        db.session.add(article)
-        db.session.flush()
-        created.append(article)
-
-    return created
-
-
-def regenerate_article(article: Any, api_key: str) -> None:
-    """Re-run AI generation for a single article.
-
-    Updates title, content, and source_data in place.
-    The caller is responsible for db.session.commit().
-    """
-    source = article.get_source_data()
-    original_prompt = source.get("prompt") or (
-        f"Rewrite and improve this vintage newspaper article titled "
-        f"'{article.title}':\n\n{article.content}"
-    )
-
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": NEWSPAPER_PERSONA},
-            {"role": "user", "content": original_prompt},
-        ],
-        temperature=0.9,
-        max_tokens=600,
-    )
-    raw_content = response.choices[0].message.content or ""
-    headline, body = _parse_ai_response(raw_content, article.title)
-
-    article.title = headline or article.title
-    article.content = body
-    article.deck = body[0] if body else "A"
-    article.updated_at = datetime.datetime.utcnow()
-    article.set_source_data(
-        {
-            **source,
-            "last_regeneration_response": raw_content,
+            "last_regeneration_response": raw,
             "last_regenerated_at": datetime.datetime.utcnow().isoformat(),
         }
     )
