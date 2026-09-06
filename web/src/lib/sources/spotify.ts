@@ -148,6 +148,22 @@ interface SpotifyArtist {
   external_urls?: { spotify?: string };
 }
 
+interface SpotifyShowRef {
+  name?: string;
+}
+
+/**
+ * Spotify's recently-played item shape for a podcast episode play. Distinguished
+ * from a track by `type === "episode"` on the item itself (a track item has
+ * `type === "track"`).
+ */
+interface SpotifyEpisode {
+  type?: string;
+  name?: string;
+  show?: SpotifyShowRef;
+  external_urls?: { spotify?: string };
+}
+
 async function getJson<T>(
   url: string,
   accessToken: string,
@@ -186,6 +202,15 @@ export interface SpotifyFetchOptions {
  *   - `/me/top/tracks`              (short_term, limit 20)  → `spotify_track`
  *   - `/me/top/artists`             (short_term, limit 10)  → `spotify_artist`
  *   - `/me/player/recently-played`  (limit 50)              → `spotify_played`
+ *                                                              or `spotify_podcast_episode`
+ *
+ * `/me/player/recently-played` items can be either a track or a podcast
+ * episode play — Spotify tags the played object's own `type` field
+ * (`"track"` vs `"episode"`) rather than using a separate endpoint. Episode
+ * plays are emitted as `spotify_podcast_episode`, with `title` folded as
+ * `"Episode Name — Show Name"` (falling back to just the episode name when
+ * the show is missing) and the full episode payload kept in `raw` for later
+ * re-processing.
  *
  * Individual endpoint failures are logged and skipped, never thrown.
  */
@@ -252,7 +277,10 @@ export async function fetchSpotifyActivity({
   // ---------------------------------------------------------------------
   try {
     const data = await getJson<{
-      items?: { track?: SpotifyTrack; played_at?: string }[];
+      items?: {
+        track?: (SpotifyTrack & SpotifyEpisode) | null;
+        played_at?: string;
+      }[];
     }>(`${SPOTIFY_API_URL}/me/player/recently-played`, accessToken, {
       limit: "50",
     });
@@ -260,6 +288,26 @@ export async function fetchSpotifyActivity({
       const playedAt = parseTimestamp(item.played_at);
       if (period && !inPeriod(playedAt, period)) continue;
       const track = item.track ?? {};
+
+      if (track.type === "episode") {
+        // Podcast episode play — same "track" key, but Spotify tags the
+        // object's own `type` field "episode" instead of "track".
+        const showName = track.show?.name ?? "";
+        const title = showName
+          ? `${track.name ?? "Unknown episode"} — ${showName}`
+          : (track.name ?? "Unknown episode");
+        activities.push({
+          source: "spotify",
+          eventType: "spotify_podcast_episode",
+          repo: null,
+          title: title.slice(0, TITLE_MAX),
+          url: track.external_urls?.spotify || "",
+          timestamp: playedAt,
+          raw: item,
+        });
+        continue;
+      }
+
       const artistNames = (track.artists ?? []).map((a) => a.name).join(", ");
       activities.push({
         source: "spotify",

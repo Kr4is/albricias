@@ -5,6 +5,12 @@
  *   - {@link generateEditionDraft}     ← `ai_writer.py:187-249`
  *   - {@link generateArticleFromSource} ← `ai_writer.py:24-179`
  *   - {@link regenerateArticle}         ← `ai_writer.py:252-285`
+ *   - {@link runEditionGeneration}      ← the full "Generate edition" pipeline
+ *     (fetch GitHub+blog+Spotify activity for a period, create the `Edition`,
+ *     call {@link generateEditionDraft}), extracted from
+ *     `web/src/app/admin/editions/generate/route.ts` (Phase A / scheduler) so
+ *     both the manual "Generate edition" button and the cron scheduler
+ *     (`web/src/lib/scheduler.ts`) call one implementation.
  *
  * The pure LLM work lives in `src/mastra/` (agents + workflows); everything
  * here is source processing, workflow invocation and `Article` persistence.
@@ -14,17 +20,26 @@
  * sourced it too.
  */
 
-import type { Article } from "@/generated/prisma/client";
-import { periodLabel } from "@/lib/edition-helpers";
+import type { Article, Edition } from "@/generated/prisma/client";
+import { defaultEditionTitle, defaultEditionVol } from "@/lib/cadence";
+import { EDITION_STATUS_DRAFT, type Cadence, periodLabel } from "@/lib/edition-helpers";
+import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
+import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
 import {
+  type ActivityItem,
   type AudioMode,
   type SourceResult,
   type SourceType,
+  fetchBlogActivity,
+  fetchGithubActivity,
+  fetchSpotifyActivity,
   processAudio,
   processText,
+  refreshAccessToken,
 } from "@/lib/sources";
 import { chronicleAgent, parseResponse, runNewspaperAgent } from "@/mastra/agents";
+import { createActivityRankingArticle } from "@/lib/rankings";
 import {
   type GeneratorResult,
   type GeneratorType,
@@ -320,4 +335,213 @@ function requireOpenAiKey(): string {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is not set.");
   return key;
+}
+
+// ---------------------------------------------------------------------------
+// Full edition-generation pipeline — shared by the manual "Generate edition"
+// route and the cron scheduler (Phase A).
+// ---------------------------------------------------------------------------
+
+async function saveActivities(editionId: number, items: ActivityItem[]): Promise<void> {
+  if (items.length === 0) return;
+  await prisma.serviceActivity.createMany({
+    data: items.map((item) => ({
+      editionId,
+      source: item.source,
+      eventType: item.eventType,
+      repo: item.repo,
+      title: item.title,
+      url: item.url,
+      timestamp: item.timestamp,
+      rawJson: JSON.stringify(item.raw ?? {}),
+    })),
+  });
+}
+
+/** An edition already existed for the requested period — nothing was generated. */
+export interface EditionGenerationExists {
+  status: "exists";
+  edition: Edition;
+}
+
+/** A new edition was created and the pipeline ran against it. */
+export interface EditionGenerationRan {
+  status: "generated";
+  edition: Edition;
+  /** Non-fatal warnings/info collected along the way, in the order they occurred. */
+  messages: FlashMessage[];
+  /** Total GitHub + blog + Spotify activity rows saved. */
+  fetchedCount: number;
+  /** Of `fetchedCount`, how many came from Spotify (kept separate for the summary message). */
+  spotifyFetched: number;
+  /** Number of AI-generated articles created. */
+  generatedCount: number;
+}
+
+export type EditionGenerationOutcome = EditionGenerationExists | EditionGenerationRan;
+
+/**
+ * Run the full "Generate edition" pipeline for `[periodStart, periodEnd)`
+ * under `cadence`: fetch GitHub/blog/Spotify activity for the period, create
+ * the draft `Edition`, and call {@link generateEditionDraft} on it.
+ *
+ * Ported out of `web/src/app/admin/editions/generate/route.ts`'s POST handler
+ * verbatim (same per-source try/catch + non-fatal warning pattern, same
+ * final summary message), generalised to take an already-resolved period
+ * instead of reading one off a `FormData`. If an edition already exists for
+ * `(cadence, periodStart)` (the same unique constraint the route relied on),
+ * nothing is created or fetched — the existing edition is returned as-is so
+ * callers (the manual route, or a scheduled run) can no-op safely instead of
+ * crashing or duplicating.
+ *
+ * Callers are responsible for resolving `periodStart`/`periodEnd` (see
+ * `resolvePeriodFromForm` for the manual route, `currentPeriodBounds` for the
+ * scheduler) and for turning the outcome into a response — this function
+ * never redirects or flashes, it only returns data.
+ */
+export async function runEditionGeneration(
+  cadence: Cadence,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<EditionGenerationOutcome> {
+  const existing = await prisma.edition.findUnique({
+    where: { cadence_periodStart: { cadence, periodStart } },
+  });
+  if (existing) {
+    return { status: "exists", edition: existing };
+  }
+
+  const period = { cadence, periodStart, periodEnd };
+  const edition = await prisma.edition.create({
+    data: {
+      cadence,
+      periodStart,
+      periodEnd,
+      title: defaultEditionTitle(period),
+      vol: defaultEditionVol(period),
+      status: EDITION_STATUS_DRAFT,
+    },
+  });
+
+  const messages: FlashMessage[] = [];
+  let fetchedCount = 0;
+  let spotifyFetched = 0;
+
+  // --- GitHub fetch ---
+  const githubToken = process.env.GITHUB_TOKEN;
+  const githubUsername = process.env.GITHUB_USERNAME;
+  if (githubToken && githubUsername) {
+    try {
+      const activities = await fetchGithubActivity({
+        username: githubUsername,
+        token: githubToken,
+        periodStart,
+        periodEnd,
+      });
+      await saveActivities(edition.id, activities);
+      fetchedCount += activities.length;
+    } catch (error) {
+      messages.push({ type: "warning", text: `GitHub fetch warning: ${describeError(error)}` });
+    }
+  } else {
+    messages.push({
+      type: "warning",
+      text: "GITHUB_TOKEN or GITHUB_USERNAME not configured — skipping GitHub fetch.",
+    });
+  }
+
+  // --- Blog RSS fetch ---
+  const blogUrl = process.env.BLOG_RSS_URL;
+  if (blogUrl) {
+    try {
+      const activities = await fetchBlogActivity({
+        feedUrl: blogUrl,
+        periodStart,
+        periodEnd,
+      });
+      await saveActivities(edition.id, activities);
+      fetchedCount += activities.length;
+    } catch (error) {
+      messages.push({ type: "warning", text: `Blog fetch warning: ${describeError(error)}` });
+    }
+  } else {
+    messages.push({ type: "warning", text: "BLOG_RSS_URL not configured — skipping blog fetch." });
+  }
+
+  // --- Spotify fetch ---
+  let spotifyToken = await getServiceToken("spotify");
+  if (spotifyToken) {
+    try {
+      if (isServiceTokenExpired(spotifyToken) && spotifyToken.refreshToken) {
+        const refreshed = await refreshAccessToken(spotifyToken.refreshToken);
+        await upsertServiceToken({
+          service: "spotify",
+          accessToken: refreshed.access_token,
+          refreshToken: refreshed.refresh_token,
+          expiresIn: refreshed.expires_in,
+        });
+        spotifyToken = await getServiceToken("spotify");
+      }
+      const items = await fetchSpotifyActivity({ accessToken: spotifyToken!.accessToken });
+      await saveActivities(edition.id, items);
+      spotifyFetched = items.length;
+      fetchedCount += spotifyFetched;
+    } catch (error) {
+      messages.push({ type: "warning", text: `Spotify fetch warning: ${describeError(error)}` });
+    }
+  } else {
+    messages.push({
+      type: "info",
+      text: "Spotify not connected — visit /admin/spotify/connect to link your account.",
+    });
+  }
+
+  // --- AI generation ---
+  let generatedCount = 0;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey && fetchedCount > 0) {
+    try {
+      const articles = await generateEditionDraft(edition.id);
+      generatedCount = articles.length;
+    } catch (error) {
+      messages.push({ type: "warning", text: `AI writer warning: ${describeError(error)}` });
+    }
+  } else if (fetchedCount === 0) {
+    messages.push({ type: "info", text: "No activity fetched from any service — AI generation skipped." });
+  } else {
+    messages.push({ type: "warning", text: "OPENAI_API_KEY not configured — AI generation skipped." });
+  }
+
+  // --- Activity ranking (Phase C / Wave 2) ---
+  // Only the activity ranking (of the three ranking kinds Phase C adds) is
+  // wired into the automatic pipeline — see `web/src/lib/rankings/index.ts`'s
+  // doc comment. `createActivityRankingArticle` itself returns `null` (no
+  // article, not an error) when the edition has no GitHub-sourced activity to
+  // rank, so this always "skips gracefully" per the plan's requirement; the
+  // outer `openaiKey` check just avoids the extra query entirely in the
+  // no-OPENAI_API_KEY degraded case, same as the AI-generation gate above.
+  if (openaiKey) {
+    try {
+      const rankingArticle = await createActivityRankingArticle(edition.id);
+      if (rankingArticle) generatedCount += 1;
+    } catch (error) {
+      messages.push({ type: "warning", text: `Activity ranking warning: ${describeError(error)}` });
+    }
+  }
+
+  messages.push({
+    type: "success",
+    text:
+      `Draft edition '${edition.title}' created with ${fetchedCount - spotifyFetched} GitHub/blog events, ` +
+      `${spotifyFetched} Spotify items, and ${generatedCount} AI-generated articles.`,
+  });
+
+  return {
+    status: "generated",
+    edition,
+    messages,
+    fetchedCount,
+    spotifyFetched,
+    generatedCount,
+  };
 }

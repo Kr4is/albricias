@@ -9,6 +9,7 @@
 
 import Header from "@/components/Header";
 import type { HeaderProps } from "@/components/Header";
+import Footer from "@/components/Footer";
 
 export type NewspaperShellProps = HeaderProps & {
   children: React.ReactNode;
@@ -18,12 +19,18 @@ export default function NewspaperShell({
   children,
   ...header
 }: NewspaperShellProps) {
+  // Skip the footer CTA on admin pages and on the subscribe page itself,
+  // where the same form is already the page's main content.
+  const hideFooter =
+    header.endpoint.startsWith("admin") || header.endpoint === "public.newsletter_subscribe";
+
   return (
     <div className="max-w-[1400px] mx-auto bg-paper shadow-2xl min-h-screen flex flex-col border-x border-stone-200 print:shadow-none print:border-none print:max-w-none">
       <Header {...header} />
       <main className="flex-grow px-6 sm:px-8 lg:px-10 py-6 print:px-0">
         {children}
       </main>
+      {!hideFooter && <Footer />}
     </div>
   );
 }

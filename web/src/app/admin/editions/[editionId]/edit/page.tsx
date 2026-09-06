@@ -121,6 +121,21 @@ export default async function EditionEditPage({
                     <span className="material-icons text-sm">open_in_new</span> View
                     Live
                   </a>
+                  <a
+                    href={`/admin/editions/${edition.id}/distribute`}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+                  >
+                    <span className="material-icons text-sm">campaign</span> Distribute
+                  </a>
+                  <form method="POST" action={`/admin/editions/${edition.id}/newsletter/send`}>
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+                    >
+                      <span className="material-icons text-sm">mail</span> Send
+                      Newsletter
+                    </button>
+                  </form>
                   <form method="POST" action={`/admin/editions/${edition.id}/unpublish`}>
                     <button
                       type="submit"
@@ -262,6 +277,12 @@ export default async function EditionEditPage({
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest bg-purple-700 text-white hover:bg-purple-800 transition-colors"
                 >
                   <span className="material-icons text-sm">auto_awesome</span> Generate
+                </a>
+                <a
+                  href={`/admin/editions/${edition.id}/articles/rank`}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+                >
+                  <span className="material-icons text-sm">leaderboard</span> Rankings
                 </a>
                 <button
                   type="button"

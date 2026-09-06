@@ -25,7 +25,15 @@ import {
   generatorResultSchema,
 } from "../schemas";
 
-/** Verbatim from `chronicle.py:CATEGORIES` — also the output ordering. */
+/**
+ * Verbatim from `chronicle.py:CATEGORIES` — also the output ordering — plus
+ * one addition: `"Podcasts"` (see the rationale note below
+ * `EVENT_CATEGORY_MAP`). Like `Culture`/`Discoveries`, this is a
+ * chronicle-only section name and deliberately does not appear in
+ * `ARTICLE_CATEGORIES` (`src/lib/article-categories.ts`), the admin's
+ * manual-article category dropdown — that mismatch already exists for the
+ * other AI-only sections.
+ */
 export const CATEGORIES = [
   "Open Source",
   "Project Updates",
@@ -33,13 +41,14 @@ export const CATEGORIES = [
   "Technology",
   "Discoveries",
   "Culture",
+  "Podcasts",
   "General",
 ] as const;
 
 export type ChronicleCategory = (typeof CATEGORIES)[number];
 
 /**
- * Verbatim from `chronicle.py:EVENT_CATEGORY_MAP`, plus one addition:
+ * Verbatim from `chronicle.py:EVENT_CATEGORY_MAP`, plus two additions:
  *
  * `blog_post` → "General". The blog RSS source is new in the rewrite, and
  * "General" ("the miscellaneous happenings of the month") is the only prompt
@@ -47,6 +56,18 @@ export type ChronicleCategory = (typeof CATEGORIES)[number];
  * *Sounds of the Month* music column and would produce nonsense. Unmapped
  * event types already fall back to "General", so this entry is documentation
  * as much as behaviour.
+ *
+ * `spotify_podcast_episode` → "Podcasts" (new category, not folded into
+ * "Culture"). "Culture"'s prompt is a music-review voice — "reviewing a
+ * concert season" and listing "top tracks and artists with their Spotify
+ * URLs" — which doesn't fit narrating *what was listened to on a podcast*.
+ * Rather than stretch one prompt to cover two different kinds of listening
+ * (and produce a muddled or misleading column when both are present in the
+ * same period), podcasts get their own section with its own newspaper-voice
+ * prompt, same as how "Discoveries" (starred repos) got its own column
+ * instead of being folded into "Technology". If podcast activity later turns
+ * out to be sparse in practice, folding it back into "Culture" under a
+ * combined "Sounds & Stories" prompt would be the natural walk-back.
  */
 export const EVENT_CATEGORY_MAP: Record<string, ChronicleCategory> = {
   commit: "Open Source",
@@ -60,6 +81,7 @@ export const EVENT_CATEGORY_MAP: Record<string, ChronicleCategory> = {
   spotify_track: "Culture",
   spotify_artist: "Culture",
   spotify_played: "Culture",
+  spotify_podcast_episode: "Podcasts",
   blog_post: "General",
 };
 
@@ -85,6 +107,12 @@ export const CATEGORY_PROMPTS: Record<ChronicleCategory, string> = {
     "Write a 'Sounds of the Month' column. Report the top tracks and artists " +
     "as though reviewing a concert season — grandiloquent, opinionated, and " +
     "enthusiastic. List the top tracks and artists with their Spotify URLs.",
+  Podcasts:
+    "Write a 'Voices from the Wireless' column narrating the podcast episodes " +
+    "listened to this period, as though reporting from the salons and lecture " +
+    "halls where ideas are discussed aloud — erudite, curious, and a little " +
+    "theatrical. Name each episode and its show, note what it was about, and " +
+    "include the Spotify URLs.",
   General:
     "Cover the miscellaneous happenings of the month with characteristic flair.",
 };

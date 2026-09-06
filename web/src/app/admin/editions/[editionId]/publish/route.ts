@@ -1,4 +1,13 @@
-/** Ported from `admin.edition_publish` (`app/routes/admin.py:327-337`). */
+/**
+ * Ported from `admin.edition_publish` (`app/routes/admin.py:327-337`).
+ *
+ * Phase D change: after publishing, redirect to the new post-publish
+ * "distribute" review screen (`/admin/editions/[editionId]/distribute`)
+ * instead of back to the dashboard — that screen shows AI-generated social
+ * copy and a newsletter-send action, all opt-in (nothing sends
+ * automatically just from landing there), so an admin who wants none of that
+ * can simply navigate away with zero extra clicks required, same as before.
+ */
 
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +28,7 @@ export async function POST(
     data: { status: EDITION_STATUS_PUBLISHED, publishedAt: new Date() },
   });
 
-  return flashRedirect(request, "/admin/editions", [
+  return flashRedirect(request, `/admin/editions/${id}/distribute`, [
     { type: "success", text: `Edition '${edition.title}' is now published.` },
   ]);
 }

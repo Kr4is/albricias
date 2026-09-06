@@ -23,7 +23,7 @@ export interface ActivityItem {
   /**
    * `commit` | `pr` | `review` | `issue` | `release` | `repo_created` |
    * `gist` | `star` | `blog_post` | `spotify_track` | `spotify_artist` |
-   * `spotify_played`.
+   * `spotify_played` | `spotify_podcast_episode`.
    */
   eventType: string;
   /** `owner/name` for GitHub repo-scoped events; `null` everywhere else. */

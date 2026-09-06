@@ -45,6 +45,7 @@ export type Endpoint =
   | "public.article_detail"
   | "public.login"
   | "public.page_not_found"
+  | "public.newsletter_subscribe"
   | `admin.${string}`;
 
 export interface HeaderProps {

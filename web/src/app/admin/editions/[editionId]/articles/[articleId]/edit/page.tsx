@@ -235,6 +235,13 @@ export default async function ArticleEditPage({
                   className="w-full text-xs font-sans file:mr-2 file:py-1 file:px-3 file:border-0 file:text-xs file:font-bold file:uppercase file:bg-ink file:text-paper hover:file:bg-ink-light"
                 />
                 <p className="text-[9px] text-stone-400 mt-1">Leave empty to keep existing audio.</p>
+                <button
+                  type="submit"
+                  formAction={`/admin/editions/${edition.id}/articles/${article.id}/generate-audio`}
+                  className="mt-2 w-full px-3 py-2 text-[10px] font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
+                >
+                  Generate Audio (AI)
+                </button>
               </div>
               <div>
                 <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">

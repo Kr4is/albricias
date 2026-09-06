@@ -14,6 +14,7 @@
 import { Agent } from "@mastra/core/agent";
 
 import { MODEL_ID, NEWSPAPER_PERSONA } from "./base";
+import { socialCopyAgent } from "./social";
 
 /** Verbatim from `reflection.py:_SYSTEM`. */
 export const REFLECTION_SYSTEM =
@@ -106,7 +107,10 @@ export const agents = {
   interview: interviewAgent,
   review: reviewAgent,
   profile: profileAgent,
+  social: socialCopyAgent,
 };
+
+export { socialCopyAgent } from "./social";
 
 export {
   DEFAULT_MAX_TOKENS,

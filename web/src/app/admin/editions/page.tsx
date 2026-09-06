@@ -132,6 +132,20 @@ export default async function EditionsDashboardPage({
           )}
         </div>
 
+        {/* Social accounts entry point (Phase D) */}
+        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+            <span className="material-icons text-sm">share</span>
+            Social auto-post accounts (X, Bluesky, Mastodon)
+          </div>
+          <a
+            href="/admin/social"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+          >
+            Manage
+          </a>
+        </div>
+
         {/* Drafts Section */}
         <section className="mb-14">
           <h3 className="font-headline text-2xl font-bold border-b-2 border-ink pb-2 mb-6 flex items-center gap-2">
@@ -263,6 +277,12 @@ export default async function EditionsDashboardPage({
                       className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
                     >
                       Edit
+                    </a>
+                    <a
+                      href={`/admin/editions/${edition.id}/distribute`}
+                      className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
+                    >
+                      Distribute
                     </a>
                     <form method="POST" action={`/admin/editions/${edition.id}/unpublish`}>
                       <button

@@ -127,3 +127,56 @@ model Setting {
 
   @@map("settings")
 }
+
+/// Connected social-network account used for auto-posting on publish. New in
+/// the agent-editions/social/newsletter plan (Phase D).
+///
+/// Deliberately NOT `ServiceToken` (the model Spotify uses): `ServiceToken`'s
+/// shape (accessToken/refreshToken/expiresAt/scope) is an OAuth-token-pair
+/// shape, and two of the three networks here don't fit it — Bluesky
+/// authenticates with an identifier + app password (not an OAuth token at
+/// all), and Mastodon needs a user-configured instance URL stored alongside
+/// its access token (a field `ServiceToken` has no room for). Rather than
+/// stretch `ServiceToken`'s columns to mean different things per service,
+/// credentials are stored as a per-service-shaped JSON blob:
+///   twitter:  { accessToken, refreshToken, expiresAt }  (OAuth 2.0 + PKCE)
+///   bluesky:  { identifier, appPassword }
+///   mastodon: { instanceUrl, accessToken }
+/// One row per service; connecting replaces the row, disconnecting deletes it
+/// (mirrors the Spotify `ServiceToken` connect/disconnect UX).
+model SocialAccount {
+  id      Int     @id @default(autoincrement())
+  /// "twitter" | "bluesky" | "mastodon"
+  service String  @unique
+  /// Per-network on/off toggle. A disconnected network has no row at all; an
+  /// account can also be connected-but-disabled without losing its stored
+  /// credentials.
+  enabled Boolean @default(true)
+  /// JSON blob, shape documented above.
+  credentials String   @map("credentials_json")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("social_accounts")
+}
+
+/// Email newsletter subscriber. New in the agent-editions/social/newsletter
+/// plan — no Flask/Python equivalent. Double opt-in: a row is created as
+/// "pending" on subscribe, flipped to "confirmed" via the emailed
+/// `confirmToken` link, and to "unsubscribed" via the emailed
+/// `unsubscribeToken` link (present in every summary email, no login
+/// required).
+model Subscriber {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+
+  /// "pending" | "confirmed" | "unsubscribed".
+  status           String    @default("pending")
+  confirmToken     String    @unique @map("confirm_token")
+  unsubscribeToken String    @unique @map("unsubscribe_token")
+  subscribedAt     DateTime  @default(now()) @map("subscribed_at")
+  confirmedAt      DateTime? @map("confirmed_at")
+  unsubscribedAt   DateTime? @map("unsubscribed_at")
+
+  @@index([status])
+  @@map("subscribers")
+}
