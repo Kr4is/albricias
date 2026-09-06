@@ -1,15 +1,15 @@
 services:
   web:
-    build: .
+    build: ./web
     ports:
-      - "8000:8000"
+      - "3000:3000"
     volumes:
       - ./instance:/app/instance
-      - ./app/static/uploads:/app/app/static/uploads
+      - ./web/public/uploads:/app/public/uploads
     env_file:
       - .env
     environment:
-      - SQLALCHEMY_DATABASE_URI=sqlite:////app/instance/albricias.db
+      - DATABASE_URL=file:/app/instance/albricias.db
       - API_TOKEN=${API_TOKEN:-dev-token}
     restart: unless-stopped
 

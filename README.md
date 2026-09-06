@@ -1,57 +1,30 @@
 # Albricias
 
-A vintage newspaper-style web application built with Flask. Albricias is a monthly personal digest — editions are generated with AI assistance from GitHub activity, then previewed, edited, and published through an admin interface.
+A vintage newspaper-style web application. Albricias is a personal digest —
+editions are generated with AI assistance from your GitHub activity and blog
+posts, then previewed, edited, and published through an admin interface.
+
+The app lives under [`web/`](web/): Next.js (App Router) + React + TypeScript,
+Prisma (SQLite), and [Mastra](https://mastra.ai) agents/workflows for the
+generation pipeline.
 
 ## Features
 
-- **Monthly Editions**: Each edition groups articles by month and year, with a vintage broadsheet layout.
-- **AI-Assisted Generation**: Fetches GitHub activity via the GitHub API and uses OpenAI to draft articles in a classic newspaper voice.
-- **Admin Workflow**: Draft → Preview → Edit → Publish, all through a browser-based admin dashboard.
-- **Archive**: Browse all published editions by year with pagination.
-- **Vintage Design**: Styled to resemble a traditional printed newspaper, with five rotating layout variants.
+- **Configurable cadence**: generate editions weekly or monthly, set globally
+  in the admin panel.
+- **AI-assisted generation**: fetches GitHub activity and blog RSS posts, and
+  uses an AI agent to draft articles in a classic newspaper voice.
+- **Admin workflow**: Draft → Preview → Edit → Publish, all through a
+  browser-based admin dashboard.
+- **Archive**: browse all published editions by year with pagination.
+- **Vintage design**: styled to resemble a traditional printed newspaper,
+  with five rotating layout variants.
+- **Spotify integration**: optional listening-activity source for editions.
 
-## Prerequisites
+## Getting started
 
-- Python 3.11 or higher
-- [uv](https://github.com/astral-sh/uv) package manager
-
-## Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd albricias
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   uv sync
-   ```
-
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env and set at minimum:
-   #   SECRET_KEY, ADMIN_PASSWORD
-   # Optional (for AI generation):
-   #   GITHUB_TOKEN, GITHUB_USERNAME, OPENAI_API_KEY
-   ```
-
-## Running the Application
-
-```bash
-FLASK_APP=wsgi.py uv run flask run
-```
-
-Navigate to [http://127.0.0.1:5000](http://127.0.0.1:5000).
-
-The database (`albricias.db`) is created automatically on first run.
-
-## Running with Gunicorn (production)
-
-```bash
-uv run gunicorn --config gunicorn_config.py wsgi:application
-```
+See [`web/README.md`](web/README.md) for setup, environment variables, and
+running the app locally.
 
 ## Docker
 
@@ -59,31 +32,25 @@ uv run gunicorn --config gunicorn_config.py wsgi:application
 docker compose up --build
 ```
 
-The app is available at [http://localhost:8000](http://localhost:8000).
+The app is available at [http://localhost:3000](http://localhost:3000). It
+reads/writes its SQLite database and uploaded media under the `./instance`
+and `./web/public/uploads` volumes.
 
 ## Project Structure
 
 ```
 albricias/
-├── app/                    Flask application package
-│   ├── __init__.py         create_app() factory
-│   ├── config.py           Config class (env vars)
-│   ├── extensions.py       SQLAlchemy instance, template filters
-│   ├── auth.py             login_required / require_api_token decorators
-│   ├── helpers.py          slugify, media upload, layout helpers
-│   ├── models/             Edition, Article, GitHubActivity models
-│   ├── routes/             Blueprints: public, admin, compose, api
-│   ├── services/           GitHub API + OpenAI integrations
-│   ├── templates/          Jinja2 HTML templates
-│   └── static/             CSS, images, and uploaded media
-├── wsgi.py                 Entry point for flask run and gunicorn
-├── gunicorn_config.py      Gunicorn worker/timeout settings
-├── Dockerfile
+├── web/                    Next.js/TypeScript/Prisma/Mastra app
+│   ├── src/app/            Routes (public site + admin)
+│   ├── src/components/     React components, incl. the 5 vintage layouts
+│   ├── src/lib/            Sources, generation, session, Prisma client
+│   ├── src/mastra/         Mastra agents & workflows
+│   └── prisma/             Database schema & migrations
 ├── docker-compose.yml
-├── pyproject.toml
 └── .env.example
 ```
 
 ## Admin Access
 
-Visit `/login` and enter the password set in `ADMIN_PASSWORD` (default: `admin`). The admin dashboard is at `/admin/editions`.
+Visit `/login` and enter the password set in `ADMIN_PASSWORD` (default:
+`admin`). The admin dashboard is at `/admin/editions`.

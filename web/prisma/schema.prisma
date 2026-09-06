@@ -1,0 +1,129 @@
+// Albricias data layer.
+//
+// Ported 1:1 from the Flask/SQLAlchemy models under the repo-root `app/models/`,
+// with one deliberate generalisation: `Edition` no longer stores `month`/`year`
+// integers but a `cadence` + `periodStart`/`periodEnd` range, so weekly and
+// monthly editions share one model (see .omc/plans/react-mastra-rewrite.md).
+//
+// Table and column names are `@map`-ed to the original snake_case SQLite names
+// so the Phase 5 migration script can move rows across with a 1:1 mapping.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// One publication covering a single period (a week or a month).
+/// Ported from `app/models/edition.py`.
+model Edition {
+  id Int @id @default(autoincrement())
+
+  /// "weekly" | "monthly" — see CADENCE_* in src/lib/edition-helpers.ts.
+  cadence String @default("monthly")
+  /// Inclusive start of the covered period, at 00:00 UTC.
+  periodStart DateTime @map("period_start")
+  /// Exclusive end of the covered period, at 00:00 UTC.
+  periodEnd DateTime @map("period_end")
+
+  title String
+  /// "draft" | "published" — see EDITION_STATUS_* in src/lib/edition-helpers.ts.
+  status      String    @default("draft")
+  coverImage  String?   @map("cover_image")
+  vol         String
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  articles          Article[]
+  serviceActivities ServiceActivity[]
+
+  @@unique([cadence, periodStart], map: "uq_edition_cadence_period_start")
+  @@index([status])
+  @@index([periodStart])
+  @@map("editions")
+}
+
+/// Individual piece of content within an edition.
+/// Ported from `app/models/article.py`.
+model Article {
+  id        Int @id @default(autoincrement())
+  editionId Int @map("edition_id")
+
+  title    String
+  content  String
+  category String  @default("General")
+  author   String?
+  deck     String  @default("A")
+  order    Int     @default(0)
+  /// Optional dateline. Stored as a DateTime; only the date part is meaningful.
+  date DateTime?
+
+  // Media — image/audio stored locally; video is always a URL.
+  image String?
+  audio String?
+  video String?
+
+  /// Provenance: "manual" | "ai_generated" | "github".
+  sourceType String @default("manual") @map("source_type")
+  /// JSON blob: original prompt, AI response, raw API payload, etc.
+  sourceData String? @map("source_data")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  edition Edition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@index([editionId])
+  @@index([editionId, order])
+  @@map("articles")
+}
+
+/// Raw external service event stored before AI summarisation.
+/// Ported from `app/models/service_activity.py`.
+model ServiceActivity {
+  id        Int @id @default(autoincrement())
+  editionId Int @map("edition_id")
+
+  /// e.g. "github" | "blog" | "spotify".
+  source String @default("github")
+  /// e.g. "commit" | "pr" | "star" | "post" | "spotify_track" | "spotify_artist".
+  eventType String  @map("event_type")
+  repo      String?
+  title     String
+  url       String?
+  timestamp DateTime?
+  rawJson   String?   @map("raw_json")
+
+  edition Edition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@index([editionId])
+  @@index([source])
+  @@map("service_activities")
+}
+
+/// Persisted OAuth token for an external service (one row per service).
+/// Ported from `app/models/service_token.py`.
+model ServiceToken {
+  id           Int       @id @default(autoincrement())
+  service      String    @unique
+  accessToken  String    @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+  scope        String?
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("service_tokens")
+}
+
+/// Global admin key/value settings. Currently holds the "cadence" key,
+/// which drives the period new editions are generated for.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
