@@ -12,7 +12,7 @@
  */
 
 /** Value of `ServiceActivity.source`. */
-export type ActivitySource = "github" | "blog" | "spotify";
+export type ActivitySource = "github" | "blog" | "spotify" | "alexandria";
 
 /**
  * One normalised external event, ready to be written as a `ServiceActivity`
@@ -23,7 +23,8 @@ export interface ActivityItem {
   /**
    * `commit` | `pr` | `review` | `issue` | `release` | `repo_created` |
    * `gist` | `star` | `blog_post` | `spotify_track` | `spotify_artist` |
-   * `spotify_played` | `spotify_podcast_episode`.
+   * `spotify_played` | `spotify_podcast_episode` | `book_finished` |
+   * `book_reading`.
    */
   eventType: string;
   /** `owner/name` for GitHub repo-scoped events; `null` everywhere else. */
@@ -67,18 +68,26 @@ export function parseTimestamp(ts: string | null | undefined): Date | null {
 // Assisted-generation input processors
 // ---------------------------------------------------------------------------
 
-/** Ported from `SOURCES` in `app/services/sources/__init__.py`. */
+/**
+ * Ported from `SOURCES` in `app/services/sources/__init__.py`, plus
+ * `"calendar_event"` — new in the Google Calendar plan (Phase F): a specific
+ * Google Calendar event, whose Gemini meeting notes (or, failing that, its
+ * title/description/attendees) become the seed text. See
+ * `@/lib/sources/calendar-event.ts`.
+ */
 export type SourceType =
   | "audio_monologue"
   | "audio_conversation"
   | "text"
-  | "notes";
+  | "notes"
+  | "calendar_event";
 
 export const SOURCES: Record<SourceType, string> = {
   audio_monologue: "Audio — Monologue",
   audio_conversation: "Audio — Conversation / Interview",
   text: "Text / Transcription",
   notes: "Notes / Bullet Points",
+  calendar_event: "Calendar Event — Meeting",
 };
 
 /** Normalized output from any source processor. */

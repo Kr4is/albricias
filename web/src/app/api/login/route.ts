@@ -18,15 +18,20 @@ import {
   verifyAdminPassword,
 } from "@/lib/session";
 import { safeNextPath } from "@/lib/safe-redirect";
+import { hasAdminPassword } from "@/lib/config/admin-auth";
 
 export async function POST(request: NextRequest) {
+  if (!(await hasAdminPassword())) {
+    return NextResponse.redirect(new URL("/setup", request.url), 303);
+  }
+
   const form = await request.formData();
   const password = String(form.get("password") ?? "");
   const nextPath = safeNextPath(
     typeof form.get("next") === "string" ? String(form.get("next")) : null,
   );
 
-  if (!verifyAdminPassword(password)) {
+  if (!(await verifyAdminPassword(password))) {
     const back = new URL("/login", request.url);
     back.searchParams.set("error", "1");
     if (nextPath !== "/") back.searchParams.set("next", nextPath);
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
 
   const response = NextResponse.redirect(new URL(nextPath, request.url), 303);
-  response.cookies.set(SESSION_COOKIE_NAME, createSessionToken(), {
+  response.cookies.set(SESSION_COOKIE_NAME, await createSessionToken(), {
     ...SESSION_COOKIE_OPTIONS,
     maxAge: SESSION_MAX_AGE,
   });

@@ -19,6 +19,7 @@ export {
 
 export { type GithubFetchOptions, fetchGithubActivity } from "./github";
 export { type BlogFetchOptions, fetchBlogActivity } from "./blog";
+export { type AlexandriaFetchOptions, fetchAlexandriaActivity } from "./alexandria";
 export {
   type SpotifyFetchOptions,
   type SpotifyTokenResponse,
@@ -36,3 +37,25 @@ export {
   processAudio,
 } from "./audio";
 export { type TextSourceType, processText, processTextFile } from "./text";
+export {
+  type CalendarEventTiming,
+  type FetchCalendarEventsOptions,
+  type GoogleCalendarAttachment,
+  type GoogleCalendarAttendee,
+  type GoogleCalendarEvent,
+  type GoogleCalendarEventTime,
+  type GoogleCalendarListEntry,
+  type GoogleTokenResponse,
+  GOOGLE_SCOPES,
+  exchangeGoogleCode,
+  fetchCalendarEventStats,
+  fetchCalendarEvents,
+  getCalendarEvent,
+  getGoogleAuthUrl,
+  getGoogleDocText,
+  getValidGoogleAccessToken,
+  listCalendars,
+  parseGoogleEventTime,
+  refreshGoogleAccessToken,
+} from "./google";
+export { fetchCalendarEventSource } from "./calendar-event";

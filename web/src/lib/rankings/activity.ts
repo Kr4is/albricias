@@ -21,6 +21,7 @@
 
 import { Octokit } from "octokit";
 import type { Article } from "@/generated/prisma/client";
+import { getSetting } from "@/lib/config/settings";
 import { periodLabel } from "@/lib/edition-helpers";
 import { prisma } from "@/lib/prisma";
 import { chronicleAgent, MODEL_NAME, parseResponse, runNewspaperAgent } from "@/mastra/agents";
@@ -244,7 +245,7 @@ export async function createActivityRankingArticle(
   const computation = computeActivityRanking(rows);
 
   let languages: LanguageBytes[] = [];
-  const githubToken = process.env.GITHUB_TOKEN;
+  const githubToken = await getSetting("integrations.github.token", { encrypted: true });
   if (githubToken && computation.touchedRepos.length > 0) {
     try {
       const octokit = new Octokit({ auth: githubToken });

@@ -44,6 +44,7 @@ export type Endpoint =
   | "public.edition_detail"
   | "public.article_detail"
   | "public.login"
+  | "public.setup"
   | "public.page_not_found"
   | "public.newsletter_subscribe"
   | `admin.${string}`;
@@ -86,11 +87,11 @@ function longDate(now: Date): string {
 }
 
 export default async function Header({ endpoint, issue, article }: HeaderProps) {
-  const newspaper = newspaperConfig();
+  const newspaper = await newspaperConfig();
   const now = new Date();
 
   const cookieStore = await cookies();
-  const loggedIn = verifySessionToken(
+  const loggedIn = await verifySessionToken(
     cookieStore.get(SESSION_COOKIE_NAME)?.value,
   );
 

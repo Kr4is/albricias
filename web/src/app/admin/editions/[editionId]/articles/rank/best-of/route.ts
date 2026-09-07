@@ -5,6 +5,7 @@
 
 import type { NextRequest } from "next/server";
 import { createBestOfDigestArticle } from "@/lib/rankings";
+import { getSetting } from "@/lib/config/settings";
 import { describeError, flashRedirect } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 
@@ -25,14 +26,15 @@ export async function POST(
   const edition = await prisma.edition.findUnique({ where: { id } });
   if (!edition) return new Response("Not found", { status: 404 });
 
-  if (!process.env.OPENAI_API_KEY) {
+  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
+  if (!openaiKey) {
     return flashRedirect(request, `/admin/editions/${id}/articles/rank`, [
-      { type: "error", text: "OPENAI_API_KEY is not configured." },
+      { type: "error", text: "OpenAI API key is not configured — set it at /admin/settings." },
     ]);
   }
 
   try {
-    const article = await createBestOfDigestArticle(id);
+    const article = await createBestOfDigestArticle(id, openaiKey);
     if (!article) {
       return flashRedirect(request, `/admin/editions/${id}/articles/rank`, [
         {

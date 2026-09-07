@@ -6,8 +6,8 @@
  *   - {@link generateArticleFromSource} ← `ai_writer.py:24-179`
  *   - {@link regenerateArticle}         ← `ai_writer.py:252-285`
  *   - {@link runEditionGeneration}      ← the full "Generate edition" pipeline
- *     (fetch GitHub+blog+Spotify activity for a period, create the `Edition`,
- *     call {@link generateEditionDraft}), extracted from
+ *     (fetch GitHub+blog+Spotify+Alexandria activity for a period, create the
+ *     `Edition`, call {@link generateEditionDraft}), extracted from
  *     `web/src/app/admin/editions/generate/route.ts` (Phase A / scheduler) so
  *     both the manual "Generate edition" button and the cron scheduler
  *     (`web/src/lib/scheduler.ts`) call one implementation.
@@ -22,6 +22,7 @@
 
 import type { Article, Edition } from "@/generated/prisma/client";
 import { defaultEditionTitle, defaultEditionVol } from "@/lib/cadence";
+import { getSetting } from "@/lib/config/settings";
 import { EDITION_STATUS_DRAFT, type Cadence, periodLabel } from "@/lib/edition-helpers";
 import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
@@ -31,15 +32,18 @@ import {
   type AudioMode,
   type SourceResult,
   type SourceType,
+  fetchAlexandriaActivity,
   fetchBlogActivity,
+  fetchCalendarEventSource,
   fetchGithubActivity,
   fetchSpotifyActivity,
+  getValidGoogleAccessToken,
   processAudio,
   processText,
   refreshAccessToken,
 } from "@/lib/sources";
 import { chronicleAgent, parseResponse, runNewspaperAgent } from "@/mastra/agents";
-import { createActivityRankingArticle } from "@/lib/rankings";
+import { createActivityRankingArticle, createCalendarRankingArticle } from "@/lib/rankings";
 import {
   type GeneratorResult,
   type GeneratorType,
@@ -108,6 +112,10 @@ export interface GenerateArticleFromSourceOptions {
   audioFilename?: string;
   /** Pasted text — used when `sourceType` is `"text"` or `"notes"`. */
   textInput?: string;
+  /** Google Calendar ID — required when `sourceType` is `"calendar_event"`. */
+  calendarId?: string;
+  /** Google Calendar event ID — required when `sourceType` is `"calendar_event"`. */
+  googleEventId?: string;
   /** Optional extra instruction passed to all generators. */
   topicHint?: string;
   /** Subject name (review / profile generators). */
@@ -137,6 +145,8 @@ export async function generateArticleFromSource({
   audioFile,
   audioFilename = "",
   textInput = "",
+  calendarId,
+  googleEventId,
   topicHint = "",
   subjectName = "",
   subjectType = "other",
@@ -156,10 +166,19 @@ export async function generateArticleFromSource({
       data: audioFile,
       filename: audioFilename,
       mode,
-      apiKey: apiKey ?? requireOpenAiKey(),
+      apiKey: apiKey ?? (await requireOpenAiKey()),
     });
   } else if (sourceType === "text" || sourceType === "notes") {
     sourceResult = processText(textInput, sourceType);
+  } else if (sourceType === "calendar_event") {
+    if (!calendarId || !googleEventId) {
+      throw new Error(`calendarId and googleEventId are required for sourceType "calendar_event".`);
+    }
+    const accessToken = await getValidGoogleAccessToken();
+    if (!accessToken) {
+      throw new Error("Google Calendar is not connected.");
+    }
+    sourceResult = await fetchCalendarEventSource({ accessToken, calendarId, eventId: googleEventId });
   } else {
     throw new Error(`Unknown sourceType: ${String(sourceType)}`);
   }
@@ -331,9 +350,9 @@ export async function regenerateArticle(
   });
 }
 
-function requireOpenAiKey(): string {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY is not set.");
+async function requireOpenAiKey(): Promise<string> {
+  const key = await getSetting("integrations.openai.apiKey", { encrypted: true });
+  if (!key) throw new Error("OpenAI API key is not configured. Set it at /admin/settings.");
   return key;
 }
 
@@ -370,7 +389,7 @@ export interface EditionGenerationRan {
   edition: Edition;
   /** Non-fatal warnings/info collected along the way, in the order they occurred. */
   messages: FlashMessage[];
-  /** Total GitHub + blog + Spotify activity rows saved. */
+  /** Total GitHub + blog + Spotify + Alexandria activity rows saved. */
   fetchedCount: number;
   /** Of `fetchedCount`, how many came from Spotify (kept separate for the summary message). */
   spotifyFetched: number;
@@ -428,8 +447,10 @@ export async function runEditionGeneration(
   let spotifyFetched = 0;
 
   // --- GitHub fetch ---
-  const githubToken = process.env.GITHUB_TOKEN;
-  const githubUsername = process.env.GITHUB_USERNAME;
+  const [githubToken, githubUsername] = await Promise.all([
+    getSetting("integrations.github.token", { encrypted: true }),
+    getSetting("integrations.github.username"),
+  ]);
   if (githubToken && githubUsername) {
     try {
       const activities = await fetchGithubActivity({
@@ -446,12 +467,12 @@ export async function runEditionGeneration(
   } else {
     messages.push({
       type: "warning",
-      text: "GITHUB_TOKEN or GITHUB_USERNAME not configured — skipping GitHub fetch.",
+      text: "GitHub token/username not configured (/admin/settings) — skipping GitHub fetch.",
     });
   }
 
   // --- Blog RSS fetch ---
-  const blogUrl = process.env.BLOG_RSS_URL;
+  const blogUrl = await getSetting("integrations.blog.rssUrl");
   if (blogUrl) {
     try {
       const activities = await fetchBlogActivity({
@@ -465,7 +486,10 @@ export async function runEditionGeneration(
       messages.push({ type: "warning", text: `Blog fetch warning: ${describeError(error)}` });
     }
   } else {
-    messages.push({ type: "warning", text: "BLOG_RSS_URL not configured — skipping blog fetch." });
+    messages.push({
+      type: "warning",
+      text: "Blog RSS URL not configured (/admin/settings) — skipping blog fetch.",
+    });
   }
 
   // --- Spotify fetch ---
@@ -496,12 +520,37 @@ export async function runEditionGeneration(
     });
   }
 
+  // --- Alexandria fetch (reading activity) ---
+  const [alexandriaApiUrl, alexandriaApiToken] = await Promise.all([
+    getSetting("integrations.alexandria.apiUrl"),
+    getSetting("integrations.alexandria.apiToken", { encrypted: true }),
+  ]);
+  if (alexandriaApiUrl) {
+    try {
+      const activities = await fetchAlexandriaActivity({
+        apiUrl: alexandriaApiUrl,
+        apiToken: alexandriaApiToken,
+        periodStart,
+        periodEnd,
+      });
+      await saveActivities(edition.id, activities);
+      fetchedCount += activities.length;
+    } catch (error) {
+      messages.push({ type: "warning", text: `Alexandria fetch warning: ${describeError(error)}` });
+    }
+  } else {
+    messages.push({
+      type: "info",
+      text: "Alexandria API URL not configured (/admin/settings) — skipping Alexandria fetch.",
+    });
+  }
+
   // --- AI generation ---
   let generatedCount = 0;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
   if (openaiKey && fetchedCount > 0) {
     try {
-      const articles = await generateEditionDraft(edition.id);
+      const articles = await generateEditionDraft(edition.id, openaiKey);
       generatedCount = articles.length;
     } catch (error) {
       messages.push({ type: "warning", text: `AI writer warning: ${describeError(error)}` });
@@ -509,7 +558,10 @@ export async function runEditionGeneration(
   } else if (fetchedCount === 0) {
     messages.push({ type: "info", text: "No activity fetched from any service — AI generation skipped." });
   } else {
-    messages.push({ type: "warning", text: "OPENAI_API_KEY not configured — AI generation skipped." });
+    messages.push({
+      type: "warning",
+      text: "OpenAI API key not configured (/admin/settings) — AI generation skipped.",
+    });
   }
 
   // --- Activity ranking (Phase C / Wave 2) ---
@@ -522,17 +574,32 @@ export async function runEditionGeneration(
   // no-OPENAI_API_KEY degraded case, same as the AI-generation gate above.
   if (openaiKey) {
     try {
-      const rankingArticle = await createActivityRankingArticle(edition.id);
+      const rankingArticle = await createActivityRankingArticle(edition.id, openaiKey);
       if (rankingArticle) generatedCount += 1;
     } catch (error) {
       messages.push({ type: "warning", text: `Activity ranking warning: ${describeError(error)}` });
     }
   }
 
+  // --- Calendar ranking (Phase F) ---
+  // Same shape as the activity ranking above: `createCalendarRankingArticle`
+  // returns `null` (no article, not an error) whenever there's nothing to
+  // rank — Google Calendar not connected, no calendar in "stats"/"both" mode,
+  // or zero events for the period — so this always "skips gracefully." The
+  // outer `openaiKey` check is the same no-extra-query optimisation as above.
+  if (openaiKey) {
+    try {
+      const calendarRankingArticle = await createCalendarRankingArticle(edition.id, openaiKey);
+      if (calendarRankingArticle) generatedCount += 1;
+    } catch (error) {
+      messages.push({ type: "warning", text: `Calendar ranking warning: ${describeError(error)}` });
+    }
+  }
+
   messages.push({
     type: "success",
     text:
-      `Draft edition '${edition.title}' created with ${fetchedCount - spotifyFetched} GitHub/blog events, ` +
+      `Draft edition '${edition.title}' created with ${fetchedCount - spotifyFetched} GitHub/blog/Alexandria events, ` +
       `${spotifyFetched} Spotify items, and ${generatedCount} AI-generated articles.`,
   });
 

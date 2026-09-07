@@ -118,11 +118,54 @@ model ServiceToken {
   @@map("service_tokens")
 }
 
-/// Global admin key/value settings. Currently holds the "cadence" key,
-/// which drives the period new editions are generated for.
+/// Per-Google-calendar privacy/usage mode. New in the Google Calendar plan
+/// (Phase F). One row per calendar the admin's connected Google account has
+/// ever been seen to have (populated by `listCalendars()` /
+/// `calendarList.list`, cached here as `googleCalendarId` + `name`).
+///
+/// `mode` is a real privacy control, not a UI convenience — a newly-seen
+/// calendar always starts at `"off"`, and the calendar stats ranking
+/// (`@/lib/rankings/calendar.ts`) and the meeting-notes source processor
+/// (`@/lib/sources/calendar-event.ts`) both check it before ever fetching a
+/// calendar's events:
+///   "off"      — ignored entirely (default).
+///   "stats"    — events feed the aggregate Calendar ranking (count, hours,
+///                busiest day, day-of-week distribution) only; event
+///                titles/descriptions are never fetched for this calendar.
+///   "articles" — events are browsable, one at a time, for manual assisted
+///                article/podcast generation; not included in the stats
+///                ranking.
+///   "both"     — both of the above.
+model CalendarSource {
+  id Int @id @default(autoincrement())
+
+  /// Google's calendar ID (`calendarList.list` entry's `id`, e.g. an email
+  /// address for the primary calendar, or a long opaque ID otherwise).
+  googleCalendarId String @unique @map("google_calendar_id")
+  /// Cached display name (`summary`) from the Google Calendar API, refreshed
+  /// every time the admin syncs the calendar list.
+  name String
+
+  /// "off" | "stats" | "articles" | "both".
+  mode      String   @default("off")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("calendar_sources")
+}
+
+/// Global admin key/value settings. Originally held only the "cadence" key
+/// (drives the period new editions are generated for); the web-based-settings
+/// plan (see .omc/plans/web-based-settings.md) extends this into the one
+/// store every credential/setting eventually lives in, via
+/// `src/lib/config/settings.ts`'s `getSetting`/`setSetting`.
 model Setting {
   key       String   @id
   value     String
+  /// True when `value` is ciphertext produced by `src/lib/config/crypto.ts`
+  /// (AES-256-GCM) rather than a plaintext string. Existing rows (`cadence`,
+  /// `scheduleCron`, `scheduleEnabled`) default to `false`, matching their
+  /// unchanged plaintext behavior.
+  encrypted Boolean  @default(false)
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("settings")

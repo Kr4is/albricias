@@ -10,7 +10,6 @@ services:
       - .env
     environment:
       - DATABASE_URL=file:/app/instance/albricias.db
-      - API_TOKEN=${API_TOKEN:-dev-token}
     restart: unless-stopped
 
 volumes:

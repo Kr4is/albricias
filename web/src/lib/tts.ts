@@ -16,6 +16,7 @@
 
 import OpenAI from "openai";
 
+import { getSetting } from "@/lib/config/settings";
 import { saveMediaFile, editionMediaPrefix } from "@/lib/media-upload";
 import { prisma } from "@/lib/prisma";
 
@@ -32,9 +33,9 @@ export const TTS_VOICE = "onyx";
  */
 const TTS_INPUT_MAX = 4096;
 
-function requireOpenAiKey(apiKey?: string): string {
-  const key = apiKey ?? process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY is not set.");
+async function requireOpenAiKey(apiKey?: string): Promise<string> {
+  const key = apiKey ?? (await getSetting("integrations.openai.apiKey", { encrypted: true }));
+  if (!key) throw new Error("OpenAI API key is not configured. Set it at /admin/settings.");
   return key;
 }
 
@@ -77,7 +78,7 @@ export async function generateArticleAudio(
   articleId: number,
   apiKey?: string,
 ): Promise<void> {
-  const key = requireOpenAiKey(apiKey);
+  const key = await requireOpenAiKey(apiKey);
 
   const article = await prisma.article.findUnique({
     where: { id: articleId },

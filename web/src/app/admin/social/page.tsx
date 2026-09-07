@@ -67,9 +67,8 @@ export default async function SocialAccountsPage({
               <strong>{twitter?.enabled ? "Connected" : "Not connected"}</strong>
             </div>
             <p className="text-xs font-serif text-stone-500 mb-4">
-              OAuth 2.0 (PKCE). Requires <code>TWITTER_CLIENT_ID</code>,{" "}
-              <code>TWITTER_CLIENT_SECRET</code>, and <code>TWITTER_REDIRECT_URI</code>{" "}
-              in <code>.env</code>.
+              OAuth 2.0 (PKCE). Requires a client ID, secret, and redirect URI —
+              set them at <a href="/admin/settings" className="underline">/admin/settings</a>.
             </p>
             {twitter?.enabled ? (
               <form method="POST" action="/admin/social/twitter/disconnect">

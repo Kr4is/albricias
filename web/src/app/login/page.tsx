@@ -9,8 +9,10 @@
  */
 
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
 import { safeNextPath } from "@/lib/safe-redirect";
+import { hasAdminPassword } from "@/lib/config/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,10 @@ function firstValue(raw: string | string[] | undefined): string | undefined {
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
+  if (!(await hasAdminPassword())) {
+    redirect("/setup");
+  }
+
   const query = await searchParams;
   const nextPath = safeNextPath(firstValue(query.next));
   const failed = firstValue(query.error) !== undefined;

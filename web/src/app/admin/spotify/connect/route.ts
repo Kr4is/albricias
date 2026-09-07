@@ -3,17 +3,22 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAuthUrl } from "@/lib/sources";
+import { getSetting } from "@/lib/config/settings";
 import { flashRedirect } from "@/lib/flash";
 
 export async function GET(request: NextRequest) {
-  if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+  const [clientId, clientSecret] = await Promise.all([
+    getSetting("integrations.spotify.clientId"),
+    getSetting("integrations.spotify.clientSecret", { encrypted: true }),
+  ]);
+  if (!clientId || !clientSecret) {
     return flashRedirect(request, "/admin/editions", [
       {
         type: "error",
-        text: "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in .env before connecting Spotify.",
+        text: "Spotify client ID and secret are not configured — set them at /admin/settings before connecting Spotify.",
       },
     ]);
   }
 
-  return NextResponse.redirect(getAuthUrl());
+  return NextResponse.redirect(await getAuthUrl());
 }

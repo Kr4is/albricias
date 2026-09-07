@@ -6,9 +6,19 @@
  * just a signed "logged in until <exp>" claim in an HttpOnly cookie. The
  * signature is an HMAC-SHA256 over the payload, so the cookie cannot be forged
  * without the secret.
+ *
+ * Per `.omc/plans/settings-single-path-onboarding.md`, both the signing
+ * secret and the admin password check resolve exclusively through the
+ * DB-backed settings store (`src/lib/config/settings.ts` /
+ * `src/lib/config/admin-auth.ts`) — no env-var fallback of any kind — which
+ * is why every function here that used to be synchronous is now `async`.
+ * Every caller (`proxy.ts`, `src/app/api/login/route.ts`,
+ * `src/components/Header.tsx`) has been updated to `await` accordingly.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { getSetting } from "@/lib/config/settings";
+import { verifyStoredAdminPassword } from "@/lib/config/admin-auth";
 
 export const SESSION_COOKIE_NAME = "albricias_session";
 
@@ -23,26 +33,32 @@ interface SessionPayload {
 }
 
 /**
- * Key used to sign session cookies.
+ * Key used to sign session cookies: `auth.sessionSecret`, a DB-stored random
+ * value always set by `/setup` — see `src/lib/config/settings.ts`.
  *
- * Prefers an explicit `SESSION_SECRET` (the equivalent of Flask's `SECRET_KEY`).
- * Falls back to `ADMIN_PASSWORD`, which conveniently invalidates every existing
- * session whenever the password changes. Finally falls back to a fixed dev
- * value, mirroring Flask's own `SECRET_KEY` default of `"dev-key"`
- * (`app/config.py`) — so a fresh checkout with no `.env` still logs in, just
- * like the original app. Set `SESSION_SECRET` or `ADMIN_PASSWORD` in
- * production; the dev fallback is not safe to rely on there.
+ * There is no env-var or hardcoded fallback here. Unlike the "graceful
+ * degradation" pattern used elsewhere in this app for optional integrations,
+ * auth is not optional: if this is somehow called before `/setup` has run
+ * (it shouldn't be, since every gated route checks `hasAdminPassword()`
+ * first), failing loudly beats silently signing sessions with a guessable
+ * default.
  */
-function signingSecret(): string {
-  return process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || "dev-key";
+async function signingSecret(): Promise<string> {
+  const dbSecret = await getSetting("auth.sessionSecret", { encrypted: true });
+  if (!dbSecret) {
+    throw new Error(
+      "No session signing secret configured. Complete /setup before using the admin session.",
+    );
+  }
+  return dbSecret;
 }
 
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }
 
-function sign(payload: string): string {
-  return createHmac("sha256", signingSecret()).update(payload).digest("base64url");
+async function sign(payload: string): Promise<string> {
+  return createHmac("sha256", await signingSecret()).update(payload).digest("base64url");
 }
 
 /** Constant-time comparison that tolerates differing lengths. */
@@ -54,29 +70,28 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Check a submitted password against `ADMIN_PASSWORD`.
- * Mirrors the Flask default of "admin" when the env var is unset.
+ * Check a submitted password against the DB-stored hash — see
+ * `src/lib/config/admin-auth.ts`'s `verifyStoredAdminPassword`.
  */
-export function verifyAdminPassword(password: string): boolean {
-  const expected = process.env.ADMIN_PASSWORD || "admin";
-  return safeEqual(password, expected);
+export async function verifyAdminPassword(password: string): Promise<boolean> {
+  return verifyStoredAdminPassword(password);
 }
 
 /** Build a signed session token valid for `SESSION_MAX_AGE` seconds. */
-export function createSessionToken(): string {
+export async function createSessionToken(): Promise<string> {
   const payload: SessionPayload = {
     v: 1,
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
   };
   const encoded = base64url(JSON.stringify(payload));
-  return `${encoded}.${sign(encoded)}`;
+  return `${encoded}.${await sign(encoded)}`;
 }
 
 /**
  * Return true when `token` carries a valid, unexpired signature.
  * This is the equivalent of Flask's `session.get("logged_in")`.
  */
-export function verifySessionToken(token: string | undefined | null): boolean {
+export async function verifySessionToken(token: string | undefined | null): Promise<boolean> {
   if (!token) return false;
 
   const dot = token.lastIndexOf(".");
@@ -87,7 +102,7 @@ export function verifySessionToken(token: string | undefined | null): boolean {
 
   let expected: string;
   try {
-    expected = sign(encoded);
+    expected = await sign(encoded);
   } catch {
     return false;
   }

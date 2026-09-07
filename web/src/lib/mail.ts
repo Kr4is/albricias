@@ -3,21 +3,22 @@
  * controls (no SaaS newsletter provider), per the newsletter phase of
  * `.omc/plans/agent-editions-social-newsletter.md`.
  *
- * Configured entirely via env vars: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
- * `SMTP_PASS`, `NEWSLETTER_FROM_EMAIL`. When any are missing, {@link sendMail}
- * throws a clear `Error` — callers are expected to catch it and flash a
- * warning rather than crash, matching this codebase's existing
- * graceful-degradation pattern for GitHub/Spotify/OpenAI
- * (`web/src/app/admin/editions/generate/route.ts`).
+ * Configured exclusively via `getSetting()` (`@/lib/config/settings.ts`):
+ * DB-stored values entered at `/admin/settings`, no env-var fallback. When
+ * any are missing, {@link sendMail} throws a clear `Error` — callers are
+ * expected to catch it and flash a warning rather than crash, matching this
+ * codebase's existing graceful-degradation pattern for
+ * GitHub/Spotify/OpenAI (`web/src/app/admin/editions/generate/route.ts`).
  *
- * `SITE_URL` (optional, defaults to `http://localhost:3000`) is used to build
- * the absolute links (edition summary, per-article, unsubscribe) that go into
- * outbound email — relative links don't make sense outside a browser tab
- * already on the site.
+ * The site URL (optional, defaults to `http://localhost:3000`) is used to
+ * build the absolute links (edition summary, per-article, unsubscribe) that
+ * go into outbound email — relative links don't make sense outside a
+ * browser tab already on the site.
  */
 
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
+import { getSetting } from "@/lib/config/settings";
 import { prisma } from "@/lib/prisma";
 import { editionArticles, editionById } from "@/lib/editions";
 import { periodLabel } from "@/lib/edition-helpers";
@@ -36,25 +37,27 @@ interface SmtpConfig {
   from: string;
 }
 
-/** Reads and validates the SMTP env vars, or throws a clear error naming what's missing. */
-function smtpConfig(): SmtpConfig {
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.NEWSLETTER_FROM_EMAIL;
+/** Reads and validates the SMTP settings, or throws a clear error naming what's missing. */
+async function smtpConfig(): Promise<SmtpConfig> {
+  const [host, port, user, pass, from] = await Promise.all([
+    getSetting("email.smtpHost"),
+    getSetting("email.smtpPort"),
+    getSetting("email.smtpUser"),
+    getSetting("email.smtpPass", { encrypted: true }),
+    getSetting("email.fromAddress"),
+  ]);
 
   const missing = [
-    !host && "SMTP_HOST",
-    !port && "SMTP_PORT",
-    !user && "SMTP_USER",
-    !pass && "SMTP_PASS",
-    !from && "NEWSLETTER_FROM_EMAIL",
+    !host && "SMTP host",
+    !port && "SMTP port",
+    !user && "SMTP user",
+    !pass && "SMTP password",
+    !from && "From address",
   ].filter((name): name is string => Boolean(name));
 
   if (missing.length > 0) {
     throw new Error(
-      `Email sending is not configured — missing env var(s): ${missing.join(", ")}.`,
+      `Email sending is not configured — missing setting(s) at /admin/settings: ${missing.join(", ")}.`,
     );
   }
 
@@ -85,14 +88,15 @@ function transporterFor(config: SmtpConfig): Transporter {
  * pattern the existing GitHub/Spotify/OpenAI source fetches use.
  */
 export async function sendMail({ to, subject, html }: SendMailOptions): Promise<void> {
-  const config = smtpConfig();
+  const config = await smtpConfig();
   const transporter = transporterFor(config);
   await transporter.sendMail({ from: config.from, to, subject, html });
 }
 
 /** Absolute site origin used to build links inside outbound email. */
-function siteUrl(): string {
-  return (process.env.SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
+async function siteUrl(): Promise<string> {
+  const value = await getSetting("site.url", { default: "http://localhost:3000" });
+  return (value || "http://localhost:3000").replace(/\/+$/, "");
 }
 
 function escapeHtml(value: string): string {
@@ -112,8 +116,8 @@ function editionSummaryHtml(
   edition: { id: number; title: string; cadence: string; periodStart: Date; periodEnd: Date },
   articles: Array<{ id: number; title: string; category: string; content: string }>,
   unsubscribeUrl: string,
+  origin: string,
 ): string {
-  const origin = siteUrl();
   const editionUrl = `${origin}/edition/${edition.id}`;
   const label = periodLabel(edition);
 
@@ -190,7 +194,7 @@ export async function sendNewsletterForEdition(
     prisma.subscriber.findMany({ where: { status: "confirmed" } }),
   ]);
 
-  const origin = siteUrl();
+  const origin = await siteUrl();
   let sent = 0;
   let failed = 0;
 
@@ -200,7 +204,7 @@ export async function sendNewsletterForEdition(
       await sendMail({
         to: subscriber.email,
         subject: `${edition.title} — new edition published`,
-        html: editionSummaryHtml(edition, articles, unsubscribeUrl),
+        html: editionSummaryHtml(edition, articles, unsubscribeUrl, origin),
       });
       sent += 1;
     } catch {

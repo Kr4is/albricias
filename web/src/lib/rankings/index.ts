@@ -15,6 +15,11 @@
  *   3. {@link createGenericRankingArticle} — the generic "top N of `<field>`"
  *      builder, admin-triggered only (inherently a manual/configurable
  *      action).
+ *   4. {@link createCalendarRankingArticle} — Google Calendar stats ranking
+ *      (event count, hours, busiest day, day-of-week distribution), Phase F
+ *      of the google-calendar-alexandria-sources plan. Wired into the
+ *      automatic pipeline like #1, structurally excludes event
+ *      titles/descriptions (see `./calendar.ts`'s doc comment).
  */
 
 export { RANKING_CATEGORY } from "./shared";
@@ -51,3 +56,13 @@ export {
   findRankableField,
   narrateGenericRanking,
 } from "./generic";
+
+export {
+  type CalendarDayCount,
+  type CalendarRankingComputation,
+  type CalendarRankingInput,
+  type DayOfWeekCount,
+  computeCalendarRanking,
+  createCalendarRankingArticle,
+  narrateCalendarRanking,
+} from "./calendar";

@@ -11,18 +11,21 @@
  *
  * Required Spotify app scopes: `user-top-read user-read-recently-played`.
  *
- * Environment variables:
- *   SPOTIFY_CLIENT_ID
- *   SPOTIFY_CLIENT_SECRET
- *   SPOTIFY_REDIRECT_URI  (e.g. http://localhost:3000/admin/spotify/callback)
+ * Credentials are resolved exclusively via `getSetting()`
+ * (`@/lib/config/settings.ts`) from values entered at `/admin/settings` —
+ * client ID, client secret, and redirect URI (e.g.
+ * http://localhost:3000/admin/spotify/callback) — no env-var fallback.
  */
 
+import { getSetting } from "@/lib/config/settings";
 import {
   type ActivityItem,
   type Period,
   inPeriod,
   parseTimestamp,
 } from "./types";
+
+const DEFAULT_REDIRECT_URI = "http://localhost:3000/admin/spotify/callback";
 
 const SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize";
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -37,21 +40,29 @@ const TITLE_MAX = 300;
 // OAuth helpers
 // ---------------------------------------------------------------------------
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set.`);
+async function requireSetting(key: string, encrypted: boolean, label: string): Promise<string> {
+  const value = await getSetting(key, { encrypted });
+  if (!value) throw new Error(`${label} is not configured. Set it at /admin/settings.`);
   return value;
 }
 
-function redirectUri(): string {
-  return (
-    process.env.SPOTIFY_REDIRECT_URI ??
-    "http://localhost:3000/admin/spotify/callback"
-  );
+function clientId(): Promise<string> {
+  return requireSetting("integrations.spotify.clientId", false, "Spotify client ID");
 }
 
-function basicAuthHeader(): string {
-  const raw = `${requireEnv("SPOTIFY_CLIENT_ID")}:${requireEnv("SPOTIFY_CLIENT_SECRET")}`;
+function clientSecret(): Promise<string> {
+  return requireSetting("integrations.spotify.clientSecret", true, "Spotify client secret");
+}
+
+function redirectUri(): Promise<string> {
+  return getSetting("integrations.spotify.redirectUri", {
+    default: DEFAULT_REDIRECT_URI,
+  }) as Promise<string>;
+}
+
+async function basicAuthHeader(): Promise<string> {
+  const [id, secret] = await Promise.all([clientId(), clientSecret()]);
+  const raw = `${id}:${secret}`;
   return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
 }
 
@@ -72,11 +83,12 @@ export interface SpotifyTokenResponse {
  * Ported from `spotify.py:get_auth_url`. Send the admin's browser here to start
  * the OAuth flow.
  */
-export function getAuthUrl(state = ""): string {
+export async function getAuthUrl(state = ""): Promise<string> {
+  const [id, redirect] = await Promise.all([clientId(), redirectUri()]);
   const params = new URLSearchParams({
-    client_id: requireEnv("SPOTIFY_CLIENT_ID"),
+    client_id: id,
     response_type: "code",
-    redirect_uri: redirectUri(),
+    redirect_uri: redirect,
     scope: SPOTIFY_SCOPES,
     show_dialog: "false",
   });
@@ -88,7 +100,7 @@ async function postToken(body: Record<string, string>): Promise<SpotifyTokenResp
   const response = await fetch(SPOTIFY_TOKEN_URL, {
     method: "POST",
     headers: {
-      Authorization: basicAuthHeader(),
+      Authorization: await basicAuthHeader(),
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams(body).toString(),
@@ -105,11 +117,11 @@ async function postToken(body: Record<string, string>): Promise<SpotifyTokenResp
  * Exchange an authorization code for access + refresh tokens.
  * Ported from `spotify.py:exchange_code`.
  */
-export function exchangeCode(code: string): Promise<SpotifyTokenResponse> {
+export async function exchangeCode(code: string): Promise<SpotifyTokenResponse> {
   return postToken({
     grant_type: "authorization_code",
     code,
-    redirect_uri: redirectUri(),
+    redirect_uri: await redirectUri(),
   });
 }
 

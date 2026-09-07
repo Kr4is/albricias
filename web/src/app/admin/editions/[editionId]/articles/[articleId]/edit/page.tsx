@@ -24,6 +24,22 @@ function parseId(raw: string): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
+/** Pull the `calendar_event` notes-source indicator back out of `sourceData`, if present. */
+function readCalendarNotesSource(sourceData: string | null): string | null {
+  if (!sourceData) return null;
+  try {
+    const parsed = JSON.parse(sourceData) as {
+      source_type?: unknown;
+      source_metadata?: { notesSource?: unknown };
+    };
+    if (parsed.source_type !== "calendar_event") return null;
+    const notesSource = parsed.source_metadata?.notesSource;
+    return typeof notesSource === "string" ? notesSource : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadArticle(editionId: string, articleId: string) {
   const eId = parseId(editionId);
   const aId = parseId(articleId);
@@ -59,6 +75,7 @@ export default async function ArticleEditPage({
 
   const imageSrc = mediaUrl(article.image);
   const audioSrc = mediaUrl(article.audio);
+  const calendarNotesSource = readCalendarNotesSource(article.sourceData);
 
   return (
     <NewspaperShell endpoint="admin.article_edit">
@@ -256,6 +273,19 @@ export default async function ArticleEditPage({
                 />
               </div>
             </div>
+
+            {/* Calendar-event source indicator (Phase F) */}
+            {calendarNotesSource && (
+              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 p-4 text-xs font-sans text-blue-900">
+                <span className="material-icons text-blue-600">event_note</span>
+                <p className="flex-1">
+                  Sourced from a calendar event.{" "}
+                  {calendarNotesSource === "gemini_notes_doc"
+                    ? "Gemini meeting notes were found and used as the source text."
+                    : "No meeting notes were found — the event's title, description, and attendees were used instead."}
+                </p>
+              </div>
+            )}
 
             {/* AI Regenerate (if applicable) */}
             {article.sourceType === "ai_generated" && (

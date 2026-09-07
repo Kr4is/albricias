@@ -10,13 +10,25 @@ app it is replacing.
 
 ```bash
 npm install
-cp .env.example .env   # edit as needed — at minimum ADMIN_PASSWORD
+cp .env.example .env   # DATABASE_URL is the only variable you must set
 npx prisma migrate deploy   # creates/updates dev.db from prisma/schema.prisma
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Admin login is at
-`/login`, dashboard at `/admin/editions`.
+Open [http://localhost:3000](http://localhost:3000). On first run, with no
+admin password stored yet, you're shown a one-time `/setup` wizard instead of
+`/login` — it creates a DB-stored admin password (encrypted at rest,
+alongside an auto-generated session-signing secret) and logs you in. After
+that, dashboard is at `/admin/editions`.
+
+Every other credential — the OpenAI key, GitHub token, Spotify/X/Google OAuth
+app IDs, SMTP settings, branding, Alexandria — is configurable **only** from
+**`/admin/settings`** once logged in. There is no env-var fallback for any of
+these: `DATABASE_URL` is the one thing `.env` carries. Saving a value at
+`/admin/settings` takes effect immediately, no server restart required.
+Values marked as secrets (API keys, OAuth client secrets, the SMTP password)
+are encrypted at rest and never re-displayed in plaintext — leave their
+field blank when saving a form to keep the current value.
 
 ## Scripts
 

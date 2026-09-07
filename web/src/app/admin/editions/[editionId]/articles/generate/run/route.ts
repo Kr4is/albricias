@@ -9,7 +9,20 @@ import { generateArticleFromSource, DEFAULT_AUTHOR } from "@/lib/generation";
 import type { SourceType } from "@/lib/sources";
 import type { GeneratorType, ReviewSubjectType } from "@/mastra/schemas";
 import { parseDateInputValue } from "@/lib/date-input";
+import { getSetting } from "@/lib/config/settings";
 import { describeError, flashRedirect } from "@/lib/flash";
+
+/** Pull `source_metadata.notesSource` back out of a persisted article's `sourceData` JSON, if present. */
+function readNotesSource(sourceData: string | null): string | null {
+  if (!sourceData) return null;
+  try {
+    const parsed = JSON.parse(sourceData) as { source_metadata?: { notesSource?: unknown } };
+    const notesSource = parsed.source_metadata?.notesSource;
+    return typeof notesSource === "string" ? notesSource : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -20,9 +33,10 @@ export async function POST(
   const edition = await prisma.edition.findUnique({ where: { id } });
   if (!edition) return new Response("Not found", { status: 404 });
 
-  if (!process.env.OPENAI_API_KEY) {
+  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
+  if (!openaiKey) {
     return flashRedirect(request, `/admin/editions/${id}/edit`, [
-      { type: "error", text: "OPENAI_API_KEY is not configured." },
+      { type: "error", text: "OpenAI API key is not configured — set it at /admin/settings." },
     ]);
   }
 
@@ -39,6 +53,8 @@ export async function POST(
   let audioFile: File | undefined;
   let audioFilename = "";
   let textInput = "";
+  let calendarId: string | undefined;
+  let googleEventId: string | undefined;
 
   if (sourceType.startsWith("audio_")) {
     const file = form.get("audio_file");
@@ -49,6 +65,16 @@ export async function POST(
     }
     audioFile = file;
     audioFilename = file.name;
+  } else if (sourceType === "calendar_event") {
+    const raw = form.get("calendar_event")?.toString() ?? "";
+    const [rawCalendarId, rawEventId] = raw.split("::");
+    if (!rawCalendarId || !rawEventId) {
+      return flashRedirect(request, `/admin/editions/${id}/articles/generate`, [
+        { type: "error", text: "Please pick a meeting." },
+      ]);
+    }
+    calendarId = rawCalendarId;
+    googleEventId = rawEventId;
   } else {
     textInput = form.get("text_input")?.toString().trim() ?? "";
     if (!textInput) {
@@ -70,9 +96,12 @@ export async function POST(
       editionId: id,
       sourceType: sourceType as SourceType,
       generatorType: generatorType as GeneratorType,
+      apiKey: openaiKey,
       audioFile,
       audioFilename,
       textInput,
+      calendarId,
+      googleEventId,
       topicHint,
       subjectName,
       subjectType,
@@ -80,8 +109,22 @@ export async function POST(
       articleDate,
       author,
     });
+
+    let successText = "Article generated successfully. Review and save your changes below.";
+    if (sourceType === "calendar_event") {
+      // Per the plan's acceptance criteria, the admin should be able to tell
+      // which path was used — surface it right in the success flash, in
+      // addition to the indicator on the article edit page.
+      const notesSource = readNotesSource(article.sourceData);
+      if (notesSource === "gemini_notes_doc") {
+        successText += " Used Gemini meeting notes as the source.";
+      } else if (notesSource === "title_description_fallback") {
+        successText += " No meeting notes found — used the event's title, description, and attendees.";
+      }
+    }
+
     return flashRedirect(request, `/admin/editions/${id}/articles/${article.id}/edit`, [
-      { type: "success", text: "Article generated successfully. Review and save your changes below." },
+      { type: "success", text: successText },
     ]);
   } catch (error) {
     return flashRedirect(request, `/admin/editions/${id}/articles/generate`, [

@@ -27,12 +27,12 @@ import {
 
 /**
  * Verbatim from `chronicle.py:CATEGORIES` — also the output ordering — plus
- * one addition: `"Podcasts"` (see the rationale note below
- * `EVENT_CATEGORY_MAP`). Like `Culture`/`Discoveries`, this is a
- * chronicle-only section name and deliberately does not appear in
- * `ARTICLE_CATEGORIES` (`src/lib/article-categories.ts`), the admin's
- * manual-article category dropdown — that mismatch already exists for the
- * other AI-only sections.
+ * two additions: `"Podcasts"` (see the rationale note below
+ * `EVENT_CATEGORY_MAP`) and `"Bookshelf"` (Alexandria reading activity, Phase
+ * G). Like `Culture`/`Discoveries`, these are chronicle-only section names
+ * and deliberately do not appear in `ARTICLE_CATEGORIES`
+ * (`src/lib/article-categories.ts`), the admin's manual-article category
+ * dropdown — that mismatch already exists for the other AI-only sections.
  */
 export const CATEGORIES = [
   "Open Source",
@@ -42,6 +42,7 @@ export const CATEGORIES = [
   "Discoveries",
   "Culture",
   "Podcasts",
+  "Bookshelf",
   "General",
 ] as const;
 
@@ -68,6 +69,15 @@ export type ChronicleCategory = (typeof CATEGORIES)[number];
  * instead of being folded into "Technology". If podcast activity later turns
  * out to be sparse in practice, folding it back into "Culture" under a
  * combined "Sounds & Stories" prompt would be the natural walk-back.
+ *
+ * `book_finished`/`book_reading` → "Bookshelf" (new category, Phase G /
+ * Alexandria). Same reasoning as Podcasts: a finished-books column is its
+ * own kind of narration (author, personal rating, personal notes) that
+ * doesn't fit "Culture"'s music-review voice or any existing section.
+ * `book_reading` (the currently-reading snapshot from Alexandria — see
+ * `@/lib/sources/alexandria.ts`) is folded into the same column rather than
+ * given its own, so the Bookshelf piece can end on a "currently reading"
+ * teaser the way a real books page often does.
  */
 export const EVENT_CATEGORY_MAP: Record<string, ChronicleCategory> = {
   commit: "Open Source",
@@ -82,6 +92,8 @@ export const EVENT_CATEGORY_MAP: Record<string, ChronicleCategory> = {
   spotify_artist: "Culture",
   spotify_played: "Culture",
   spotify_podcast_episode: "Podcasts",
+  book_finished: "Bookshelf",
+  book_reading: "Bookshelf",
   blog_post: "General",
 };
 
@@ -113,6 +125,14 @@ export const CATEGORY_PROMPTS: Record<ChronicleCategory, string> = {
     "halls where ideas are discussed aloud — erudite, curious, and a little " +
     "theatrical. Name each episode and its show, note what it was about, and " +
     "include the Spotify URLs.",
+  Bookshelf:
+    "Write a 'From the Bookshelf' column for the literary page. Narrate the " +
+    "books finished this period as though reviewing for a discerning " +
+    "readership — warm, erudite, appreciative of a well-turned phrase. Name " +
+    "each book and its author, and where a personal rating or note is given, " +
+    "weave it in as the reader's own verdict. If a book is currently being " +
+    "read, close with a brief, teasing mention of it as the chapter still " +
+    "unfolding.",
   General:
     "Cover the miscellaneous happenings of the month with characteristic flair.",
 };

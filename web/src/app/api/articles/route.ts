@@ -20,7 +20,7 @@ import { parseDateInputValue } from "@/lib/date-input";
 const REQUIRED_FIELDS = ["title", "content", "category", "date"] as const;
 
 export async function POST(request: Request) {
-  const denied = requireApiToken(request);
+  const denied = await requireApiToken(request);
   if (denied) return denied;
 
   let data: unknown;

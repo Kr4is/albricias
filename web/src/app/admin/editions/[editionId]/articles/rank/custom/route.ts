@@ -8,6 +8,7 @@
  */
 
 import type { NextRequest } from "next/server";
+import { getSetting } from "@/lib/config/settings";
 import { describeError, flashRedirect } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { createGenericRankingArticle, findRankableField, type RankableModel } from "@/lib/rankings";
@@ -29,9 +30,10 @@ export async function POST(
   const edition = await prisma.edition.findUnique({ where: { id } });
   if (!edition) return new Response("Not found", { status: 404 });
 
-  if (!process.env.OPENAI_API_KEY) {
+  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
+  if (!openaiKey) {
     return flashRedirect(request, `/admin/editions/${id}/articles/rank`, [
-      { type: "error", text: "OPENAI_API_KEY is not configured." },
+      { type: "error", text: "OpenAI API key is not configured — set it at /admin/settings." },
     ]);
   }
 
@@ -63,6 +65,7 @@ export async function POST(
       model: model as RankableModel,
       field,
       topN,
+      apiKey: openaiKey,
     });
     return flashRedirect(request, `/admin/editions/${id}/articles/${article.id}/edit`, [
       { type: "success", text: "Ranking generated. Review and save your changes below." },

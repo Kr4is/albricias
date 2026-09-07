@@ -23,8 +23,11 @@ generation pipeline.
 
 ## Getting started
 
-See [`web/README.md`](web/README.md) for setup, environment variables, and
-running the app locally.
+See [`web/README.md`](web/README.md) for setup and running the app locally.
+The only environment variable this app reads is `DATABASE_URL` — every
+credential (admin password, OpenAI, GitHub, Spotify/X/Google, SMTP,
+branding, Alexandria) is configured through the web interface itself, via
+the first-run `/setup` wizard and `/admin/settings`.
 
 ## Docker
 
@@ -52,5 +55,7 @@ albricias/
 
 ## Admin Access
 
-Visit `/login` and enter the password set in `ADMIN_PASSWORD` (default:
-`admin`). The admin dashboard is at `/admin/editions`.
+On first run, visiting the app shows a one-time `/setup` wizard instead of
+`/login` — it creates a DB-stored admin password (there is no default
+password and no `ADMIN_PASSWORD` env var). After that, `/login` works
+normally and the admin dashboard is at `/admin/editions`.

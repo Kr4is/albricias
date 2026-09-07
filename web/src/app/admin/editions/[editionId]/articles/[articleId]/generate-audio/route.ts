@@ -16,6 +16,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateArticleAudio } from "@/lib/tts";
+import { getSetting } from "@/lib/config/settings";
 import { describeError, flashRedirect, type FlashMessage } from "@/lib/flash";
 
 export async function POST(
@@ -33,15 +34,16 @@ export async function POST(
 
   const editPath = `/admin/editions/${eId}/articles/${aId}/edit`;
 
-  if (!process.env.OPENAI_API_KEY) {
+  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
+  if (!openaiKey) {
     return flashRedirect(request, editPath, [
-      { type: "error", text: "OPENAI_API_KEY not configured." },
+      { type: "error", text: "OpenAI API key is not configured — set it at /admin/settings." },
     ]);
   }
 
   let message: FlashMessage;
   try {
-    await generateArticleAudio(aId);
+    await generateArticleAudio(aId, openaiKey);
     message = { type: "success", text: "Audio generated for article." };
   } catch (error) {
     message = { type: "error", text: `Audio generation failed: ${describeError(error)}` };

@@ -15,7 +15,7 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import { prisma } from "@/lib/prisma";
 import { readFlash } from "@/lib/flash";
 import { toDateInputValue } from "@/lib/date-input";
-import { SOURCES } from "@/lib/sources";
+import { SOURCES, fetchCalendarEvents, getValidGoogleAccessToken, parseGoogleEventTime } from "@/lib/sources";
 import { DEFAULT_AUTHOR } from "@/lib/generation";
 import { GENERATORS } from "@/mastra/schemas";
 
@@ -26,6 +26,7 @@ const SOURCE_ICONS: Record<string, string> = {
   audio_conversation: "record_voice_over",
   text: "article",
   notes: "notes",
+  calendar_event: "event",
 };
 
 const SOURCE_DESCRIPTIONS: Record<string, string> = {
@@ -33,7 +34,71 @@ const SOURCE_DESCRIPTIONS: Record<string, string> = {
   audio_conversation: "A recorded discussion, interview, or dialogue.",
   text: "An existing transcript or prose passage.",
   notes: "Rough bullet points or ideas to be expanded.",
+  calendar_event: "A recent meeting — Gemini notes if available, else its details.",
 };
+
+/** Recent-events window for the meeting picker below. */
+const CALENDAR_EVENT_WINDOW_DAYS = 90;
+/** Cap on how many events any one calendar contributes to the picker. */
+const MAX_EVENTS_PER_CALENDAR = 50;
+/** Cap on the picker's total option count, across all Articles/Both calendars. */
+const MAX_CALENDAR_EVENT_OPTIONS = 100;
+
+interface CalendarEventOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Recent events from every "articles"/"both" calendar, for the meeting
+ * picker — mirrors the plan's "last 90 days" suggestion. Returns an empty
+ * array (never throws) when Google Calendar isn't connected or no calendar
+ * is opted into browsing; a single calendar's fetch failing is logged and
+ * skipped, same graceful-degradation pattern used everywhere else.
+ */
+async function loadCalendarEventOptions(): Promise<CalendarEventOption[]> {
+  const accessToken = await getValidGoogleAccessToken();
+  if (!accessToken) return [];
+
+  const calendars = await prisma.calendarSource.findMany({
+    where: { mode: { in: ["articles", "both"] } },
+  });
+  if (calendars.length === 0) return [];
+
+  const periodEnd = new Date();
+  const periodStart = new Date(periodEnd.getTime() - CALENDAR_EVENT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const options: (CalendarEventOption & { start: number })[] = [];
+  for (const calendar of calendars) {
+    try {
+      const events = await fetchCalendarEvents(accessToken, calendar.googleCalendarId, periodStart, periodEnd, {
+        maxResults: MAX_EVENTS_PER_CALENDAR,
+      });
+      for (const event of events) {
+        const start = parseGoogleEventTime(event.start);
+        const dateLabel = start
+          ? start.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+          : "?";
+        options.push({
+          value: `${calendar.googleCalendarId}::${event.id}`,
+          label: `${dateLabel} — ${event.summary || "(untitled)"} (${calendar.name})`,
+          start: start ? start.getTime() : 0,
+        });
+      }
+    } catch (error) {
+      console.error(
+        `[admin] Calendar event fetch failed for ${calendar.googleCalendarId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  return options
+    .sort((a, b) => b.start - a.start)
+    .slice(0, MAX_CALENDAR_EVENT_OPTIONS)
+    .map(({ value, label }) => ({ value, label }));
+}
 
 const GENERATOR_ICONS: Record<string, string> = {
   reflection: "psychology",
@@ -84,6 +149,7 @@ export default async function ArticleGeneratePage({
   const defaultDate = toDateInputValue(edition.periodStart);
   const sourceEntries = Object.entries(SOURCES);
   const generatorEntries = Object.entries(GENERATORS);
+  const calendarEventOptions = await loadCalendarEventOptions();
 
   return (
     <NewspaperShell endpoint="admin.article_generate">
@@ -182,6 +248,39 @@ export default async function ArticleGeneratePage({
                   className="w-full bg-transparent border-2 border-ink p-4 font-serif text-sm leading-relaxed focus:ring-0 focus:border-ink-light"
                   placeholder="Paste a transcription, your notes, or rough bullet points here…"
                 />
+              </div>
+
+              <div id="calendar-event-section" className="hidden space-y-2">
+                <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
+                  Pick a Meeting *
+                </label>
+                {calendarEventOptions.length > 0 ? (
+                  <select
+                    name="calendar_event"
+                    required
+                    className="w-full bg-transparent border-2 border-ink p-3 text-sm font-sans"
+                  >
+                    <option value="">— Select a meeting —</option>
+                    {calendarEventOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-[11px] font-sans text-stone-500 border border-dashed border-stone-300 p-3">
+                    No recent events found. Connect Google Calendar and set at least one
+                    calendar to &quot;Articles&quot; or &quot;Both&quot; on{" "}
+                    <a href="/admin/calendar" className="underline">
+                      /admin/calendar
+                    </a>
+                    .
+                  </p>
+                )}
+                <p className="text-[10px] font-sans text-stone-400">
+                  Uses Gemini meeting notes when available, otherwise the event&apos;s
+                  title, description, and attendees.
+                </p>
               </div>
             </fieldset>
 
@@ -354,6 +453,7 @@ export default async function ArticleGeneratePage({
               var form = document.getElementById('generate-form');
               var audioSection = document.getElementById('audio-input-section');
               var textSection = document.getElementById('text-input-section');
+              var calendarEventSection = document.getElementById('calendar-event-section');
               var interviewFields = document.getElementById('interview-fields');
               var subjectFields = document.getElementById('subject-fields');
               var subjectTypeField = document.getElementById('subject-type-field');
@@ -365,8 +465,10 @@ export default async function ArticleGeneratePage({
                 var selected = document.querySelector('input[name="source_type"]:checked');
                 if (!selected) return;
                 var isAudio = selected.value.indexOf('audio_') === 0;
+                var isCalendarEvent = selected.value === 'calendar_event';
                 audioSection.classList.toggle('hidden', !isAudio);
-                textSection.classList.toggle('hidden', isAudio);
+                textSection.classList.toggle('hidden', isAudio || isCalendarEvent);
+                calendarEventSection.classList.toggle('hidden', !isCalendarEvent);
               }
 
               function updateGeneratorPanel() {

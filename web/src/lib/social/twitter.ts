@@ -15,11 +15,11 @@
  * time (2026-09), not training data, per this codebase's established
  * practice for fast-moving external APIs.
  *
- * Requires env vars:
- *   TWITTER_CLIENT_ID
- *   TWITTER_CLIENT_SECRET   (confidential client — used for HTTP Basic auth
- *                            on the token endpoint)
- *   TWITTER_REDIRECT_URI    (e.g. http://localhost:3000/admin/social/twitter/callback)
+ * App credentials are resolved exclusively via `getSetting()`
+ * (`@/lib/config/settings.ts`) from values entered at `/admin/settings` —
+ * client ID, client secret (confidential client — used for HTTP Basic auth
+ * on the token endpoint), and redirect URI (e.g.
+ * http://localhost:3000/admin/social/twitter/callback) — no env-var fallback.
  *
  * Credentials are stored in `SocialAccount.credentials` (service: "twitter")
  * as `{ accessToken, refreshToken, expiresAt }` — `expiresAt` is an ISO
@@ -29,7 +29,10 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
+import { getSetting } from "@/lib/config/settings";
 import { getSocialAccount, parseCredentials, upsertSocialAccount } from "./store";
+
+const DEFAULT_REDIRECT_URI = "http://localhost:3000/admin/social/twitter/callback";
 
 /** X's documented plain-text post limit. */
 export const TWITTER_TEXT_LIMIT = 280;
@@ -40,20 +43,29 @@ const TWEETS_URL = "https://api.x.com/2/tweets";
 
 export const TWITTER_SCOPES = "tweet.read tweet.write users.read offline.access";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set.`);
+async function requireSetting(key: string, encrypted: boolean, label: string): Promise<string> {
+  const value = await getSetting(key, { encrypted });
+  if (!value) throw new Error(`${label} is not configured. Set it at /admin/settings.`);
   return value;
 }
 
-function redirectUri(): string {
-  return (
-    process.env.TWITTER_REDIRECT_URI ?? "http://localhost:3000/admin/social/twitter/callback"
-  );
+function clientId(): Promise<string> {
+  return requireSetting("integrations.twitter.clientId", false, "X/Twitter client ID");
 }
 
-function basicAuthHeader(): string {
-  const raw = `${requireEnv("TWITTER_CLIENT_ID")}:${requireEnv("TWITTER_CLIENT_SECRET")}`;
+function clientSecret(): Promise<string> {
+  return requireSetting("integrations.twitter.clientSecret", true, "X/Twitter client secret");
+}
+
+function redirectUri(): Promise<string> {
+  return getSetting("integrations.twitter.redirectUri", {
+    default: DEFAULT_REDIRECT_URI,
+  }) as Promise<string>;
+}
+
+async function basicAuthHeader(): Promise<string> {
+  const [id, secret] = await Promise.all([clientId(), clientSecret()]);
+  const raw = `${id}:${secret}`;
   return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
 }
 
@@ -72,16 +84,16 @@ export interface TwitterAuthRequest {
  * caller must persist (in a short-lived cookie — there's no session store fit
  * for this) until the callback arrives.
  */
-export function getTwitterAuthUrl(): TwitterAuthRequest {
-  const clientId = requireEnv("TWITTER_CLIENT_ID");
+export async function getTwitterAuthUrl(): Promise<TwitterAuthRequest> {
+  const [id, redirect] = await Promise.all([clientId(), redirectUri()]);
   const codeVerifier = base64Url(randomBytes(32));
   const codeChallenge = base64Url(createHash("sha256").update(codeVerifier).digest());
   const state = base64Url(randomBytes(16));
 
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: clientId,
-    redirect_uri: redirectUri(),
+    client_id: id,
+    redirect_uri: redirect,
     scope: TWITTER_SCOPES,
     state,
     code_challenge: codeChallenge,
@@ -104,7 +116,7 @@ async function requestToken(body: URLSearchParams): Promise<TwitterTokenResponse
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: basicAuthHeader(),
+      Authorization: await basicAuthHeader(),
     },
     body,
   });
@@ -124,7 +136,7 @@ export async function exchangeTwitterCode(
     new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: redirectUri(),
+      redirect_uri: await redirectUri(),
       code_verifier: codeVerifier,
     }),
   );

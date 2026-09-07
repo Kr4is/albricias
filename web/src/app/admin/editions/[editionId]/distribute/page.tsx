@@ -71,14 +71,14 @@ export default async function DistributePage({
   try {
     copy = await generateSocialCopy(edition.id);
   } catch (error) {
-    copy = defaultSocialCopy(edition);
+    copy = await defaultSocialCopy(edition);
     messages.unshift({
       type: "warning",
       text: `Could not generate AI social copy (${describeError(error)}) — showing a basic template instead.`,
     });
   }
 
-  const link = editionUrl(edition.id);
+  const link = await editionUrl(edition.id);
 
   return (
     <NewspaperShell endpoint="admin.edition_distribute">

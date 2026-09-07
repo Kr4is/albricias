@@ -11,6 +11,7 @@
  * mis-sized LLM response can never produce an unpostable text.
  */
 
+import { getSetting } from "@/lib/config/settings";
 import { editionArticles, editionById } from "@/lib/editions";
 import { periodLabel } from "@/lib/edition-helpers";
 import { runNewspaperAgent } from "@/mastra/agents/base";
@@ -31,13 +32,14 @@ export interface SocialCopyResult {
 const LINKEDIN_MAX = 3000;
 const INSTAGRAM_MAX = 2200;
 
-function siteUrl(): string {
-  return (process.env.SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
+async function siteUrl(): Promise<string> {
+  const value = await getSetting("site.url", { default: "http://localhost:3000" });
+  return (value || "http://localhost:3000").replace(/\/+$/, "");
 }
 
 /** Absolute public URL for an edition, per `web/src/app/edition/[editionId]/page.tsx`. */
-export function editionUrl(editionId: number): string {
-  return `${siteUrl()}/edition/${editionId}`;
+export async function editionUrl(editionId: number): Promise<string> {
+  return `${await siteUrl()}/edition/${editionId}`;
 }
 
 /**
@@ -80,8 +82,8 @@ function parseSections(raw: string): Record<SectionKey, string> {
 }
 
 /** Plain-text fallback used when copy generation itself fails (e.g. no `OPENAI_API_KEY`). */
-export function defaultSocialCopy(edition: { id: number; title: string }): SocialCopyResult {
-  const link = editionUrl(edition.id);
+export async function defaultSocialCopy(edition: { id: number; title: string }): Promise<SocialCopyResult> {
+  const link = await editionUrl(edition.id);
   const line = `${edition.title} is out now.`;
   return {
     x: `${line}\n\n${link}`,
@@ -95,23 +97,24 @@ export function defaultSocialCopy(edition: { id: number; title: string }): Socia
 /**
  * Generates the five networks' post copy for `editionId` via one LLM call.
  *
- * Throws when `OPENAI_API_KEY` (or `apiKey`) is unset, or the edition doesn't
- * exist — callers (the distribute screen) catch this and fall back to
- * {@link defaultSocialCopy} rather than crash, matching this codebase's
- * graceful-degradation convention for missing credentials.
+ * Throws when the OpenAI API key (DB-stored or `apiKey`) is unset, or the
+ * edition doesn't exist — callers (the distribute screen) catch this and
+ * fall back to {@link defaultSocialCopy} rather than crash, matching this
+ * codebase's graceful-degradation convention for missing credentials.
  */
 export async function generateSocialCopy(
   editionId: number,
   apiKey?: string,
 ): Promise<SocialCopyResult> {
-  const key = apiKey ?? process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY is not set.");
+  const key =
+    apiKey ?? (await getSetting("integrations.openai.apiKey", { encrypted: true }));
+  if (!key) throw new Error("OpenAI API key is not configured. Set it at /admin/settings.");
 
   const edition = await editionById(editionId);
   if (!edition) throw new Error(`Edition ${editionId} not found.`);
 
   const articles = await editionArticles(editionId);
-  const link = editionUrl(editionId);
+  const link = await editionUrl(editionId);
   const label = periodLabel(edition);
 
   const articleList = articles
@@ -146,7 +149,7 @@ export async function generateSocialCopy(
   });
   const sections = parseSections(raw);
 
-  const fallback = defaultSocialCopy(edition);
+  const fallback = await defaultSocialCopy(edition);
   return {
     x: sections.X ? fitWithLink(sections.X, link, TWITTER_TEXT_LIMIT) : fallback.x,
     bluesky: sections.BLUESKY

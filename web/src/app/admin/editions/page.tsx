@@ -17,6 +17,7 @@ import { getCadence } from "@/lib/cadence";
 import { getServiceToken } from "@/lib/service-token";
 import { EDITION_STATUS_DRAFT, EDITION_STATUS_PUBLISHED, periodLabelShort } from "@/lib/edition-helpers";
 import { readFlash } from "@/lib/flash";
+import { getOnboardingStep, isOnboardingCompleted } from "@/app/setup/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export default async function EditionsDashboardPage({
   const query = await searchParams;
   const messages = readFlash(query);
 
-  const [drafts, published, cadence, spotifyToken] = await Promise.all([
+  const [drafts, published, cadence, spotifyToken, onboardingCompleted, onboardingStep] = await Promise.all([
     prisma.edition.findMany({
       where: { status: EDITION_STATUS_DRAFT },
       orderBy: { periodStart: "desc" },
@@ -53,6 +54,8 @@ export default async function EditionsDashboardPage({
     }),
     getCadence(),
     getServiceToken("spotify"),
+    isOnboardingCompleted(),
+    getOnboardingStep(),
   ]);
 
   const now = new Date();
@@ -104,6 +107,22 @@ export default async function EditionsDashboardPage({
 
         <FlashBanner messages={messages} />
 
+        {/* Continue setup banner — onboarding wizard was exited before "Finish setup" */}
+        {!onboardingCompleted && (
+          <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border-2 border-ink bg-amber-50 px-5 py-3">
+            <div className="flex items-center gap-2 text-xs font-sans text-stone-700">
+              <span className="material-icons text-sm text-amber-700">info</span>
+              First-run setup wasn&apos;t finished — some categories may still be unconfigured.
+            </div>
+            <a
+              href={`/setup?step=${onboardingStep ?? 1}`}
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+            >
+              Continue setup
+            </a>
+          </div>
+        )}
+
         {/* Spotify status */}
         <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
           <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
@@ -140,6 +159,34 @@ export default async function EditionsDashboardPage({
           </div>
           <a
             href="/admin/social"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+          >
+            Manage
+          </a>
+        </div>
+
+        {/* Google Calendar entry point (Phase F) */}
+        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+            <span className="material-icons text-sm">event</span>
+            Google Calendar (stats ranking + meeting-notes articles)
+          </div>
+          <a
+            href="/admin/calendar"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+          >
+            Manage
+          </a>
+        </div>
+
+        {/* Settings entry point (Phase H3) */}
+        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+            <span className="material-icons text-sm">settings</span>
+            Branding, AI, GitHub, email, and OAuth app credentials
+          </div>
+          <a
+            href="/admin/settings"
             className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
           >
             Manage
@@ -318,8 +365,9 @@ export default async function EditionsDashboardPage({
           <form method="POST" action="/admin/editions/generate" className="space-y-4">
             <PeriodPickerFields cadence={cadence} now={now} />
             <p className="text-[10px] font-sans text-stone-500 italic">
-              Requires GITHUB_TOKEN/GITHUB_USERNAME, BLOG_RSS_URL, and/or a
-              connected Spotify account, plus OPENAI_API_KEY, in .env
+              Requires GitHub token/username, blog RSS URL, and/or a
+              connected Spotify account, plus an OpenAI API key — configure
+              these at /admin/settings
             </p>
             <div className="flex gap-3 pt-2">
               <button
