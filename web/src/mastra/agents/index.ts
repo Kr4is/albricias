@@ -113,7 +113,6 @@ export const agents = {
 export { socialCopyAgent } from "./social";
 
 export {
-  DEFAULT_MAX_TOKENS,
   DEFAULT_TEMPERATURE,
   MODEL_ID,
   MODEL_NAME,

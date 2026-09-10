@@ -144,15 +144,16 @@ const MAX_ACTIVITIES_PER_GROUP = 25;
 /**
  * How many sections are written at once by the `foreach` below.
  *
- * Three is a deliberately conservative default: it is comfortably inside the
- * per-minute request limits of every cloud provider this app can be pointed at
- * (OpenAI, Gemini) even on their lowest tiers, while still cutting a nine-
- * section edition from nine round-trips to three. A local LiteLLM/Ollama
- * backend that serialises requests server-side simply won't go faster than its
- * own concurrency — no speedup, but no regression either. One constant so it
- * stays trivially tunable (see the plan's follow-up about making it a setting).
+ * Back to 1 (sequential) for now: a slow self-hosted "thinking" model (see
+ * `runNewspaperAgent`'s doc comment in `@/mastra/agents/base`) can take well
+ * over a minute per section once it's allowed to reason for as long as it
+ * needs, and several such requests in flight at once was enough to make a
+ * real LiteLLM proxy drop connections under the combined load. One constant
+ * so it stays trivially tunable per instance later (see the plan's follow-up
+ * about making it a setting) — raise it back up for a faster/cloud provider
+ * that can actually take advantage of it.
  */
-export const CHRONICLE_CONCURRENCY = 3;
+export const CHRONICLE_CONCURRENCY = 1;
 
 const MONTHS_SHORT = [
   "Jan",
