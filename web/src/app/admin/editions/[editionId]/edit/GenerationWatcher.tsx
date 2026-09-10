@@ -165,7 +165,11 @@ export default function GenerationWatcher({
 
   const total = progress?.totalSections ?? 0;
   const completed = progress?.completedSections ?? 0;
-  const abortedCount = progress?.sections.filter((s) => s.status === "aborted").length ?? 0;
+  // Sections are written concurrently and settle independently, so a failure
+  // says nothing about its siblings: count every unsuccessful section, and
+  // word it as "these ones" rather than "everything after the first failure".
+  const failedCount =
+    progress?.sections.filter((s) => s.status === "aborted" || s.status === "failed").length ?? 0;
 
   return (
     <div
@@ -186,11 +190,11 @@ export default function GenerationWatcher({
             created.
           </>
         )}
-        {abortedCount > 0 && (
+        {failedCount > 0 && (
           <span className="block mt-1 text-amber-700 font-bold">
-            {abortedCount} section{abortedCount === 1 ? "" : "s"} could not be
-            generated after an earlier failure — the edition keeps the
-            articles already written.
+            {failedCount} section{failedCount === 1 ? "" : "s"} could not be
+            generated — the remaining ones are unaffected and the edition keeps
+            every article already written.
           </span>
         )}
       </p>

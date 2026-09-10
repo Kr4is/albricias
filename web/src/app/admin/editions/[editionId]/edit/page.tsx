@@ -15,7 +15,7 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import { prisma } from "@/lib/prisma";
 import { ARTICLE_ORDER } from "@/lib/editions";
 import { EDITION_STATUS_DRAFT } from "@/lib/edition-helpers";
-import { readFlash } from "@/lib/flash";
+import { readFlash, type FlashMessage, type FlashType } from "@/lib/flash";
 import { mediaUrl } from "@/lib/media";
 import { toDateInputValue } from "@/lib/date-input";
 import { ARTICLE_CATEGORIES } from "@/lib/article-categories";
@@ -48,16 +48,55 @@ type LoadedEdition = NonNullable<Awaited<ReturnType<typeof loadEdition>>>;
  * adding it may land slightly after this file during parallel
  * implementation. Once the generated Prisma client includes the column this
  * cast becomes a no-op (same shape either way).
+ *
+ * `messages` is `@/lib/generation`'s `GenerationProgress.messages` — the
+ * warnings the background pipeline collected. It's declared here rather than
+ * on `GenerationWatcher`'s copy of the type because the watcher's banner
+ * doesn't render them; this page does (see {@link GenerationMessages}).
  */
-function readGenerationProgress(edition: LoadedEdition): GenerationProgress | null {
+function readGenerationProgress(
+  edition: LoadedEdition,
+): (GenerationProgress & { messages?: FlashMessage[] }) | null {
   const raw = (edition as unknown as { generationProgress?: string | null })
     .generationProgress;
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as GenerationProgress;
+    return JSON.parse(raw) as GenerationProgress & { messages?: FlashMessage[] };
   } catch {
     return null;
   }
+}
+
+const GENERATION_MESSAGE_STYLES: Record<FlashType, string> = {
+  success: "border-green-600 bg-green-50 text-green-900",
+  error: "border-red-600 bg-red-50 text-red-900",
+  warning: "border-amber-500 bg-amber-50 text-amber-900",
+  info: "border-blue-500 bg-blue-50 text-blue-900",
+};
+
+/**
+ * Warnings the "Generate edition" pipeline collected while running in the
+ * background (`@/lib/generation`'s `populateEditionDraft`) — an AI provider
+ * that failed at call time, a source that couldn't be fetched, a section that
+ * was never written. Styled like `FlashBanner`, but deliberately not that
+ * component: these come off the edition row rather than the URL, so none of
+ * its query-param cleanup or first-non-empty capture applies (and sharing an
+ * instance would let this text leak into the real flash slot).
+ */
+function GenerationMessages({ messages }: { messages: readonly FlashMessage[] }) {
+  if (messages.length === 0) return null;
+  return (
+    <div className="mb-6 space-y-2">
+      {messages.map((message, index) => (
+        <div
+          key={index}
+          className={`px-4 py-3 text-sm font-sans border-l-4 ${GENERATION_MESSAGE_STYLES[message.type]}`}
+        >
+          {message.text}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type ArticleRow = Awaited<ReturnType<typeof prisma.article.findMany>>[number];
@@ -65,7 +104,7 @@ type ArticleRow = Awaited<ReturnType<typeof prisma.article.findMany>>[number];
 interface SectionRow {
   key: string;
   articles: ArticleRow[];
-  placeholder: { kind: "writing" | "aborted"; category: string } | null;
+  placeholder: { kind: "writing" | "failed"; category: string } | null;
 }
 
 /**
@@ -89,8 +128,8 @@ function mergeSectionsWithArticles(
         ? null
         : section.status === "writing"
           ? ({ kind: "writing", category: section.category } as const)
-          : section.status === "aborted"
-            ? ({ kind: "aborted", category: section.category } as const)
+          : section.status === "aborted" || section.status === "failed"
+            ? ({ kind: "failed", category: section.category } as const)
             : null;
     return { key: `section-${index}-${section.category}`, articles: matched, placeholder };
   });
@@ -228,6 +267,8 @@ export default async function EditionEditPage({
         </div>
 
         <FlashBanner messages={messages} />
+
+        <GenerationMessages messages={generationProgress?.messages ?? []} />
 
         {edition.generationStatus === "running" && (
           <GenerationWatcher editionId={edition.id} generationProgress={generationProgress} />
@@ -574,7 +615,12 @@ export default async function EditionEditPage({
             {/* Articles list — merged with generationProgress.sections (see
                 mergeSectionsWithArticles above) so a "writing…" placeholder
                 shows in the right spot while its section is still being
-                generated, and an "aborted" note shows if it never will be. */}
+                generated, and a "could not generate" note shows for a
+                section that failed on its own (self-caught LLM error) or was
+                aborted (the rarer case where generation stopped before
+                reaching it) — sections settle independently under
+                concurrency, so this can appear next to normally-written
+                sections rather than only trailing them. */}
             {hasAnythingToShow ? (
               <div className="space-y-3">
                 {sectionRows.map((row) => {
@@ -598,7 +644,7 @@ export default async function EditionEditPage({
                       </div>
                     );
                   }
-                  if (row.placeholder?.kind === "aborted") {
+                  if (row.placeholder?.kind === "failed") {
                     return (
                       <div
                         key={row.key}

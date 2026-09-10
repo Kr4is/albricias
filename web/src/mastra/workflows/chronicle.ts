@@ -141,6 +141,19 @@ export const CATEGORY_PROMPTS: Record<ChronicleCategory, string> = {
 /** Activities summarised into a single prompt are capped, as in Python. */
 const MAX_ACTIVITIES_PER_GROUP = 25;
 
+/**
+ * How many sections are written at once by the `foreach` below.
+ *
+ * Three is a deliberately conservative default: it is comfortably inside the
+ * per-minute request limits of every cloud provider this app can be pointed at
+ * (OpenAI, Gemini) even on their lowest tiers, while still cutting a nine-
+ * section edition from nine round-trips to three. A local LiteLLM/Ollama
+ * backend that serialises requests server-side simply won't go faster than its
+ * own concurrency — no speedup, but no regression either. One constant so it
+ * stays trivially tunable (see the plan's follow-up about making it a setting).
+ */
+export const CHRONICLE_CONCURRENCY = 3;
+
 const MONTHS_SHORT = [
   "Jan",
   "Feb",
@@ -227,6 +240,14 @@ const chronicleInputSchema = z.object({
    * Comes from `periodLabel()` in `src/lib/edition-helpers.ts`.
    */
   periodLabel: z.string(),
+  /**
+   * `Article.order` for the first section written by this run — every
+   * subsequent section takes `baseOrder + n`. Assigned once by the caller
+   * (`generateEditionDraft`) from the edition's current `max(order) + 1`
+   * instead of being queried per write, because concurrent writers would
+   * otherwise all read the same `max(order)` and collide.
+   */
+  baseOrder: z.number().int(),
   /** Resolved AI text-generation provider/model — see `@/lib/ai/provider`. */
   aiModel: resolvedAiModelSchema.optional(),
 });
@@ -236,6 +257,8 @@ const categoryJobSchema = z.object({
   prompt: z.string(),
   fallbackTitle: z.string(),
   activityCount: z.number(),
+  /** This section's pre-assigned `Article.order` — see `baseOrder` above. */
+  order: z.number().int(),
   aiModel: resolvedAiModelSchema.optional(),
 });
 
@@ -243,6 +266,8 @@ const categoryJobSchema = z.object({
 const categoryOutcomeSchema = z.object({
   ok: z.boolean(),
   result: generatorResultSchema.nullable(),
+  /** Echoed back so the persisting caller never has to re-derive it. */
+  order: z.number().int(),
 });
 
 const groupActivitiesStep = createStep({
@@ -253,7 +278,7 @@ const groupActivitiesStep = createStep({
   outputSchema: z.array(categoryJobSchema),
   execute: async ({ inputData }) => {
     const groups = groupActivities(inputData.activities);
-    return [...groups].map(([category, group]) => ({
+    return [...groups].map(([category, group], index) => ({
       category,
       prompt: buildChroniclePrompt(
         category,
@@ -262,50 +287,59 @@ const groupActivitiesStep = createStep({
       ),
       fallbackTitle: `${category} Dispatch — ${inputData.periodLabel}`,
       activityCount: group.length,
+      order: inputData.baseOrder + index,
       aiModel: inputData.aiModel,
     }));
   },
 });
 
+/**
+ * The whole body is inside one try/catch — not just the model call — because a
+ * *Mastra-level* step failure inside a `foreach` calls `killQueue()`, which
+ * drops every iteration that has not started yet (verified in
+ * `@mastra/core/dist/agent-DsRUDsS_.js:1461-1509`; it applies at any
+ * concurrency). Resolving every error as a normal `{ ok: false }` outcome makes
+ * "one section's trouble never touches the others" a property of this step
+ * rather than a side effect of the only known failure being caught by accident.
+ */
 const writeCategoryArticleStep = createStep({
   id: "write-category-article",
   description: "Ask the chronicle desk for one section's dispatch.",
   inputSchema: categoryJobSchema,
   outputSchema: categoryOutcomeSchema,
   execute: async ({ inputData }) => {
-    let raw: string;
     try {
-      raw = await runNewspaperAgent(chronicleAgent, {
+      const raw = await runNewspaperAgent(chronicleAgent, {
         user: inputData.prompt,
         aiModel: inputData.aiModel,
       });
+      const { title, content } = parseResponse(raw, inputData.fallbackTitle);
+      return {
+        ok: true,
+        order: inputData.order,
+        result: {
+          title,
+          content,
+          category: inputData.category,
+          sourceData: {
+            generator: "chronicle",
+            prompt: inputData.prompt,
+            response: raw,
+            model: MODEL_NAME,
+            activity_count: inputData.activityCount,
+          },
+        },
+      };
     } catch (error) {
       // `chronicle.py` logs and `continue`s so one bad section never sinks
       // the whole edition.
       console.error(
-        `[chronicle] OpenAI call failed for '${inputData.category}': ${
+        `[chronicle] section '${inputData.category}' failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return { ok: false, result: null };
+      return { ok: false, order: inputData.order, result: null };
     }
-
-    const { title, content } = parseResponse(raw, inputData.fallbackTitle);
-    return {
-      ok: true,
-      result: {
-        title,
-        content,
-        category: inputData.category,
-        sourceData: {
-          generator: "chronicle",
-          prompt: inputData.prompt,
-          response: raw,
-          model: MODEL_NAME,
-          activity_count: inputData.activityCount,
-        },
-      },
-    };
   },
 });
 
@@ -323,8 +357,12 @@ const collectArticlesStep = createStep({
 /**
  * Activity rows → one `GeneratorResult` per non-empty newspaper section.
  *
- * Sections are written one at a time (`concurrency: 1`) to match the Python
- * loop and to stay well inside OpenAI rate limits.
+ * Sections are written {@link CHRONICLE_CONCURRENCY} at a time, so one slow or
+ * failing section neither blocks nor invalidates the rest — the Python loop's
+ * strict sequencing was never a requirement of the output, only of its
+ * implementation. Iterations therefore finish out of order: anything consuming
+ * this workflow's progress stream must key off the iteration's own index, not
+ * off "the next section".
  */
 export const chronicleWorkflow = createWorkflow({
   id: "chronicle",
@@ -334,7 +372,7 @@ export const chronicleWorkflow = createWorkflow({
   outputSchema: z.array(generatorResultSchema),
 })
   .then(groupActivitiesStep)
-  .foreach(writeCategoryArticleStep, { concurrency: 1 })
+  .foreach(writeCategoryArticleStep, { concurrency: CHRONICLE_CONCURRENCY })
   .then(collectArticlesStep)
   .commit();
 

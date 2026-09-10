@@ -54,6 +54,7 @@ import {
   type ReviewSubjectType,
 } from "@/mastra/schemas";
 import {
+  CHRONICLE_CONCURRENCY,
   assistedGenerationWorkflow,
   chronicleWorkflow,
   groupActivities,
@@ -126,6 +127,14 @@ export interface GenerationProgress {
   totalSections: number;
   completedSections: number;
   sections: SectionProgress[];
+  /**
+   * Warnings/errors collected while the pipeline ran. The manual "Generate
+   * edition" route redirects long before generation finishes, so a flash
+   * message can't carry these — they live on the row instead and are rendered
+   * by `/admin/editions/[editionId]/edit`. Optional: rows written before this
+   * field existed parse without it.
+   */
+  messages?: FlashMessage[];
 }
 
 function initialGenerationProgress(): GenerationProgress {
@@ -134,6 +143,7 @@ function initialGenerationProgress(): GenerationProgress {
     totalSections: 0,
     completedSections: 0,
     sections: [],
+    messages: [],
   };
 }
 
@@ -147,13 +157,68 @@ function parseGenerationProgress(raw: string | null): GenerationProgress | null 
 }
 
 /**
+ * Give one finished section its final status and start the next queued one.
+ *
+ * The promoted section is the next one still `"pending"`, not `index + 1`:
+ * with concurrent writing, iterations finish out of order, so "the section
+ * after the one that just finished" is usually already in flight. Counting
+ * the settled sections rather than incrementing keeps the total honest even
+ * if the same iteration were ever reported twice.
+ */
+function settleSection(
+  progress: GenerationProgress,
+  index: number,
+  status: SectionStatus,
+): GenerationProgress {
+  if (!progress.sections[index]) return progress;
+  const sections: SectionProgress[] = progress.sections.map((section, i) =>
+    i === index ? { ...section, status } : section,
+  );
+  const nextQueued = sections.findIndex((section) => section.status === "pending");
+  if (nextQueued !== -1) {
+    sections[nextQueued] = { ...sections[nextQueued], status: "writing" };
+  }
+  return {
+    ...progress,
+    sections,
+    completedSections: sections.filter(
+      (section) => section.status !== "pending" && section.status !== "writing",
+    ).length,
+  };
+}
+
+/**
+ * Serialises {@link updateGenerationProgress}'s read-modify-write cycles.
+ *
+ * Now that chronicle sections are written concurrently, several iterations
+ * finish within the same tick and would otherwise interleave read → mutate →
+ * write and lose each other's updates. Each call chains onto the previous one
+ * (the chain itself never rejects, so one failed write cannot wedge the queue)
+ * while still returning its *own* result to its *own* caller. This is a lock on
+ * the write cycle, not a cache: nothing is held in memory between calls, so the
+ * DB column stays the single source of truth the SSE endpoint reads.
+ */
+let generationProgressQueue: Promise<unknown> = Promise.resolve();
+
+/**
  * Read-modify-write `Edition.generationProgress`. Always re-reads the column
  * first (rather than threading state through function arguments) so the DB
  * stays the single source of truth every step writes through, regardless of
  * which part of the pipeline (source fetch vs. chronicle workflow) is
  * currently updating it.
  */
-async function updateGenerationProgress(
+function updateGenerationProgress(
+  editionId: number,
+  mutate: (progress: GenerationProgress) => GenerationProgress,
+): Promise<GenerationProgress> {
+  const result = generationProgressQueue.then(() =>
+    applyGenerationProgress(editionId, mutate),
+  );
+  generationProgressQueue = result.catch(() => undefined);
+  return result;
+}
+
+async function applyGenerationProgress(
   editionId: number,
   mutate: (progress: GenerationProgress) => GenerationProgress,
 ): Promise<GenerationProgress> {
@@ -168,6 +233,23 @@ async function updateGenerationProgress(
     data: { generationProgress: JSON.stringify(next) },
   });
   return next;
+}
+
+/**
+ * Append `extra` to `Edition.generationProgress.messages` — how a caller that
+ * runs the pipeline in the background (`app/admin/editions/generate/route.ts`'s
+ * `after()` block) reports a failure to an admin who was redirected away from
+ * the POST long before it happened.
+ */
+export async function appendGenerationMessages(
+  editionId: number,
+  extra: FlashMessage[],
+): Promise<void> {
+  if (extra.length === 0) return;
+  await updateGenerationProgress(editionId, (progress) => ({
+    ...progress,
+    messages: [...(progress.messages ?? []), ...extra],
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +407,10 @@ export async function generateArticleFromSource({
  * Ported from `ai_writer.generate_edition_draft`. Returns the created articles,
  * or an empty array when the edition has no activity yet. Sections whose LLM
  * call fails are skipped, matching the Python behaviour.
+ *
+ * The chronicle workflow writes `CHRONICLE_CONCURRENCY` sections at a time, so
+ * iterations finish out of order and each one settles on its own: a failure
+ * neither stops the loop nor changes any sibling section's status.
  */
 export async function generateEditionDraft(
   editionId: number,
@@ -350,9 +436,10 @@ export async function generateEditionDraft(
   // Seed generationProgress.sections/totalSections up front, before the
   // workflow starts — `workflow-step-progress` only fires when an iteration
   // *finishes*, never when one starts, so the ordered non-empty category
-  // list from `groupActivities` (matching the foreach's own iteration order,
-  // `concurrency: 1`) is the only way to know section 1 is "writing" from
-  // the very first moment.
+  // list from `groupActivities` (the foreach's own iteration order) is the
+  // only way to know which sections are already "writing" from the very
+  // first moment. The foreach starts `CHRONICLE_CONCURRENCY` of them at
+  // once, so that many are seeded as "writing", not just the first.
   const categories = [...groupActivities(activityInputs).keys()];
   await updateGenerationProgress(editionId, (progress) => ({
     ...progress,
@@ -360,18 +447,25 @@ export async function generateEditionDraft(
     completedSections: 0,
     sections: categories.map((category, index) => ({
       category,
-      status: index === 0 ? "writing" : "pending",
+      status: index < CHRONICLE_CONCURRENCY ? "writing" : "pending",
     })),
   }));
 
   const date = edition?.periodStart ?? new Date();
   const created: Article[] = [];
 
+  // One `max(order) + 1` read for the whole run: concurrent iterations
+  // asking for it one article at a time would all see the same value and
+  // write duplicate `Article.order`s. The workflow hands each section
+  // `baseOrder + n` instead.
+  const baseOrder = await nextArticleOrder(editionId);
+
   const run = await chronicleWorkflow.createRun();
   const stream = run.stream({
     inputData: {
       activities: activityInputs,
       periodLabel: label,
+      baseOrder,
       aiModel,
     },
   });
@@ -384,11 +478,13 @@ export async function generateEditionDraft(
 
     if (iterationStatus === "success") {
       // A completed iteration — either a real result, or `{ ok: false }`
-      // when the step caught its own LLM-call error internally
-      // (`chronicle.ts`'s `writeCategoryArticleStep`). Either way the
-      // foreach queue keeps going; only persist + mark "done" on success.
+      // when the step caught its own error internally (`chronicle.ts`'s
+      // `writeCategoryArticleStep` catches every one of them). Either way
+      // the foreach queue keeps going; only persist + mark "done" on
+      // success. With `CHRONICLE_CONCURRENCY > 1` these arrive out of
+      // order, so `currentIndex` is the only trustworthy identifier.
       const iterationResult = iterationOutput as
-        | { ok: boolean; result: GeneratorResult | null }
+        | { ok: boolean; result: GeneratorResult | null; order: number }
         | undefined;
       if (iterationResult?.ok && iterationResult.result) {
         const result = iterationResult.result;
@@ -401,7 +497,7 @@ export async function generateEditionDraft(
               category: result.category,
               author: DEFAULT_AUTHOR,
               deck: deckFor(result.content),
-              order: await nextArticleOrder(editionId),
+              order: iterationResult.order,
               date,
               sourceType: AI_SOURCE_TYPE,
               sourceData: JSON.stringify(result.sourceData),
@@ -409,41 +505,53 @@ export async function generateEditionDraft(
           }),
         );
       }
-      await updateGenerationProgress(editionId, (progress) => {
-        const sections = [...progress.sections];
-        if (sections[currentIndex]) {
-          sections[currentIndex] = {
-            ...sections[currentIndex],
-            status: iterationResult?.ok ? "done" : "failed",
-          };
-        }
-        if (sections[currentIndex + 1]) {
-          sections[currentIndex + 1] = { ...sections[currentIndex + 1], status: "writing" };
-        }
-        return { ...progress, sections, completedSections: progress.completedSections + 1 };
-      });
+      await updateGenerationProgress(editionId, (progress) =>
+        settleSection(progress, currentIndex, iterationResult?.ok ? "done" : "failed"),
+      );
     } else {
-      // `"failed"` or `"suspended"` — Mastra's foreach `killQueue()`s the
-      // whole loop here (verified against `@mastra/core`'s
-      // `agent-DsRUDsS_.js`); no further `workflow-step-progress` events
-      // will ever arrive for this run. Mark this section and every section
-      // after it "aborted" immediately, keep whatever was already
-      // persisted (no rollback — product decision), and warn.
-      const progress = await updateGenerationProgress(editionId, (p) => ({
-        ...p,
-        sections: p.sections.map((section, index) =>
-          index >= currentIndex ? { ...section, status: "aborted" as const } : section,
-        ),
-      }));
+      // `"failed"` or `"suspended"` — a Mastra-level failure the step did
+      // not catch itself, which is now a genuine edge case (schema
+      // mismatch, abort signal). Mastra `killQueue()`s the foreach here
+      // (verified against `@mastra/core`'s `agent-DsRUDsS_.js`), dropping
+      // iterations that had not started yet — but iterations already in
+      // flight still report normally, so the loop keeps reading instead of
+      // breaking, and only *this* section is marked aborted. Whatever was
+      // already persisted is kept (no rollback — product decision).
+      const progress = await updateGenerationProgress(editionId, (p) =>
+        settleSection(p, currentIndex, "aborted"),
+      );
       const category = progress.sections[currentIndex]?.category ?? `section ${currentIndex + 1}`;
       messages.push({
         type: "warning",
         text:
-          `Chronicle generation stopped early while writing "${category}" (${iterationStatus}) — ` +
-          `remaining sections were not written. Articles already generated were kept.`,
+          `The "${category}" section could not be written (${iterationStatus}). ` +
+          `The other sections were unaffected.`,
       });
-      break;
     }
+  }
+
+  // The stream is exhausted, so nothing can still be in progress: a section
+  // left "pending"/"writing" was dropped by a `killQueue()` above and would
+  // otherwise show a "writing…" placeholder forever.
+  let dropped: string[] = [];
+  await updateGenerationProgress(editionId, (progress) => {
+    dropped = progress.sections
+      .filter((section) => section.status === "pending" || section.status === "writing")
+      .map((section) => section.category);
+    return {
+      ...progress,
+      sections: progress.sections.map((section) =>
+        dropped.includes(section.category) ? { ...section, status: "aborted" as const } : section,
+      ),
+    };
+  });
+  if (dropped.length > 0) {
+    messages.push({
+      type: "warning",
+      text:
+        `${dropped.length} section${dropped.length === 1 ? "" : "s"} were never written ` +
+        `(${dropped.join(", ")}). The articles already generated were kept.`,
+    });
   }
 
   const outcome = await stream.result;
@@ -625,6 +733,14 @@ export async function populateEditionDraft(
   let spotifyFetched = 0;
   let generatedCount = 0;
 
+  /**
+   * Mirror everything collected so far onto the edition row. The route that
+   * starts this pipeline in the background has already responded, so the row
+   * is the only channel back to the admin — see `GenerationProgress.messages`.
+   */
+  const persistMessages = () =>
+    updateGenerationProgress(edition.id, (p) => ({ ...p, messages: [...messages] }));
+
   try {
 
   // --- GitHub fetch ---
@@ -779,6 +895,9 @@ export async function populateEditionDraft(
   }
 
   // --- AI generation ---
+  // Flush the source-fetch warnings before the slow half starts, so they show
+  // up in the edit page while the articles are still being written.
+  await persistMessages();
   const aiModel = await resolveAiModel();
   if (aiModel && fetchedCount > 0) {
     try {
@@ -795,6 +914,7 @@ export async function populateEditionDraft(
       text: `${AI_PROVIDER_NOT_CONFIGURED_MESSAGE} — AI generation skipped.`,
     });
   }
+  await persistMessages();
 
   // --- Activity ranking (Phase C / Wave 2) ---
   // Only the activity ranking (of the three ranking kinds Phase C adds) is
@@ -835,9 +955,23 @@ export async function populateEditionDraft(
         `${spotifyFetched} Spotify items, and ${generatedCount} AI-generated articles.`,
     });
   } finally {
+    // The live half of the progress column (source/section state) is done with
+    // once `generationStatus` flips, but the warnings have to outlive it: they
+    // are the only place the admin ever sees what went wrong, and the route
+    // that started this responded long ago. Everything else is reset to an
+    // empty progress so the edit page renders its article list exactly as it
+    // does for an edition that was never generated in-browser — and a run with
+    // nothing to report clears the column outright, as before.
+    const notable = messages.filter((message) => message.type !== "success");
     await prisma.edition.update({
       where: { id: edition.id },
-      data: { generationStatus: "done", generationProgress: null },
+      data: {
+        generationStatus: "done",
+        generationProgress:
+          notable.length > 0
+            ? JSON.stringify({ ...initialGenerationProgress(), messages: notable })
+            : null,
+      },
     });
   }
 

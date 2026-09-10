@@ -18,7 +18,12 @@
 import { after, type NextRequest } from "next/server";
 import { getCadence, resolvePeriodFromForm } from "@/lib/cadence";
 import { periodLabel } from "@/lib/edition-helpers";
-import { createDraftEdition, populateEditionDraft } from "@/lib/generation";
+import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
+import {
+  appendGenerationMessages,
+  createDraftEdition,
+  populateEditionDraft,
+} from "@/lib/generation";
 import { describeError, flashRedirect } from "@/lib/flash";
 
 export async function POST(request: NextRequest) {
@@ -31,6 +36,17 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return flashRedirect(request, "/admin/editions", [
       { type: "error", text: describeError(error) },
+    ]);
+  }
+
+  // Fail fast before writing anything: without a provider the background half
+  // would create a draft edition and then silently skip every AI step, which
+  // reads as "generation did nothing". Same synchronous check the per-article
+  // route does (`.../articles/generate/run/route.ts`).
+  const aiModel = await resolveAiModel();
+  if (!aiModel) {
+    return flashRedirect(request, "/admin/editions", [
+      { type: "error", text: AI_PROVIDER_NOT_CONFIGURED_MESSAGE },
     ]);
   }
 
@@ -51,6 +67,12 @@ export async function POST(request: NextRequest) {
       await populateEditionDraft(edition, period.periodStart, period.periodEnd);
     } catch (error) {
       console.error(`[admin] Background generation failed for edition ${edition.id}:`, error);
+      // The admin is on the edition page by now, not on this response — a
+      // server-console line is invisible to them, so the failure also goes on
+      // the row the edit page reads.
+      await appendGenerationMessages(edition.id, [
+        { type: "error", text: `Generation failed: ${describeError(error)}` },
+      ]);
     }
   });
 

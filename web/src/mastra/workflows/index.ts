@@ -13,6 +13,7 @@ export {
   type ChronicleInput,
   CATEGORIES,
   CATEGORY_PROMPTS,
+  CHRONICLE_CONCURRENCY,
   EVENT_CATEGORY_MAP,
   buildChroniclePrompt,
   chronicleWorkflow,
