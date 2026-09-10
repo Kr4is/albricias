@@ -15,7 +15,7 @@
 import { getSetting } from "@/lib/config/settings";
 import type { ResolvedAiModel } from "@/mastra/agents/base";
 
-export type AiProviderId = "openai" | "gemini" | "ollama";
+export type AiProviderId = "openai" | "gemini" | "ollama" | "litellm";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 /** Google renames/retires free-tier models over time — verify the current one in Google AI Studio. */
@@ -56,20 +56,38 @@ async function resolveOllama(): Promise<ResolvedAiModel | null> {
 }
 
 /**
+ * Any other OpenAI-compatible endpoint (e.g. a LiteLLM proxy in front of a
+ * locally-hosted model). Unlike Ollama, there's no sensible default base URL
+ * — it points at wherever that proxy actually runs — so both it and the
+ * model are required, same as `resolveOllama()` treats its model.
+ */
+async function resolveLitellm(): Promise<ResolvedAiModel | null> {
+  const [baseUrl, apiKey, model] = await Promise.all([
+    getSetting("integrations.litellm.baseUrl"),
+    getSetting("integrations.litellm.apiKey", { encrypted: true }),
+    getSetting("integrations.litellm.model"),
+  ]);
+  if (!baseUrl || !apiKey || !model) return null;
+  return { id: `litellm/${model}`, url: baseUrl, apiKey };
+}
+
+/**
  * The active provider's resolved Mastra model config, or `null` when it
  * isn't fully configured yet — matching this app's existing "skip this step
  * with a warning" convention for every other optional integration.
  */
 export async function resolveAiModel(): Promise<ResolvedAiModel | null> {
-  const provider = ((await getSetting("ai.provider", { default: "openai" })) ??
-    "openai") as AiProviderId;
+  const provider = ((await getSetting("ai.provider", { default: "litellm" })) ??
+    "litellm") as AiProviderId;
   switch (provider) {
     case "gemini":
       return resolveGemini();
     case "ollama":
       return resolveOllama();
     case "openai":
-    default:
       return resolveOpenAi();
+    case "litellm":
+    default:
+      return resolveLitellm();
   }
 }

@@ -7,11 +7,15 @@
  * form, unchanged. Posts to `/api/setup`, which creates the password + a
  * session secret, logs the admin in, and redirects to `/setup?step=1`.
  *
- * **Steps 1..N (skippable)** — one per entry in `SETTINGS_CATEGORIES`
- * (`@/app/admin/settings/field-specs`), in that array's order (Branding, AI,
- * GitHub, Blog, Email, Spotify, X/Twitter, Google Calendar, Alexandria).
- * Rendered with the exact same field components (`@/app/admin/settings/fields`)
- * `/admin/settings` uses, pre-filled/masked identically. Each step posts to
+ * **Steps 1..N (skippable)** — one per entry in `ONBOARDING_CATEGORIES`
+ * (`@/app/admin/settings/field-specs`), a curated subset of the full
+ * `SETTINGS_CATEGORIES` — currently GitHub and AI, grown over time as more
+ * integrations are wizard-ready; everything else stays reachable at
+ * `/admin/settings` from day one. Rendered with the exact same field
+ * components (`@/app/admin/settings/fields`) `/admin/settings` uses,
+ * pre-filled/masked identically (`muted` there dims the "not configured"
+ * amber to neutral gray, since every field is blank by definition on a fresh
+ * instance). Each step posts to
  * `/setup/step` (`./step/route.ts`) with `intent` = `"save"` | `"skip"` |
  * `"finish"`; that route is the only place `saveFields()` is called for
  * these steps, reusing the exact per-category `SettingFieldSpec[]` arrays
@@ -41,7 +45,7 @@ import { redirect } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
 import { hasAdminPassword } from "@/lib/config/admin-auth";
 import { settingDisplay } from "@/app/admin/settings/setting-display";
-import { SETTINGS_CATEGORIES } from "@/app/admin/settings/field-specs";
+import { ONBOARDING_CATEGORIES } from "@/app/admin/settings/field-specs";
 import { CategoryFormFields, resolveFieldValues } from "@/app/admin/settings/fields";
 import { isOnboardingCompleted } from "./onboarding";
 
@@ -61,7 +65,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 function clampStep(raw: string | undefined): number {
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
   const value = Number.isFinite(parsed) ? parsed : 1;
-  return Math.min(Math.max(value, 1), SETTINGS_CATEGORIES.length);
+  return Math.min(Math.max(value, 1), ONBOARDING_CATEGORIES.length);
 }
 
 function SetupCard({ children }: { children: React.ReactNode }) {
@@ -177,8 +181,8 @@ export default async function SetupPage({ searchParams }: PageProps<"/setup">) {
   }
 
   const stepIndex = clampStep(stepParam);
-  const category = SETTINGS_CATEGORIES[stepIndex - 1];
-  const isLastStep = stepIndex === SETTINGS_CATEGORIES.length;
+  const category = ONBOARDING_CATEGORIES[stepIndex - 1];
+  const isLastStep = stepIndex === ONBOARDING_CATEGORIES.length;
   const values = await resolveFieldValues(category.fields, settingDisplay);
 
   return (
@@ -186,7 +190,7 @@ export default async function SetupPage({ searchParams }: PageProps<"/setup">) {
       <SetupCard>
         <div className="text-center mb-8">
           <p className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2">
-            Step {stepIndex} of {SETTINGS_CATEGORIES.length} — Skippable
+            Step {stepIndex} of {ONBOARDING_CATEGORIES.length} — Skippable
           </p>
           <h2 className="font-masthead text-4xl mb-2">{category.title}</h2>
           <div className="border-b border-ink border-double w-24 mx-auto mb-4"></div>
@@ -197,7 +201,7 @@ export default async function SetupPage({ searchParams }: PageProps<"/setup">) {
 
         <form method="POST" action="/setup/step" className="space-y-4">
           <input type="hidden" name="step" value={stepIndex} />
-          <CategoryFormFields fields={category.fields} values={values} />
+          <CategoryFormFields fields={category.fields} values={values} muted />
 
           <div className="flex gap-3 pt-4">
             <button

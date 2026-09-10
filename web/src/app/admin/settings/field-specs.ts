@@ -20,10 +20,22 @@ export interface SettingFieldSpec extends FieldSpec {
   placeholder?: string;
   /** Used as `settingDisplay()`'s fallback when no DB row exists. */
   default?: string;
-  /** Renders a `<select>` instead of a text/password `<input>` when `"select"`. Defaults to `"text"`. */
-  type?: "text" | "select";
-  /** Required when `type === "select"`. */
+  /**
+   * `"select"` renders a `<select>`. `"provider-picker"` renders the AI
+   * step's segmented-button chooser (`AiProviderFields`) instead of a
+   * dropdown, and every other field in the same category that declares a
+   * matching `providerGroup` is shown only while that option is active.
+   * Defaults to `"text"`.
+   */
+  type?: "text" | "select" | "provider-picker";
+  /** Required when `type` is `"select"` or `"provider-picker"`. */
   options?: { value: string; label: string }[];
+  /**
+   * Ties a field to one `"provider-picker"` option's value — only shown
+   * (and only submitted) while that option is selected. Unset on fields not
+   * gated by a picker.
+   */
+  providerGroup?: string;
 }
 
 export interface SettingsCategory {
@@ -46,18 +58,46 @@ const BRANDING_FIELDS: SettingFieldSpec[] = [
   { formKey: "metadataRight", settingKey: "branding.metadataRight", label: "Metadata (top-right)" },
 ];
 
+/**
+ * Order here is also the segmented-button order in `AiProviderFields` — the
+ * first option (LiteLLM) is the default for a fresh instance, since it's the
+ * one most likely to already be free to call (a local/self-hosted proxy).
+ */
 const AI_FIELDS: SettingFieldSpec[] = [
   {
     formKey: "provider",
     settingKey: "ai.provider",
     label: "Active Provider",
-    type: "select",
-    default: "openai",
+    type: "provider-picker",
+    default: "litellm",
     options: [
+      { value: "litellm", label: "LiteLLM" },
       { value: "openai", label: "OpenAI" },
-      { value: "gemini", label: "Google Gemini (free tier available)" },
-      { value: "ollama", label: "Ollama (local, free)" },
+      { value: "ollama", label: "Ollama" },
+      { value: "gemini", label: "Gemini" },
     ],
+  },
+  {
+    formKey: "litellmBaseUrl",
+    settingKey: "integrations.litellm.baseUrl",
+    label: "LiteLLM Base URL",
+    placeholder: "e.g. https://your-litellm-proxy/v1",
+    providerGroup: "litellm",
+  },
+  {
+    formKey: "litellmApiKey",
+    settingKey: "integrations.litellm.apiKey",
+    label: "LiteLLM API Key",
+    secret: true,
+    encrypted: true,
+    providerGroup: "litellm",
+  },
+  {
+    formKey: "litellmModel",
+    settingKey: "integrations.litellm.model",
+    label: "LiteLLM Model",
+    placeholder: "e.g. qwen2.5-27b",
+    providerGroup: "litellm",
   },
   {
     formKey: "openaiApiKey",
@@ -65,6 +105,7 @@ const AI_FIELDS: SettingFieldSpec[] = [
     label: "OpenAI API Key",
     secret: true,
     encrypted: true,
+    providerGroup: "openai",
   },
   {
     formKey: "openaiModel",
@@ -72,20 +113,7 @@ const AI_FIELDS: SettingFieldSpec[] = [
     label: "OpenAI Model",
     placeholder: "gpt-4o-mini",
     default: "gpt-4o-mini",
-  },
-  {
-    formKey: "geminiApiKey",
-    settingKey: "integrations.gemini.apiKey",
-    label: "Gemini API Key",
-    secret: true,
-    encrypted: true,
-  },
-  {
-    formKey: "geminiModel",
-    settingKey: "integrations.gemini.model",
-    label: "Gemini Model",
-    placeholder: "gemini-2.0-flash",
-    default: "gemini-2.0-flash",
+    providerGroup: "openai",
   },
   {
     formKey: "ollamaBaseUrl",
@@ -93,12 +121,30 @@ const AI_FIELDS: SettingFieldSpec[] = [
     label: "Ollama Base URL",
     placeholder: "http://localhost:11434/v1",
     default: "http://localhost:11434/v1",
+    providerGroup: "ollama",
   },
   {
     formKey: "ollamaModel",
     settingKey: "integrations.ollama.model",
     label: "Ollama Model",
     placeholder: "e.g. llama3.1 (must already be pulled — `ollama pull llama3.1`)",
+    providerGroup: "ollama",
+  },
+  {
+    formKey: "geminiApiKey",
+    settingKey: "integrations.gemini.apiKey",
+    label: "Gemini API Key",
+    secret: true,
+    encrypted: true,
+    providerGroup: "gemini",
+  },
+  {
+    formKey: "geminiModel",
+    settingKey: "integrations.gemini.model",
+    label: "Gemini Model",
+    placeholder: "gemini-2.0-flash",
+    default: "gemini-2.0-flash",
+    providerGroup: "gemini",
   },
 ];
 
@@ -264,3 +310,17 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
 export function findCategory(id: string): SettingsCategory | undefined {
   return SETTINGS_CATEGORIES.find((category) => category.id === id);
 }
+
+/**
+ * The `/setup` wizard's own step order — a curated subset of
+ * `SETTINGS_CATEGORIES`, independent of that array's full order/length.
+ * `/admin/settings` still shows every category regardless of this list; this
+ * is only what a first run is walked through. Grow it as more integrations
+ * are wizard-ready — GitHub and AI are the only two worth asking about on
+ * day one right now.
+ */
+const ONBOARDING_CATEGORY_IDS = ["github", "ai"];
+
+export const ONBOARDING_CATEGORIES: SettingsCategory[] = ONBOARDING_CATEGORY_IDS.map(
+  (id) => findCategory(id)!,
+);

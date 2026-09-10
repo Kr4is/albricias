@@ -7,6 +7,7 @@
  * weather.
  */
 
+import Script from "next/script";
 import Header from "@/components/Header";
 import type { HeaderProps } from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -33,11 +34,16 @@ export default function NewspaperShell({
       </main>
       {!hideFooter && <Footer />}
       <FlashBfcacheRefresh />
-      <script
+      <Script
+        id="newspaper-shell-form-intercepts"
+        strategy="afterInteractive"
         // Site-wide form-submit intercepts, both delegated on `document` so
         // they also cover forms that render after this script runs (e.g. a
         // list re-rendered by router.refresh()) — not a querySelectorAll
-        // snapshot taken once at load.
+        // snapshot taken once at load. `next/script` (rather than a raw
+        // `<script>`) is what actually runs this on a client-side
+        // navigation, not just a full page load — see the React DEV warning
+        // a raw `<script>` produces here otherwise.
         dangerouslySetInnerHTML={{
           __html: `
             // Confirmation gate for any form marked data-confirm="...".

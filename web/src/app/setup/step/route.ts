@@ -21,14 +21,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { hasAdminPassword } from "@/lib/config/admin-auth";
-import { SETTINGS_CATEGORIES } from "@/app/admin/settings/field-specs";
+import { ONBOARDING_CATEGORIES } from "@/app/admin/settings/field-specs";
 import { saveFields } from "@/app/admin/settings/save-fields";
 import { markOnboardingCompleted, setOnboardingStep } from "../onboarding";
 
 function clampStep(raw: string | null): number {
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
   const value = Number.isFinite(parsed) ? parsed : 1;
-  return Math.min(Math.max(value, 1), SETTINGS_CATEGORIES.length);
+  return Math.min(Math.max(value, 1), ONBOARDING_CATEGORIES.length);
 }
 
 export async function POST(request: NextRequest) {
@@ -46,12 +46,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (intent === "save") {
-    const category = SETTINGS_CATEGORIES[stepIndex - 1];
+    const category = ONBOARDING_CATEGORIES[stepIndex - 1];
     await saveFields(form, category.fields);
   }
 
   const next = stepIndex + 1;
-  if (next > SETTINGS_CATEGORIES.length) {
+  if (next > ONBOARDING_CATEGORIES.length) {
     await markOnboardingCompleted();
     return NextResponse.redirect(new URL("/admin/editions", request.url), 303);
   }
