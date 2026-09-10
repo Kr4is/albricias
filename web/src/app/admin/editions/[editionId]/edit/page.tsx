@@ -19,6 +19,10 @@ import { readFlash } from "@/lib/flash";
 import { mediaUrl } from "@/lib/media";
 import { toDateInputValue } from "@/lib/date-input";
 import { ARTICLE_CATEGORIES } from "@/lib/article-categories";
+import GenerationWatcher, {
+  type GenerationProgress,
+  type GenerationSection,
+} from "./GenerationWatcher";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +37,143 @@ async function loadEdition(editionId: string) {
   const id = parseId(editionId);
   if (id === null) return null;
   return prisma.edition.findUnique({ where: { id } });
+}
+
+type LoadedEdition = NonNullable<Awaited<ReturnType<typeof loadEdition>>>;
+
+/**
+ * `Edition.generationProgress` (prisma/schema.prisma, Implementation Step 1)
+ * is read here defensively via an `unknown` cast: this file was written
+ * against the field as documented in the plan even though the migration
+ * adding it may land slightly after this file during parallel
+ * implementation. Once the generated Prisma client includes the column this
+ * cast becomes a no-op (same shape either way).
+ */
+function readGenerationProgress(edition: LoadedEdition): GenerationProgress | null {
+  const raw = (edition as unknown as { generationProgress?: string | null })
+    .generationProgress;
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as GenerationProgress;
+  } catch {
+    return null;
+  }
+}
+
+type ArticleRow = Awaited<ReturnType<typeof prisma.article.findMany>>[number];
+
+interface SectionRow {
+  key: string;
+  articles: ArticleRow[];
+  placeholder: { kind: "writing" | "aborted"; category: string } | null;
+}
+
+/**
+ * Merge `generationProgress.sections` with the real, already-persisted
+ * `Article`s so the "writing…" placeholder appears in the right spot and
+ * disappears once the section's article(s) exist — see the plan's
+ * Implementation Step 4. A category can have more than one real article
+ * (an AI-written one plus a hand-added one sharing the same category), so
+ * every matching article is grouped in, not just the first.
+ */
+function mergeSectionsWithArticles(
+  sections: readonly GenerationSection[],
+  allArticles: readonly ArticleRow[],
+): { rows: SectionRow[]; remaining: ArticleRow[] } {
+  const matchedIds = new Set<number>();
+  const rows = sections.map((section, index) => {
+    const matched = allArticles.filter((article) => article.category === section.category);
+    matched.forEach((article) => matchedIds.add(article.id));
+    const placeholder =
+      matched.length > 0
+        ? null
+        : section.status === "writing"
+          ? ({ kind: "writing", category: section.category } as const)
+          : section.status === "aborted"
+            ? ({ kind: "aborted", category: section.category } as const)
+            : null;
+    return { key: `section-${index}-${section.category}`, articles: matched, placeholder };
+  });
+  const remaining = allArticles.filter((article) => !matchedIds.has(article.id));
+  return { rows, remaining };
+}
+
+/**
+ * One article card — factored out so its markup is defined exactly once
+ * (Principle 2 of the plan) even though it now renders from three different
+ * call sites (grouped under a generation section, or trailing as a
+ * not-yet-generated ranking article).
+ */
+function ArticleCard({ article, editionId }: { article: ArticleRow; editionId: number }) {
+  return (
+    <div className="border border-stone-200 hover:border-ink transition-colors p-4 flex items-start gap-4 bg-white">
+      <div className="font-masthead text-3xl text-stone-300 leading-none shrink-0 w-8 text-center">
+        {article.order}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+          <span className="text-[9px] font-sans font-bold uppercase tracking-widest bg-stone-100 px-1.5 py-0.5">
+            {article.category}
+          </span>
+          {article.sourceType === "ai_generated" && (
+            <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-purple-600 bg-purple-50 px-1.5 py-0.5">
+              AI
+            </span>
+          )}
+          {article.date && (
+            <span className="text-[9px] font-sans text-stone-400">
+              {article.date.toLocaleDateString("en-US", {
+                month: "short",
+                day: "2-digit",
+                timeZone: "UTC",
+              })}
+            </span>
+          )}
+        </div>
+        <p className="font-headline font-bold text-base leading-tight truncate">
+          {article.title}
+        </p>
+        <p className="text-xs font-sans text-stone-500 mt-0.5 line-clamp-1">
+          {article.content.slice(0, 100)}...
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {article.sourceType === "ai_generated" && (
+          <form
+            method="POST"
+            action={`/admin/editions/${editionId}/articles/${article.id}/regenerate`}
+            data-loading-submit
+          >
+            <button
+              type="submit"
+              title="Regenerate with AI"
+              className="p-1.5 text-purple-600 hover:bg-purple-50 transition-colors border border-purple-200"
+            >
+              <span className="material-icons text-sm">auto_awesome</span>
+            </button>
+          </form>
+        )}
+        <a
+          href={`/admin/editions/${editionId}/articles/${article.id}/edit`}
+          className="p-1.5 text-ink hover:bg-stone-100 transition-colors border border-stone-200"
+        >
+          <span className="material-icons text-sm">edit</span>
+        </a>
+        <form
+          method="POST"
+          action={`/admin/editions/${editionId}/articles/${article.id}/delete`}
+          data-confirm="Delete this article?"
+        >
+          <button
+            type="submit"
+            className="p-1.5 text-red-500 hover:bg-red-50 transition-colors border border-red-100"
+          >
+            <span className="material-icons text-sm">delete</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 export async function generateMetadata({
@@ -66,6 +207,13 @@ export default async function EditionEditPage({
 
   const defaultArticleDate = toDateInputValue(edition.periodStart);
   const coverSrc = mediaUrl(edition.coverImage);
+  const generationProgress = readGenerationProgress(edition);
+  const { rows: sectionRows, remaining: remainingArticles } = generationProgress
+    ? mergeSectionsWithArticles(generationProgress.sections, articles)
+    : { rows: [] as SectionRow[], remaining: articles };
+  const hasAnythingToShow =
+    remainingArticles.length > 0 ||
+    sectionRows.some((row) => row.articles.length > 0 || row.placeholder !== null);
 
   return (
     <NewspaperShell endpoint="admin.edition_edit">
@@ -80,6 +228,10 @@ export default async function EditionEditPage({
         </div>
 
         <FlashBanner messages={messages} />
+
+        {edition.generationStatus === "running" && (
+          <GenerationWatcher editionId={edition.id} generationProgress={generationProgress} />
+        )}
 
         {/* Edition Header + Status */}
         <div className="border-b-4 border-double border-ink pb-6 mb-10">
@@ -146,18 +298,20 @@ export default async function EditionEditPage({
                   </form>
                 </>
               )}
-              <form
-                method="POST"
-                action={`/admin/editions/${edition.id}/delete`}
-                data-confirm="Permanently delete this edition and all its articles?"
-              >
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+              {edition.generationStatus !== "running" && (
+                <form
+                  method="POST"
+                  action={`/admin/editions/${edition.id}/delete`}
+                  data-confirm="Permanently delete this edition and all its articles?"
                 >
-                  Delete
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>
@@ -417,79 +571,49 @@ export default async function EditionEditPage({
               </form>
             </div>
 
-            {/* Articles list */}
-            {articles.length > 0 ? (
+            {/* Articles list — merged with generationProgress.sections (see
+                mergeSectionsWithArticles above) so a "writing…" placeholder
+                shows in the right spot while its section is still being
+                generated, and an "aborted" note shows if it never will be. */}
+            {hasAnythingToShow ? (
               <div className="space-y-3">
-                {articles.map((article) => (
-                  <div
-                    key={article.id}
-                    className="border border-stone-200 hover:border-ink transition-colors p-4 flex items-start gap-4 bg-white"
-                  >
-                    <div className="font-masthead text-3xl text-stone-300 leading-none shrink-0 w-8 text-center">
-                      {article.order}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="text-[9px] font-sans font-bold uppercase tracking-widest bg-stone-100 px-1.5 py-0.5">
-                          {article.category}
+                {sectionRows.map((row) => {
+                  if (row.articles.length > 0) {
+                    return row.articles.map((article) => (
+                      <ArticleCard key={article.id} article={article} editionId={edition.id} />
+                    ));
+                  }
+                  if (row.placeholder?.kind === "writing") {
+                    return (
+                      <div
+                        key={row.key}
+                        className="border border-dashed border-purple-200 bg-purple-50/50 p-4 flex items-center gap-3"
+                      >
+                        <span className="material-icons text-purple-500 animate-spin text-lg">
+                          autorenew
                         </span>
-                        {article.sourceType === "ai_generated" && (
-                          <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-purple-600 bg-purple-50 px-1.5 py-0.5">
-                            AI
-                          </span>
-                        )}
-                        {article.date && (
-                          <span className="text-[9px] font-sans text-stone-400">
-                            {article.date.toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "2-digit",
-                              timeZone: "UTC",
-                            })}
-                          </span>
-                        )}
+                        <p className="text-xs font-sans text-purple-700">
+                          Writing <span className="font-bold">{row.placeholder.category}</span>…
+                        </p>
                       </div>
-                      <p className="font-headline font-bold text-base leading-tight truncate">
-                        {article.title}
-                      </p>
-                      <p className="text-xs font-sans text-stone-500 mt-0.5 line-clamp-1">
-                        {article.content.slice(0, 100)}...
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {article.sourceType === "ai_generated" && (
-                        <form
-                          method="POST"
-                          action={`/admin/editions/${edition.id}/articles/${article.id}/regenerate`}
-                        >
-                          <button
-                            type="submit"
-                            title="Regenerate with AI"
-                            className="p-1.5 text-purple-600 hover:bg-purple-50 transition-colors border border-purple-200"
-                          >
-                            <span className="material-icons text-sm">auto_awesome</span>
-                          </button>
-                        </form>
-                      )}
-                      <a
-                        href={`/admin/editions/${edition.id}/articles/${article.id}/edit`}
-                        className="p-1.5 text-ink hover:bg-stone-100 transition-colors border border-stone-200"
+                    );
+                  }
+                  if (row.placeholder?.kind === "aborted") {
+                    return (
+                      <div
+                        key={row.key}
+                        className="border border-dashed border-stone-300 bg-stone-50 p-4"
                       >
-                        <span className="material-icons text-sm">edit</span>
-                      </a>
-                      <form
-                        method="POST"
-                        action={`/admin/editions/${edition.id}/articles/${article.id}/delete`}
-                        data-confirm="Delete this article?"
-                      >
-                        <button
-                          type="submit"
-                          className="p-1.5 text-red-500 hover:bg-red-50 transition-colors border border-red-100"
-                        >
-                          <span className="material-icons text-sm">delete</span>
-                        </button>
-                      </form>
-                    </div>
-                  </div>
+                        <p className="text-xs font-sans text-stone-500 italic">
+                          Could not generate this section ({row.placeholder.category}).
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+                {remainingArticles.map((article) => (
+                  <ArticleCard key={article.id} article={article} editionId={edition.id} />
                 ))}
               </div>
             ) : (
@@ -502,6 +626,12 @@ export default async function EditionEditPage({
         </div>
       </div>
 
+      {/* The `data-confirm` window.confirm() intercept used to live here too,
+          but it's now delegated in the shared script in NewspaperShell.tsx
+          (see the plan's Implementation Step 5) — keeping both would show two
+          confirm() dialogs per delete. The setInterval-based full-page reload
+          that used to live here is gone too: GenerationWatcher (above) now
+          drives updates via SSE + router.refresh() instead. */}
       <script
         dangerouslySetInnerHTML={{
           __html: `
@@ -509,11 +639,6 @@ export default async function EditionEditPage({
               btn.addEventListener('click', function () {
                 var target = document.getElementById(btn.getAttribute('data-toggle'));
                 if (target) target.classList.toggle('hidden');
-              });
-            });
-            document.querySelectorAll('form[data-confirm]').forEach(function (form) {
-              form.addEventListener('submit', function (event) {
-                if (!window.confirm(form.getAttribute('data-confirm'))) event.preventDefault();
               });
             });
           `,

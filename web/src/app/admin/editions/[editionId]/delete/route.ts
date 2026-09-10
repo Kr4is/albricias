@@ -17,6 +17,15 @@ export async function POST(
   const edition = await prisma.edition.findUnique({ where: { id } });
   if (!edition) return new Response("Not found", { status: 404 });
 
+  // Defense in depth: the UI hides/disables the Delete button while a
+  // generation is running, but a direct POST (or a stale tab) could still
+  // reach here — reject it server-side too.
+  if (edition.generationStatus === "running") {
+    return flashRedirect(request, "/admin/editions", [
+      { type: "error", text: `Edition '${edition.title}' is still generating and can't be deleted yet.` },
+    ]);
+  }
+
   await prisma.edition.delete({ where: { id } });
 
   return flashRedirect(request, "/admin/editions", [

@@ -104,7 +104,11 @@ export default async function RankingsPage({
                 ? `${githubActivityCount} GitHub event(s) recorded for this edition — also generated automatically for every new edition.`
                 : "No GitHub activity recorded for this edition yet — generating now will find nothing to rank."}
             </p>
-            <form method="POST" action={`/admin/editions/${edition.id}/articles/rank/activity`}>
+            <form
+              method="POST"
+              action={`/admin/editions/${edition.id}/articles/rank/activity`}
+              data-loading-submit
+            >
               <button
                 type="submit"
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold font-sans uppercase tracking-widest bg-purple-700 text-white hover:bg-purple-800 transition-colors"
@@ -131,7 +135,11 @@ export default async function RankingsPage({
                 ? `Most recent published edition: "${priorPublished.title}" (${periodLabel(priorPublished)}).`
                 : "No previously published edition found yet — nothing to build a digest from."}
             </p>
-            <form method="POST" action={`/admin/editions/${edition.id}/articles/rank/best-of`}>
+            <form
+              method="POST"
+              action={`/admin/editions/${edition.id}/articles/rank/best-of`}
+              data-loading-submit
+            >
               <button
                 type="submit"
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold font-sans uppercase tracking-widest bg-purple-700 text-white hover:bg-purple-800 transition-colors"
@@ -156,6 +164,7 @@ export default async function RankingsPage({
               method="POST"
               action={`/admin/editions/${edition.id}/articles/rank/custom`}
               className="space-y-4"
+              data-loading-submit
             >
               <div>
                 <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">

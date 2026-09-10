@@ -12,9 +12,10 @@
  */
 
 import { getSetting } from "@/lib/config/settings";
+import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
 import { editionArticles, editionById } from "@/lib/editions";
 import { periodLabel } from "@/lib/edition-helpers";
-import { runNewspaperAgent } from "@/mastra/agents/base";
+import { runNewspaperAgent, type ResolvedAiModel } from "@/mastra/agents/base";
 import { socialCopyAgent } from "@/mastra/agents/social";
 import { BLUESKY_TEXT_LIMIT } from "./bluesky";
 import { MASTODON_TEXT_LIMIT } from "./mastodon";
@@ -97,18 +98,17 @@ export async function defaultSocialCopy(edition: { id: number; title: string }):
 /**
  * Generates the five networks' post copy for `editionId` via one LLM call.
  *
- * Throws when the OpenAI API key (DB-stored or `apiKey`) is unset, or the
+ * Throws when no AI provider (DB-stored, or `aiModel`) is configured, or the
  * edition doesn't exist — callers (the distribute screen) catch this and
  * fall back to {@link defaultSocialCopy} rather than crash, matching this
  * codebase's graceful-degradation convention for missing credentials.
  */
 export async function generateSocialCopy(
   editionId: number,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<SocialCopyResult> {
-  const key =
-    apiKey ?? (await getSetting("integrations.openai.apiKey", { encrypted: true }));
-  if (!key) throw new Error("OpenAI API key is not configured. Set it at /admin/settings.");
+  const resolvedModel = aiModel ?? (await resolveAiModel());
+  if (!resolvedModel) throw new Error(AI_PROVIDER_NOT_CONFIGURED_MESSAGE);
 
   const edition = await editionById(editionId);
   if (!edition) throw new Error(`Edition ${editionId} not found.`);
@@ -144,7 +144,7 @@ export async function generateSocialCopy(
 
   const raw = await runNewspaperAgent(socialCopyAgent, {
     user: prompt,
-    apiKey: key,
+    aiModel: resolvedModel,
     maxTokens: 700,
   });
   const sections = parseSections(raw);

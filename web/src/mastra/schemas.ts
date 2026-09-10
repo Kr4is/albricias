@@ -10,6 +10,22 @@
 
 import { z } from "zod";
 
+/**
+ * Serialisable mirror of `ResolvedAiModel` (`./agents/base`) — the same
+ * shape, but as a Zod schema so it can travel through a workflow's
+ * `inputSchema` (Mastra workflow steps validate/serialise their input).
+ * `id` keeps Mastra's own `"provider/model"` template-literal type via
+ * `z.custom` so it stays assignable everywhere `ResolvedAiModel` is.
+ */
+export const resolvedAiModelSchema = z.object({
+  id: z.custom<`${string}/${string}`>(
+    (val) => typeof val === "string" && val.includes("/"),
+    { message: "Expected a \"provider/model\" string." },
+  ),
+  apiKey: z.string().optional(),
+  url: z.string().optional(),
+});
+
 /** Structured output from any article generator. */
 export const generatorResultSchema = z.object({
   title: z.string(),

@@ -36,6 +36,23 @@ model Edition {
   vol         String
   publishedAt DateTime? @map("published_at")
   createdAt   DateTime  @default(now()) @map("created_at")
+  /// "running" | "done" — tracks the async "Generate with AI" pipeline
+  /// (see runEditionGeneration in src/lib/generation/index.ts) so
+  /// /admin/editions/[id]/edit can show a live view while it's in progress.
+  /// Editions not created through that flow (manual add, migrated data)
+  /// are "done" from the start — there is nothing in progress for them.
+  generationStatus String @default("done") @map("generation_status")
+  /// JSON, nullable, only meaningful while `generationStatus === "running"` —
+  /// incremental progress for the live SSE view
+  /// (`/admin/editions/[id]/live`), cleared back to `null` once generation
+  /// finishes (see the `finally` block in `populateEditionDraft`). Shape:
+  ///   {
+  ///     sourceProgress: { github: "pending"|"fetching"|"done"|"skipped", blog: ..., spotify: ..., alexandria: ... },
+  ///     totalSections: number,
+  ///     completedSections: number,
+  ///     sections: [{ category: string, status: "pending"|"writing"|"done"|"failed"|"aborted" }]
+  ///   }
+  generationProgress String? @map("generation_progress")
 
   articles          Article[]
   serviceActivities ServiceActivity[]

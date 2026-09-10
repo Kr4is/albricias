@@ -23,6 +23,7 @@ import {
   type GeneratorResult,
   activityInputSchema,
   generatorResultSchema,
+  resolvedAiModelSchema,
 } from "../schemas";
 
 /**
@@ -226,8 +227,8 @@ const chronicleInputSchema = z.object({
    * Comes from `periodLabel()` in `src/lib/edition-helpers.ts`.
    */
   periodLabel: z.string(),
-  /** Defaults to `OPENAI_API_KEY`. */
-  apiKey: z.string().optional(),
+  /** Resolved AI text-generation provider/model — see `@/lib/ai/provider`. */
+  aiModel: resolvedAiModelSchema.optional(),
 });
 
 const categoryJobSchema = z.object({
@@ -235,7 +236,7 @@ const categoryJobSchema = z.object({
   prompt: z.string(),
   fallbackTitle: z.string(),
   activityCount: z.number(),
-  apiKey: z.string().optional(),
+  aiModel: resolvedAiModelSchema.optional(),
 });
 
 /** One job's outcome; a failed section is skipped, never fatal. */
@@ -261,7 +262,7 @@ const groupActivitiesStep = createStep({
       ),
       fallbackTitle: `${category} Dispatch — ${inputData.periodLabel}`,
       activityCount: group.length,
-      apiKey: inputData.apiKey,
+      aiModel: inputData.aiModel,
     }));
   },
 });
@@ -276,7 +277,7 @@ const writeCategoryArticleStep = createStep({
     try {
       raw = await runNewspaperAgent(chronicleAgent, {
         user: inputData.prompt,
-        apiKey: inputData.apiKey,
+        aiModel: inputData.aiModel,
       });
     } catch (error) {
       // `chronicle.py` logs and `continue`s so one bad section never sinks

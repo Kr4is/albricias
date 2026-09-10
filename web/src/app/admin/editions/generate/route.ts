@@ -4,17 +4,21 @@
  * active cadence's period, and extended with the blog RSS source (Phase 2).
  *
  * The actual generation pipeline (fetch GitHub+blog+Spotify activity, create
- * the `Edition`, run AI generation) now lives in
- * `@/lib/generation`'s `runEditionGeneration` (Phase A / scheduler), shared
- * with the cron scheduler (`@/lib/scheduler`). This route is a thin wrapper:
- * resolve the period from the submitted form, call the shared pipeline, and
- * redirect with flash messages — identical behaviour to before the extraction.
+ * the `Edition`, run AI generation) now lives in `@/lib/generation`'s
+ * `createDraftEdition` + `populateEditionDraft` (split out of the single
+ * `runEditionGeneration` the cron scheduler still uses). This route creates
+ * the draft edition synchronously (fast — one INSERT) and redirects to it
+ * immediately, then runs the slow half via `after()` so the admin lands on
+ * the edition page and watches activity/articles appear as they're
+ * generated, instead of staring at a blocked tab for however long the
+ * configured AI provider takes (which can be minutes with a local Ollama
+ * model) — see `/admin/editions/[editionId]/edit/page.tsx`'s polling banner.
  */
 
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 import { getCadence, resolvePeriodFromForm } from "@/lib/cadence";
 import { periodLabel } from "@/lib/edition-helpers";
-import { runEditionGeneration } from "@/lib/generation";
+import { createDraftEdition, populateEditionDraft } from "@/lib/generation";
 import { describeError, flashRedirect } from "@/lib/flash";
 
 export async function POST(request: NextRequest) {
@@ -30,10 +34,10 @@ export async function POST(request: NextRequest) {
     ]);
   }
 
-  const outcome = await runEditionGeneration(cadence, period.periodStart, period.periodEnd);
+  const created = await createDraftEdition(cadence, period.periodStart, period.periodEnd);
 
-  if (outcome.status === "exists") {
-    return flashRedirect(request, `/admin/editions/${outcome.edition.id}/edit`, [
+  if (created.status === "exists") {
+    return flashRedirect(request, `/admin/editions/${created.edition.id}/edit`, [
       {
         type: "info",
         text: `An edition for ${periodLabel({ cadence, ...period })} already exists.`,
@@ -41,5 +45,16 @@ export async function POST(request: NextRequest) {
     ]);
   }
 
-  return flashRedirect(request, `/admin/editions/${outcome.edition.id}/edit`, outcome.messages);
+  const edition = created.edition;
+  after(async () => {
+    try {
+      await populateEditionDraft(edition, period.periodStart, period.periodEnd);
+    } catch (error) {
+      console.error(`[admin] Background generation failed for edition ${edition.id}:`, error);
+    }
+  });
+
+  return flashRedirect(request, `/admin/editions/${edition.id}/edit`, [
+    { type: "info", text: "Generating your edition — this page will update automatically." },
+  ]);
 }

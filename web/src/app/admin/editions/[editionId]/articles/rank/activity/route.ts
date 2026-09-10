@@ -4,7 +4,7 @@
  */
 
 import type { NextRequest } from "next/server";
-import { getSetting } from "@/lib/config/settings";
+import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
 import { describeError, flashRedirect } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { createActivityRankingArticle } from "@/lib/rankings";
@@ -26,15 +26,15 @@ export async function POST(
   const edition = await prisma.edition.findUnique({ where: { id } });
   if (!edition) return new Response("Not found", { status: 404 });
 
-  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
-  if (!openaiKey) {
+  const aiModel = await resolveAiModel();
+  if (!aiModel) {
     return flashRedirect(request, `/admin/editions/${id}/articles/rank`, [
-      { type: "error", text: "OpenAI API key is not configured — set it at /admin/settings." },
+      { type: "error", text: AI_PROVIDER_NOT_CONFIGURED_MESSAGE },
     ]);
   }
 
   try {
-    const article = await createActivityRankingArticle(id, openaiKey);
+    const article = await createActivityRankingArticle(id, aiModel);
     if (!article) {
       return flashRedirect(request, `/admin/editions/${id}/articles/rank`, [
         {

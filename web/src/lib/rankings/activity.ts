@@ -24,7 +24,13 @@ import type { Article } from "@/generated/prisma/client";
 import { getSetting } from "@/lib/config/settings";
 import { periodLabel } from "@/lib/edition-helpers";
 import { prisma } from "@/lib/prisma";
-import { chronicleAgent, MODEL_NAME, parseResponse, runNewspaperAgent } from "@/mastra/agents";
+import {
+  chronicleAgent,
+  MODEL_NAME,
+  parseResponse,
+  runNewspaperAgent,
+  type ResolvedAiModel,
+} from "@/mastra/agents";
 import type { GeneratorResult } from "@/mastra/schemas";
 import { RANKING_CATEGORY, persistRankingArticle } from "./shared";
 
@@ -203,10 +209,10 @@ export interface ActivityRankingInput {
 /** One LLM call, in the `NEWSPAPER_PERSONA` voice, narrating the raw ranking numbers. */
 export async function narrateActivityRanking(
   input: ActivityRankingInput,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<GeneratorResult> {
   const prompt = buildActivityRankingPrompt(input.periodLabel, input.computation, input.languages);
-  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, apiKey });
+  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, aiModel });
   const { title, content } = parseResponse(raw, `Activity Report — ${input.periodLabel}`);
   return {
     title,
@@ -231,7 +237,7 @@ export async function narrateActivityRanking(
  */
 export async function createActivityRankingArticle(
   editionId: number,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<Article | null> {
   const edition = await prisma.edition.findUnique({ where: { id: editionId } });
   if (!edition) throw new Error(`Edition ${editionId} not found.`);
@@ -260,6 +266,6 @@ export async function createActivityRankingArticle(
   }
 
   const label = periodLabel(edition);
-  const result = await narrateActivityRanking({ periodLabel: label, computation, languages }, apiKey);
+  const result = await narrateActivityRanking({ periodLabel: label, computation, languages }, aiModel);
   return persistRankingArticle(editionId, result, edition.periodStart);
 }

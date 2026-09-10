@@ -26,7 +26,13 @@ import type { Article } from "@/generated/prisma/client";
 import { periodLabel } from "@/lib/edition-helpers";
 import { previousPublishedEdition, editionArticles } from "@/lib/editions";
 import { prisma } from "@/lib/prisma";
-import { chronicleAgent, MODEL_NAME, parseResponse, runNewspaperAgent } from "@/mastra/agents";
+import {
+  chronicleAgent,
+  MODEL_NAME,
+  parseResponse,
+  runNewspaperAgent,
+  type ResolvedAiModel,
+} from "@/mastra/agents";
 import type { GeneratorResult } from "@/mastra/schemas";
 import { RANKING_CATEGORY, persistRankingArticle } from "./shared";
 
@@ -70,9 +76,12 @@ export interface BestOfInput {
 }
 
 /** One LLM call asking for an editorial "best of" pick — never a metrics-based ranking. */
-export async function narrateBestOf(input: BestOfInput, apiKey?: string): Promise<GeneratorResult> {
+export async function narrateBestOf(
+  input: BestOfInput,
+  aiModel?: ResolvedAiModel,
+): Promise<GeneratorResult> {
   const prompt = buildBestOfPrompt(input.periodLabel, input.priorLabel, input.candidates);
-  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, apiKey });
+  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, aiModel });
   const { title, content } = parseResponse(raw, `Best of ${input.priorLabel}`);
   return {
     title,
@@ -97,7 +106,7 @@ export async function narrateBestOf(input: BestOfInput, apiKey?: string): Promis
  */
 export async function createBestOfDigestArticle(
   editionId: number,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<Article | null> {
   const edition = await prisma.edition.findUnique({ where: { id: editionId } });
   if (!edition) throw new Error(`Edition ${editionId} not found.`);
@@ -122,7 +131,7 @@ export async function createBestOfDigestArticle(
       priorEditionId: prior.id,
       candidates,
     },
-    apiKey,
+    aiModel,
   );
   return persistRankingArticle(editionId, result, edition.periodStart);
 }

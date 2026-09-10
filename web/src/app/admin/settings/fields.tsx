@@ -53,6 +53,38 @@ export function Field({
   );
 }
 
+export function SelectField({
+  label,
+  name,
+  info,
+  options,
+}: {
+  label: string;
+  name: string;
+  info: SettingDisplayInfo;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
+        {label}
+      </label>
+      <select
+        name={name}
+        defaultValue={info.value}
+        className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <StatusNote info={info} hasDefault={!info.configured} />
+    </div>
+  );
+}
+
 export function SecretField({
   label,
   name,
@@ -91,6 +123,17 @@ export function CategoryFormFields({
     <>
       {fields.map((field) => {
         const info = values[field.settingKey];
+        if (field.type === "select") {
+          return (
+            <SelectField
+              key={field.formKey}
+              label={field.label}
+              name={field.formKey}
+              info={info}
+              options={field.options ?? []}
+            />
+          );
+        }
         return field.secret ? (
           <SecretField key={field.formKey} label={field.label} name={field.formKey} info={info} />
         ) : (

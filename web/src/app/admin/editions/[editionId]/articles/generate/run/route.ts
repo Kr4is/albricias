@@ -10,6 +10,7 @@ import type { SourceType } from "@/lib/sources";
 import type { GeneratorType, ReviewSubjectType } from "@/mastra/schemas";
 import { parseDateInputValue } from "@/lib/date-input";
 import { getSetting } from "@/lib/config/settings";
+import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
 import { describeError, flashRedirect } from "@/lib/flash";
 
 /** Pull `source_metadata.notesSource` back out of a persisted article's `sourceData` JSON, if present. */
@@ -33,10 +34,10 @@ export async function POST(
   const edition = await prisma.edition.findUnique({ where: { id } });
   if (!edition) return new Response("Not found", { status: 404 });
 
-  const openaiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
-  if (!openaiKey) {
+  const aiModel = await resolveAiModel();
+  if (!aiModel) {
     return flashRedirect(request, `/admin/editions/${id}/edit`, [
-      { type: "error", text: "OpenAI API key is not configured — set it at /admin/settings." },
+      { type: "error", text: AI_PROVIDER_NOT_CONFIGURED_MESSAGE },
     ]);
   }
 
@@ -52,6 +53,7 @@ export async function POST(
 
   let audioFile: File | undefined;
   let audioFilename = "";
+  let audioApiKey: string | undefined;
   let textInput = "";
   let calendarId: string | undefined;
   let googleEventId: string | undefined;
@@ -61,6 +63,17 @@ export async function POST(
     if (!(file instanceof File) || file.size === 0) {
       return flashRedirect(request, `/admin/editions/${id}/articles/generate`, [
         { type: "error", text: "Please upload an audio file." },
+      ]);
+    }
+    // Whisper transcription is OpenAI-only regardless of the configured text
+    // provider — see `audioApiKey` on `GenerateArticleFromSourceOptions`.
+    audioApiKey = await getSetting("integrations.openai.apiKey", { encrypted: true });
+    if (!audioApiKey) {
+      return flashRedirect(request, `/admin/editions/${id}/articles/generate`, [
+        {
+          type: "error",
+          text: "Audio transcription requires an OpenAI API key (Whisper) — set it at /admin/settings, or use Text/Notes input instead.",
+        },
       ]);
     }
     audioFile = file;
@@ -96,7 +109,8 @@ export async function POST(
       editionId: id,
       sourceType: sourceType as SourceType,
       generatorType: generatorType as GeneratorType,
-      apiKey: openaiKey,
+      aiModel,
+      audioApiKey,
       audioFile,
       audioFilename,
       textInput,

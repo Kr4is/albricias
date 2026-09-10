@@ -33,14 +33,29 @@ export const MODEL_NAME = "gpt-4o-mini";
 export const DEFAULT_TEMPERATURE = 0.8;
 export const DEFAULT_MAX_TOKENS = 800;
 
+/**
+ * A resolved Mastra model-router config — see `@/lib/ai/provider`'s
+ * `resolveAiModel()`, which builds one of these from the `ai.provider`
+ * setting and its per-provider credentials at `/admin/settings` (OpenAI,
+ * Google Gemini, or a local Ollama server).
+ */
+export interface ResolvedAiModel {
+  /** `"provider/model"`, e.g. `"openai/gpt-4o-mini"`, `"google/gemini-2.0-flash"`, `"ollama/llama3.1"`. */
+  id: `${string}/${string}`;
+  apiKey?: string;
+  /** Base URL override — used for Ollama and other OpenAI-compatible custom endpoints. */
+  url?: string;
+}
+
 export interface RunAgentOptions {
   /** The user-role prompt. */
   user: string;
   /**
-   * OpenAI API key. Defaults to `OPENAI_API_KEY`, which is what the model
-   * router reads when no explicit key is supplied.
+   * Resolved provider/model. Defaults to the static `MODEL_ID` (OpenAI,
+   * reading `OPENAI_API_KEY`) when omitted — callers should normally resolve
+   * one via `@/lib/ai/provider`'s `resolveAiModel()` first.
    */
-  apiKey?: string;
+  aiModel?: ResolvedAiModel;
   temperature?: number;
   maxTokens?: number;
 }
@@ -55,13 +70,13 @@ export async function runNewspaperAgent(
   agent: Agent,
   {
     user,
-    apiKey,
+    aiModel,
     temperature = DEFAULT_TEMPERATURE,
     maxTokens = DEFAULT_MAX_TOKENS,
   }: RunAgentOptions,
 ): Promise<string> {
   const result = await agent.generate(user, {
-    model: apiKey ? { id: MODEL_ID, apiKey } : MODEL_ID,
+    model: aiModel ?? MODEL_ID,
     modelSettings: { temperature, maxOutputTokens: maxTokens },
   });
   return result.text ?? "";

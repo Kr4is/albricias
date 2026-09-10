@@ -20,6 +20,10 @@ export interface SettingFieldSpec extends FieldSpec {
   placeholder?: string;
   /** Used as `settingDisplay()`'s fallback when no DB row exists. */
   default?: string;
+  /** Renders a `<select>` instead of a text/password `<input>` when `"select"`. Defaults to `"text"`. */
+  type?: "text" | "select";
+  /** Required when `type === "select"`. */
+  options?: { value: string; label: string }[];
 }
 
 export interface SettingsCategory {
@@ -44,11 +48,57 @@ const BRANDING_FIELDS: SettingFieldSpec[] = [
 
 const AI_FIELDS: SettingFieldSpec[] = [
   {
-    formKey: "apiKey",
+    formKey: "provider",
+    settingKey: "ai.provider",
+    label: "Active Provider",
+    type: "select",
+    default: "openai",
+    options: [
+      { value: "openai", label: "OpenAI" },
+      { value: "gemini", label: "Google Gemini (free tier available)" },
+      { value: "ollama", label: "Ollama (local, free)" },
+    ],
+  },
+  {
+    formKey: "openaiApiKey",
     settingKey: "integrations.openai.apiKey",
     label: "OpenAI API Key",
     secret: true,
     encrypted: true,
+  },
+  {
+    formKey: "openaiModel",
+    settingKey: "integrations.openai.model",
+    label: "OpenAI Model",
+    placeholder: "gpt-4o-mini",
+    default: "gpt-4o-mini",
+  },
+  {
+    formKey: "geminiApiKey",
+    settingKey: "integrations.gemini.apiKey",
+    label: "Gemini API Key",
+    secret: true,
+    encrypted: true,
+  },
+  {
+    formKey: "geminiModel",
+    settingKey: "integrations.gemini.model",
+    label: "Gemini Model",
+    placeholder: "gemini-2.0-flash",
+    default: "gemini-2.0-flash",
+  },
+  {
+    formKey: "ollamaBaseUrl",
+    settingKey: "integrations.ollama.baseUrl",
+    label: "Ollama Base URL",
+    placeholder: "http://localhost:11434/v1",
+    default: "http://localhost:11434/v1",
+  },
+  {
+    formKey: "ollamaModel",
+    settingKey: "integrations.ollama.model",
+    label: "Ollama Model",
+    placeholder: "e.g. llama3.1 (must already be pulled — `ollama pull llama3.1`)",
   },
 ];
 
@@ -166,7 +216,10 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: "ai",
     title: "AI",
-    description: "Powers article generation, TTS narration, activity/calendar rankings, and social copy.",
+    description:
+      "Powers article generation, activity/calendar rankings, and social copy. Choose one active " +
+      "provider below; only its fields need to be filled in. (TTS narration is a separate, " +
+      "OpenAI-only feature and always uses the OpenAI key regardless of this choice.)",
     fields: AI_FIELDS,
   },
   {

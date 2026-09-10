@@ -17,7 +17,13 @@
 import type { Article } from "@/generated/prisma/client";
 import { periodLabel } from "@/lib/edition-helpers";
 import { prisma } from "@/lib/prisma";
-import { chronicleAgent, MODEL_NAME, parseResponse, runNewspaperAgent } from "@/mastra/agents";
+import {
+  chronicleAgent,
+  MODEL_NAME,
+  parseResponse,
+  runNewspaperAgent,
+  type ResolvedAiModel,
+} from "@/mastra/agents";
 import type { GeneratorResult } from "@/mastra/schemas";
 import { RANKING_CATEGORY, persistRankingArticle } from "./shared";
 
@@ -168,10 +174,10 @@ export interface GenericRankingNarrationInput {
 /** One LLM call narrating an already-computed generic ranking. */
 export async function narrateGenericRanking(
   input: GenericRankingNarrationInput,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<GeneratorResult> {
   const prompt = buildGenericRankingPrompt(input);
-  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, apiKey });
+  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, aiModel });
   const { title, content } = parseResponse(
     raw,
     `Top ${input.topN}: ${input.fieldLabel} — ${input.periodLabel}`,
@@ -199,7 +205,7 @@ export interface GenericRankingOptions {
   model: RankableModel;
   field: string;
   topN: number;
-  apiKey?: string;
+  aiModel?: ResolvedAiModel;
 }
 
 /**
@@ -244,7 +250,7 @@ export async function createGenericRankingArticle(options: GenericRankingOptions
       rows,
       topN: options.topN,
     },
-    options.apiKey,
+    options.aiModel,
   );
   return persistRankingArticle(options.editionId, result, edition.periodStart);
 }

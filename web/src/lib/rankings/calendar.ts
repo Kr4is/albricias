@@ -30,7 +30,13 @@ import type { Article } from "@/generated/prisma/client";
 import { periodLabel } from "@/lib/edition-helpers";
 import { prisma } from "@/lib/prisma";
 import { type CalendarEventTiming, fetchCalendarEventStats, getValidGoogleAccessToken } from "@/lib/sources/google";
-import { chronicleAgent, MODEL_NAME, parseResponse, runNewspaperAgent } from "@/mastra/agents";
+import {
+  chronicleAgent,
+  MODEL_NAME,
+  parseResponse,
+  runNewspaperAgent,
+  type ResolvedAiModel,
+} from "@/mastra/agents";
 import type { GeneratorResult } from "@/mastra/schemas";
 import { RANKING_CATEGORY, persistRankingArticle } from "./shared";
 
@@ -178,10 +184,10 @@ export interface CalendarRankingInput {
 /** One LLM call, in the `NEWSPAPER_PERSONA` voice, narrating the raw calendar numbers. */
 export async function narrateCalendarRanking(
   input: CalendarRankingInput,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<GeneratorResult> {
   const prompt = buildCalendarRankingPrompt(input.periodLabel, input.computation);
-  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, apiKey });
+  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, aiModel });
   const { title, content } = parseResponse(raw, `Calendar Almanac — ${input.periodLabel}`);
   return {
     title,
@@ -206,7 +212,7 @@ export async function narrateCalendarRanking(
  */
 export async function createCalendarRankingArticle(
   editionId: number,
-  apiKey?: string,
+  aiModel?: ResolvedAiModel,
 ): Promise<Article | null> {
   const edition = await prisma.edition.findUnique({ where: { id: editionId } });
   if (!edition) throw new Error(`Edition ${editionId} not found.`);
@@ -216,6 +222,6 @@ export async function createCalendarRankingArticle(
 
   const computation = computeCalendarRanking(timings);
   const label = periodLabel(edition);
-  const result = await narrateCalendarRanking({ periodLabel: label, computation }, apiKey);
+  const result = await narrateCalendarRanking({ periodLabel: label, computation }, aiModel);
   return persistRankingArticle(editionId, result, edition.periodStart);
 }

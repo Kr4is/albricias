@@ -114,6 +114,7 @@ export default async function ArticleEditPage({
             action={`/admin/editions/${edition.id}/articles/${article.id}/update`}
             encType="multipart/form-data"
             className="space-y-7 font-serif"
+            data-loading-submit
           >
             {/* Headline */}
             <div>
@@ -255,6 +256,7 @@ export default async function ArticleEditPage({
                 <button
                   type="submit"
                   formAction={`/admin/editions/${edition.id}/articles/${article.id}/generate-audio`}
+                  data-loading-text="Generating…"
                   className="mt-2 w-full px-3 py-2 text-[10px] font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
                 >
                   Generate Audio (AI)
@@ -298,6 +300,7 @@ export default async function ArticleEditPage({
                 <button
                   type="submit"
                   formAction={`/admin/editions/${edition.id}/articles/${article.id}/regenerate`}
+                  data-loading-text="Regenerating…"
                   className="px-4 py-2 text-xs font-bold font-sans uppercase tracking-widest bg-purple-700 text-white hover:bg-purple-800 transition-colors"
                 >
                   Regenerate

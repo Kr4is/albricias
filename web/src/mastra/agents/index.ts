@@ -121,3 +121,5 @@ export {
   parseResponse,
   runNewspaperAgent,
 } from "./base";
+
+export type { ResolvedAiModel } from "./base";

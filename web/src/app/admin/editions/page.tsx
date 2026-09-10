@@ -32,6 +32,7 @@ const editionSelect = {
   status: true,
   vol: true,
   publishedAt: true,
+  generationStatus: true,
   _count: { select: { articles: true, serviceActivities: true } },
 } as const;
 
@@ -259,6 +260,20 @@ export default async function EditionsDashboardPage({
                         Publish
                       </button>
                     </form>
+                    {edition.generationStatus !== "running" && (
+                      <form
+                        method="POST"
+                        action={`/admin/editions/${edition.id}/delete`}
+                        data-confirm="Permanently delete this edition and all its articles?"
+                      >
+                        <button
+                          type="submit"
+                          className="px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    )}
                   </div>
                 </div>
               ))}
@@ -362,11 +377,16 @@ export default async function EditionsDashboardPage({
             </p>
           </div>
 
-          <form method="POST" action="/admin/editions/generate" className="space-y-4">
+          <form
+            method="POST"
+            action="/admin/editions/generate"
+            className="space-y-4"
+            data-loading-submit
+          >
             <PeriodPickerFields cadence={cadence} now={now} />
             <p className="text-[10px] font-sans text-stone-500 italic">
               Requires GitHub token/username, blog RSS URL, and/or a
-              connected Spotify account, plus an OpenAI API key — configure
+              connected Spotify account, plus an AI provider — configure
               these at /admin/settings
             </p>
             <div className="flex gap-3 pt-2">
@@ -379,6 +399,7 @@ export default async function EditionsDashboardPage({
               </button>
               <button
                 type="submit"
+                data-loading-text="Generating… this can take a while"
                 className="flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
               >
                 Generate

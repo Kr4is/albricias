@@ -32,6 +32,7 @@ import {
   type GeneratorResult,
   generatorResultSchema,
   generatorTypeSchema,
+  resolvedAiModelSchema,
   reviewSubjectTypeSchema,
 } from "../schemas";
 
@@ -60,8 +61,8 @@ const assistedInputSchema = z.object({
   subjectType: reviewSubjectTypeSchema.default("other"),
   /** Interview generator only. */
   intervieweeName: z.string().default(""),
-  /** Defaults to `OPENAI_API_KEY`. */
-  apiKey: z.string().optional(),
+  /** Resolved AI text-generation provider/model — see `@/lib/ai/provider`. */
+  aiModel: resolvedAiModelSchema.optional(),
 });
 
 export type AssistedGenerationInput = z.input<typeof assistedInputSchema>;
@@ -173,7 +174,7 @@ function makeGeneratorStep(spec: GeneratorSpec) {
       const prompt = spec.buildPrompt(inputData);
       const raw = await runNewspaperAgent(spec.agent, {
         user: prompt,
-        apiKey: inputData.apiKey,
+        aiModel: inputData.aiModel,
         maxTokens: spec.maxTokens,
       });
       const { title, content } = parseResponse(raw, spec.fallbackTitle);
