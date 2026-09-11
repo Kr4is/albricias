@@ -59,6 +59,17 @@ export interface ScoreBreakdown {
 
 /** One entry of the stored `Edition.topicCandidates` array. */
 export interface TopicCandidate {
+  /**
+   * Stable within one edition's candidate list, e.g. `` `${kind}-${index}` ``
+   * — `kind` alone isn't unique (it can repeat across different repos), so
+   * `index` (this candidate's position among the scored/detected candidates,
+   * assigned once in {@link import("./index").rankCandidates}) is part of the
+   * key. Not stable *across* editions/regenerations — only used to link an
+   * auto-generated `Article.sourceData.topicCandidateId` and
+   * `Edition.curatorMarks.topicCandidateIds` back to a candidate within the
+   * same stored array.
+   */
+  id: string;
   kind: TopicCandidateKind;
   title: string;
   repos: string[];

@@ -31,6 +31,8 @@ import type { Metadata } from "next";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import { readFlash } from "@/lib/flash";
+import { getSetting } from "@/lib/config/settings";
+import { getServiceToken } from "@/lib/service-token";
 import { settingDisplay } from "./setting-display";
 import { SETTINGS_CATEGORIES } from "./field-specs";
 import { CategoryFormFields, resolveFieldValues } from "./fields";
@@ -39,22 +41,48 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Settings - Admin" };
 
+/**
+ * Permanent connection-status badge for the categories whose "configured?"
+ * state also gates a source in `populateEditionDraft`
+ * (`@/lib/generation/index.ts`) — shown next to the card title so the admin
+ * doesn't have to generate an edition first to see it. `undefined` (any
+ * other category) renders nothing.
+ */
+function ConnectionBadge({ connected }: { connected: boolean }) {
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 text-[9px] font-sans font-bold uppercase tracking-widest border ${
+        connected
+          ? "border-green-600 bg-green-50 text-green-900"
+          : "border-amber-500 bg-amber-50 text-amber-900"
+      }`}
+    >
+      {connected ? "Connected" : "Not configured"}
+    </span>
+  );
+}
+
 function Card({
   title,
   description,
   action,
+  connected,
   children,
 }: {
   title: string;
   description?: string;
   action: string;
+  connected?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="border border-stone-200 bg-white p-6">
-      <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-2">
-        {title}
-      </h3>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600">
+          {title}
+        </h3>
+        {connected !== undefined && <ConnectionBadge connected={connected} />}
+      </div>
       {description && <p className="text-xs font-serif text-stone-500 mb-4">{description}</p>}
       <form method="POST" action={action} className="space-y-3">
         {children}
@@ -77,6 +105,24 @@ export default async function SettingsPage({
 
   const allFields = SETTINGS_CATEGORIES.flatMap((category) => category.fields);
   const values = await resolveFieldValues(allFields, settingDisplay);
+
+  // Same presence checks `populateEditionDraft` (`@/lib/generation/index.ts`)
+  // uses to decide whether to fetch each source — reused here verbatim so
+  // this badge never drifts from what actually gates generation.
+  const [githubToken, githubUsername, blogRssUrl, alexandriaApiUrl, spotifyToken] =
+    await Promise.all([
+      getSetting("integrations.github.token", { encrypted: true }),
+      getSetting("integrations.github.username"),
+      getSetting("integrations.blog.rssUrl"),
+      getSetting("integrations.alexandria.apiUrl"),
+      getServiceToken("spotify"),
+    ]);
+  const connectionStatus: Record<string, boolean> = {
+    github: Boolean(githubToken && githubUsername),
+    blog: Boolean(blogRssUrl),
+    spotify: Boolean(spotifyToken),
+    alexandria: Boolean(alexandriaApiUrl),
+  };
 
   return (
     <NewspaperShell endpoint="admin.settings">
@@ -109,6 +155,7 @@ export default async function SettingsPage({
               title={category.title}
               description={category.description}
               action={`/admin/settings/${category.id}`}
+              connected={connectionStatus[category.id]}
             >
               <CategoryFormFields fields={category.fields} values={values} />
             </Card>

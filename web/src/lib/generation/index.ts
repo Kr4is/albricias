@@ -32,7 +32,11 @@ import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
 import { computeGithubStats } from "@/lib/github-stats";
-import { computeTopicCandidates } from "@/lib/topic-candidates";
+import {
+  computeTopicCandidates,
+  type TopicCandidate,
+  type TopicCandidateKind,
+} from "@/lib/topic-candidates";
 import {
   type ActivityItem,
   type AudioMode,
@@ -299,6 +303,13 @@ export interface GenerateArticleFromSourceOptions {
   articleDate?: Date;
   /** By-line; defaults to {@link DEFAULT_AUTHOR}. */
   author?: string;
+  /**
+   * Extra fields merged into the persisted `Article.sourceData`, on top of
+   * the generator's own `result.sourceData` and the source-processing
+   * metadata below — e.g. `{ topicCandidateId }` for the automatic
+   * topic-candidate pipeline ({@link generateTopicCandidateArticles}).
+   */
+  extraSourceData?: Record<string, unknown>;
 }
 
 /**
@@ -326,6 +337,7 @@ export async function generateArticleFromSource({
   intervieweeName = "",
   articleDate,
   author = DEFAULT_AUTHOR,
+  extraSourceData = {},
 }: GenerateArticleFromSourceOptions): Promise<Article> {
   // 1. Process source → normalized text.
   let sourceResult: SourceResult;
@@ -418,9 +430,119 @@ export async function generateArticleFromSource({
         source_type: sourceType,
         source_metadata: sourceResult.metadata,
         transcription: sourceResult.text,
+        ...extraSourceData,
       }),
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Automatic topic-candidate article generation
+// (`.omc/plans/github-insights-curation-and-full-automation.md`, Step 3) —
+// writes an article for the topic candidates that clear a score threshold,
+// with no admin action required, unlike the manual `github_repo` assisted
+// generation above that this reuses.
+// ---------------------------------------------------------------------------
+
+/**
+ * Score at/above which a topic candidate gets its own auto-generated article.
+ *
+ * An evidence-based starting point, **not a final value** — the only real
+ * scored data available in this dev environment (edition id 6) had
+ * candidates at 35/27/27 out of a 100-point theoretical max, so a much higher
+ * bar (e.g. 70) would never fire against typical monthly activity. Revisit
+ * once more real editions have gone through scoring.
+ */
+export const TOPIC_CANDIDATE_AUTO_GENERATE_THRESHOLD = 35;
+
+/**
+ * `TopicCandidate.kind` → `GeneratorType` for the automatic pipeline.
+ * `interview` has no entry because it isn't a `TopicCandidateKind` at all —
+ * it needs a real conversation to transcribe, which no topic candidate has.
+ */
+const TOPIC_CANDIDATE_GENERATOR_TYPE: Record<TopicCandidateKind, GeneratorType> = {
+  release: "review",
+  bugfixStory: "reflection",
+  newLanguage: "tutorial",
+  concentration: "profile",
+  streak: "profile",
+  fastPrVelocity: "profile",
+  externalContribution: "profile",
+  curiosity: "reflection",
+};
+
+/** Read + validate a stored `Edition.topicCandidates` column, defaulting to none. */
+function parseStoredTopicCandidates(stored: string | null | undefined): TopicCandidate[] {
+  if (!stored) return [];
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as TopicCandidate[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Auto-generate one `Article` per topic candidate stored on the edition whose
+ * `score` is at least {@link TOPIC_CANDIDATE_AUTO_GENERATE_THRESHOLD}.
+ *
+ * Reuses the exact same `github_repo` source path as manual assisted
+ * generation ({@link generateArticleFromSource}'s `"github_repo"` branch),
+ * just called programmatically with `candidate.repos[0]` and the
+ * `TOPIC_CANDIDATE_GENERATOR_TYPE`-mapped generator instead of a form
+ * submission. Each created article's `sourceData.topicCandidateId` is set to
+ * the candidate's `id` — the key the curation UI (Step 4) uses to find and
+ * hide/show the article a candidate produced.
+ *
+ * Re-reads `topicCandidates` from the DB (rather than trusting an in-memory
+ * `Edition`) since it's written by `computeTopicCandidates()` earlier in the
+ * same `populateEditionDraft` run than the caller's copy was loaded.
+ *
+ * Each candidate is generated in its own try/catch — a bad repo or an
+ * unreadable README pushes a warning onto `messages` and does not stop the
+ * others, the same non-fatal-per-item pattern used everywhere else in this
+ * file (e.g. the chronicle workflow's per-section handling above).
+ */
+export async function generateTopicCandidateArticles(
+  editionId: number,
+  aiModel: ResolvedAiModel | undefined,
+  messages: FlashMessage[],
+): Promise<Article[]> {
+  const edition = await prisma.edition.findUnique({
+    where: { id: editionId },
+    select: { topicCandidates: true },
+  });
+  const candidates = parseStoredTopicCandidates(edition?.topicCandidates);
+  const qualifying = candidates.filter(
+    (candidate) => candidate.score >= TOPIC_CANDIDATE_AUTO_GENERATE_THRESHOLD,
+  );
+
+  const created: Article[] = [];
+  for (const candidate of qualifying) {
+    try {
+      const repo = candidate.repos[0];
+      if (!repo) {
+        throw new Error(
+          `Topic candidate "${candidate.title}" (${candidate.kind}) has no repo to write about.`,
+        );
+      }
+      const article = await generateArticleFromSource({
+        editionId,
+        sourceType: "github_repo",
+        generatorType: TOPIC_CANDIDATE_GENERATOR_TYPE[candidate.kind],
+        githubRepo: repo,
+        aiModel,
+        extraSourceData: { topicCandidateId: candidate.id },
+      });
+      created.push(article);
+    } catch (error) {
+      messages.push({
+        type: "warning",
+        text: `Topic candidate article generation warning ("${candidate.title}"): ${describeError(error)}`,
+      });
+    }
+  }
+  return created;
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,6 +1135,25 @@ export async function populateEditionDraft(
       if (calendarRankingArticle) generatedCount += 1;
     } catch (error) {
       messages.push({ type: "warning", text: `Calendar ranking warning: ${describeError(error)}` });
+    }
+  }
+
+  // --- Topic-candidate article generation (github-insights-curation plan) ---
+  // Auto-writes one article per topic candidate that clears the score
+  // threshold, with no admin action required. Same `aiModel` gate as the two
+  // rankings above — without a configured provider there's nothing to
+  // generate with. Per-candidate failures are already handled (and pushed to
+  // `messages`) inside `generateTopicCandidateArticles`; this outer catch is
+  // just the same defense-in-depth every other optional step here has.
+  if (aiModel) {
+    try {
+      const topicCandidateArticles = await generateTopicCandidateArticles(edition.id, aiModel, messages);
+      generatedCount += topicCandidateArticles.length;
+    } catch (error) {
+      messages.push({
+        type: "warning",
+        text: `Topic candidate article generation warning: ${describeError(error)}`,
+      });
     }
   }
 

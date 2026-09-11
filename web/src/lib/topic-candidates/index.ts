@@ -100,10 +100,15 @@ export function collectCandidates(stats: GithubStats, priors: GithubStats[]): Ra
 export function rankCandidates(candidates: RawCandidate[], priors: GithubStats[]): TopicCandidate[] {
   const scored: TopicCandidate[] = [];
 
-  for (const candidate of candidates) {
+  candidates.forEach((candidate, index) => {
     try {
       const { score, scoreBreakdown } = scoreCandidate(candidate, priors);
       scored.push({
+        // `kind` alone can repeat (different repos, same kind), so `index` —
+        // this candidate's position in the pre-sort `candidates` array, which
+        // follows `CANDIDATE_KINDS` order — is what makes the id unique. See
+        // the doc comment on `TopicCandidate.id`.
+        id: `${candidate.kind}-${index}`,
         kind: candidate.kind,
         title: candidate.title,
         repos: candidate.repos,
@@ -114,7 +119,7 @@ export function rankCandidates(candidates: RawCandidate[], priors: GithubStats[]
     } catch (error) {
       console.error(`[topic-candidates] Scoring ${candidate.kind} failed: ${describe(error)}`);
     }
-  }
+  });
 
   return scored
     .sort((a, b) => b.score - a.score || kindOrder(a.kind) - kindOrder(b.kind))

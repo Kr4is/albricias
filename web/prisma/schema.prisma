@@ -90,6 +90,7 @@ model Edition {
   /// fallback. These are not finished articles and nothing here decides a
   /// winner — see `.omc/plans/github-topic-candidates.md`. Shape: array of
   ///   {
+  ///     id: string,   // stable within this edition, e.g. "release-2" — see computeTopicCandidates()
   ///     kind: "concentration"|"streak"|"newLanguage"|"fastPrVelocity"|
   ///           "bugfixStory"|"release"|"externalContribution"|"curiosity",
   ///     title: string,
@@ -100,6 +101,19 @@ model Edition {
   ///   }
   /// sorted by `score` descending, capped at 5.
   topicCandidates String? @map("topic_candidates")
+  /// JSON, nullable, durable — which GitHub-insights items the admin has
+  /// marked as reviewed/kept, from the curation UI on the edition page. Not
+  /// computed automatically like `githubStats`/`topicCandidates` above; only
+  /// ever written by the admin's toggle actions. Shape:
+  ///   {
+  ///     topicCandidateIds: string[], // ids from `topicCandidates` above
+  ///     githubStatKeys: string[]     // flat keys into `githubStats`, e.g. "temporal.busiestDay"
+  ///   }
+  /// Marking/unmarking a topic candidate id also flips the `hidden` flag of
+  /// whichever `Article` has that id at `sourceData.topicCandidateId` (see
+  /// `Article.hidden` below); marking/unmarking a githubStats key is a pure
+  /// annotation with no effect on any article.
+  curatorMarks String? @map("curator_marks")
 
   articles          Article[]
   serviceActivities ServiceActivity[]
@@ -132,8 +146,17 @@ model Article {
 
   /// Provenance: "manual" | "ai_generated" | "github".
   sourceType String @default("manual") @map("source_type")
-  /// JSON blob: original prompt, AI response, raw API payload, etc.
+  /// JSON blob: original prompt, AI response, raw API payload, etc. For an
+  /// article auto-generated from a topic candidate, includes
+  /// `{ topicCandidateId: string }` linking it back to the entry in
+  /// `Edition.topicCandidates` that produced it (see `Edition.curatorMarks`).
   sourceData String? @map("source_data")
+  /// True hides the article from the public edition page (`editionArticles()`
+  /// in `src/lib/editions.ts`) while keeping it intact and editable in the
+  /// admin. Set via the curation UI when the admin unmarks the topic
+  /// candidate this article came from — never set on manually-authored
+  /// articles, which have no candidate to unmark.
+  hidden Boolean @default(false) @map("hidden")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

@@ -100,10 +100,16 @@ export async function editionById(id: number): Promise<EditionRow | null> {
   return prisma.edition.findUnique({ where: { id }, select: editionSelect });
 }
 
-/** Every article of an edition, in publication order. */
+/**
+ * Every visible article of an edition, in publication order. The single read
+ * path the public edition page uses — `hidden: false` keeps an article whose
+ * topic candidate was unmarked out of the public view while it stays
+ * editable in the admin (`/admin/editions/[editionId]/edit` uses its own
+ * query and intentionally still shows hidden articles).
+ */
 export async function editionArticles(editionId: number): Promise<ArticleRow[]> {
   return prisma.article.findMany({
-    where: { editionId },
+    where: { editionId, hidden: false },
     orderBy: [...ARTICLE_ORDER],
     select: articleSelect,
   });

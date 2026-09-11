@@ -19,6 +19,8 @@ import { readFlash, type FlashMessage, type FlashType } from "@/lib/flash";
 import { mediaUrl } from "@/lib/media";
 import { toDateInputValue } from "@/lib/date-input";
 import { ARTICLE_CATEGORIES } from "@/lib/article-categories";
+import type { GithubStats } from "@/lib/github-stats";
+import type { TopicCandidate } from "@/lib/topic-candidates/types";
 import GenerationWatcher, {
   type GenerationProgress,
   type GenerationSection,
@@ -67,12 +69,218 @@ function readGenerationProgress(
   }
 }
 
+/** `Edition.curatorMarks`'s stored shape — see the doc comment in `prisma/schema.prisma`. */
+interface CuratorMarks {
+  topicCandidateIds?: string[];
+  githubStatKeys?: string[];
+}
+
+/**
+ * `Edition.curatorMarks` (plan Implementation Step 1) is read the same
+ * defensive way as `readGenerationProgress` above via an `unknown` cast: the
+ * migration adding it (owned by another worker, running in parallel) may
+ * land after this file. Once the generated Prisma client includes the column
+ * this cast becomes a no-op.
+ */
+function readCuratorMarks(edition: LoadedEdition): CuratorMarks {
+  const raw = (edition as unknown as { curatorMarks?: string | null }).curatorMarks;
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as CuratorMarks) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * `topicCandidateIds === undefined` (curatorMarks never touched, or this
+ * field never written to it) means "every candidate is marked/visible" — the
+ * default before any curation action, matching `Article.hidden`'s own
+ * default of `false`. Once the array exists, membership is authoritative
+ * (see the toggle route for how it gets populated on the first unmark).
+ */
+function isTopicCandidateMarked(marks: CuratorMarks, candidateId: string): boolean {
+  return marks.topicCandidateIds === undefined || marks.topicCandidateIds.includes(candidateId);
+}
+
+/** `githubStatKeys` marking is a pure annotation with no default-visible semantics. */
+function isGithubStatMarked(marks: CuratorMarks, key: string): boolean {
+  return marks.githubStatKeys?.includes(key) ?? false;
+}
+
+function readGithubStats(edition: LoadedEdition): GithubStats | null {
+  if (!edition.githubStats) return null;
+  try {
+    return JSON.parse(edition.githubStats) as GithubStats;
+  } catch {
+    return null;
+  }
+}
+
+function readTopicCandidates(edition: LoadedEdition): TopicCandidate[] | null {
+  if (!edition.topicCandidates) return null;
+  try {
+    const parsed: unknown = JSON.parse(edition.topicCandidates);
+    return Array.isArray(parsed) ? (parsed as TopicCandidate[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Section/metric catalog for the "GitHub Insights" curation UI below —
+ * mirrors `GithubStats`'s shape (`@/lib/github-stats/types.ts`) field for
+ * field. Not derived dynamically from the type (no runtime reflection over a
+ * TypeScript interface), so this list is the single source of truth for
+ * which dot-path keys (e.g. `"temporal.busiestDay"`) can appear in
+ * `Edition.curatorMarks.githubStatKeys` — keep it in sync if `GithubStats`
+ * ever changes shape.
+ */
+const GITHUB_STAT_SECTIONS: ReadonlyArray<{
+  section: keyof GithubStats;
+  label: string;
+  metrics: ReadonlyArray<{ key: string; label: string }>;
+}> = [
+  {
+    section: "temporal",
+    label: "Temporal",
+    metrics: [
+      { key: "busiestDay", label: "Busiest day" },
+      { key: "mostProductiveHour", label: "Most productive hour" },
+      { key: "preferredWeekday", label: "Preferred weekday" },
+      { key: "timeOfDaySplit", label: "Time of day split" },
+      { key: "longestStreakDays", label: "Longest streak (days)" },
+      { key: "longestGapDays", label: "Longest gap (days)" },
+      { key: "firstEventAt", label: "First event" },
+      { key: "lastEventAt", label: "Last event" },
+    ],
+  },
+  {
+    section: "volume",
+    label: "Volume",
+    metrics: [
+      { key: "totalCommits", label: "Total commits" },
+      { key: "totalPrs", label: "Total PRs" },
+      { key: "totalIssues", label: "Total issues" },
+      { key: "totalReleases", label: "Total releases" },
+      { key: "distinctRepos", label: "Distinct repos" },
+      { key: "mostActiveRepo", label: "Most active repo" },
+      { key: "newRepos", label: "New repos" },
+      { key: "starredRepos", label: "Starred repos" },
+    ],
+  },
+  {
+    section: "collaboration",
+    label: "Collaboration",
+    metrics: [
+      { key: "externalRepos", label: "External repos" },
+      { key: "prsOpened", label: "PRs opened" },
+      { key: "prsMerged", label: "PRs merged" },
+      { key: "prsClosedUnmerged", label: "PRs closed unmerged" },
+      { key: "avgPrLifetimeHours", label: "Avg PR lifetime (hrs)" },
+      { key: "issuesOpened", label: "Issues opened" },
+      { key: "issuesClosed", label: "Issues closed" },
+      { key: "reviewsGiven", label: "Reviews given" },
+      { key: "releasesPublished", label: "Releases published" },
+    ],
+  },
+  {
+    section: "content",
+    label: "Content",
+    metrics: [
+      { key: "avgCommitMessageLength", label: "Avg commit message length" },
+      { key: "conventionalCommitBreakdown", label: "Conventional commit breakdown" },
+      { key: "shortestCommitMessage", label: "Shortest commit message" },
+      { key: "longestCommitMessage", label: "Longest commit message" },
+      { key: "mostUnusualCommitMessage", label: "Most unusual commit message" },
+      { key: "mostUsedEmoji", label: "Most used emoji" },
+    ],
+  },
+  {
+    section: "language",
+    label: "Language",
+    metrics: [{ key: "topLanguagesByBytes", label: "Top languages by bytes" }],
+  },
+  {
+    section: "trend",
+    label: "Trend",
+    metrics: [
+      { key: "vsPreviousPeriod", label: "Vs previous period" },
+      { key: "bestPeriodThisYear", label: "Best period this year" },
+      { key: "consecutiveActivePeriods", label: "Consecutive active periods" },
+    ],
+  },
+];
+
+function getStatValue(stats: GithubStats, section: keyof GithubStats, key: string): unknown {
+  const group = stats[section];
+  if (group === null || typeof group !== "object") return group;
+  return (group as unknown as Record<string, unknown>)[key];
+}
+
+/**
+ * Best-effort human-readable rendering of one `GithubStats` leaf value —
+ * covers the known nested shapes (`DayCount`, `HourCount`, `RepoCount`, …,
+ * see `@/lib/github-stats/types.ts`) generically by duck-typing their fields,
+ * rather than one bespoke formatter per metric.
+ */
+function formatStatValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return value || "—";
+  if (Array.isArray(value)) {
+    return value.length === 0 ? "—" : value.map((item) => formatStatValue(item)).join(", ");
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if ("date" in obj && "count" in obj) return `${obj.date} (${obj.count})`;
+    if ("hour" in obj && "count" in obj) return `${obj.hour}:00 (${obj.count})`;
+    if ("weekday" in obj && "count" in obj) return `${obj.weekday} (${obj.count})`;
+    if ("repo" in obj && "count" in obj) return `${obj.repo} (${obj.count})`;
+    if ("keyword" in obj && "count" in obj) return `${obj.keyword} (${obj.count})`;
+    if ("emoji" in obj && "count" in obj) return `${obj.emoji} (${obj.count})`;
+    if ("language" in obj && "bytes" in obj) return `${obj.language} (${obj.bytes}B)`;
+    if ("morning" in obj && "afternoon" in obj && "evening" in obj) {
+      return `morning ${obj.morning}, afternoon ${obj.afternoon}, evening ${obj.evening}, late night ${obj.lateNight}`;
+    }
+    if ("direction" in obj && "deltaContributions" in obj) {
+      const pct = obj.deltaPercent === null ? "" : ` (${String(obj.deltaPercent)}%)`;
+      return `${obj.direction} ${obj.deltaContributions}${pct}, was ${obj.previousTotalContributions}`;
+    }
+    if ("periodStart" in obj && "totalContributions" in obj) {
+      const current = obj.isCurrentPeriod ? ", current" : "";
+      return `${String(obj.periodStart)}: ${obj.totalContributions}${current}`;
+    }
+    return JSON.stringify(obj);
+  }
+  return String(value);
+}
+
 const GENERATION_MESSAGE_STYLES: Record<FlashType, string> = {
   success: "border-green-600 bg-green-50 text-green-900",
   error: "border-red-600 bg-red-50 text-red-900",
   warning: "border-amber-500 bg-amber-50 text-amber-900",
   info: "border-blue-500 bg-blue-50 text-blue-900",
 };
+
+/**
+ * The 3 "source not configured/connected" messages (plan Implementation Step
+ * 4, Acceptance Criteria C) — filtered out of this page's `GenerationMessages`
+ * by exact text, matched verbatim against where they're pushed in
+ * `@/lib/generation`'s `populateEditionDraft` (`index.ts:878-879` blog,
+ * `index.ts:919-920` Spotify, `index.ts:957-958` Alexandria). They move to a
+ * permanent connection-status view on `/admin/settings` instead. This is
+ * fragile if that wording changes without updating this set (accepted risk,
+ * per the plan) — every other message (AI failures, aborted sections, the
+ * GitHub-not-configured warning) is unaffected and keeps showing here.
+ */
+const HIDDEN_GENERATION_MESSAGE_TEXTS = new Set<string>([
+  "Blog RSS URL not configured (/admin/settings) — skipping blog fetch.",
+  "Spotify not connected — visit /admin/spotify/connect to link your account.",
+  "Alexandria API URL not configured (/admin/settings) — skipping Alexandria fetch.",
+]);
 
 /**
  * Warnings the "Generate edition" pipeline collected while running in the
@@ -215,6 +423,107 @@ function ArticleCard({ article, editionId }: { article: ArticleRow; editionId: n
   );
 }
 
+/**
+ * One topic candidate card in the "GitHub Insights" section — title, bullets,
+ * score, and a mark/unmark toggle. Unmarking hides (not deletes) whichever
+ * `Article` this candidate auto-generated, via `sourceData.topicCandidateId`
+ * (see `.../topic-candidates/[candidateId]/toggle/route.ts`).
+ */
+function TopicCandidateCard({
+  candidate,
+  marked,
+  editionId,
+}: {
+  candidate: TopicCandidate;
+  marked: boolean;
+  editionId: number;
+}) {
+  return (
+    <div
+      className={`border p-4 ${marked ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-50 opacity-60"}`}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] font-sans font-bold uppercase tracking-widest bg-stone-100 px-1.5 py-0.5">
+            {candidate.kind}
+          </span>
+          <span className="text-[9px] font-sans text-stone-400">score {candidate.score}</span>
+        </div>
+        <form
+          method="POST"
+          action={`/admin/editions/${editionId}/topic-candidates/${candidate.id}/toggle`}
+          className="shrink-0"
+        >
+          <button
+            type="submit"
+            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest border transition-colors ${
+              marked
+                ? "border-green-600 text-green-700 hover:bg-green-50"
+                : "border-stone-300 text-stone-500 hover:bg-stone-100"
+            }`}
+          >
+            <span className="material-icons text-xs">
+              {marked ? "visibility" : "visibility_off"}
+            </span>
+            {marked ? "Marked" : "Unmarked"}
+          </button>
+        </form>
+      </div>
+      <p className="font-headline font-bold text-sm mb-1.5">{candidate.title}</p>
+      <ul className="space-y-0.5">
+        {candidate.bullets.map((bullet, index) => (
+          <li key={index} className="text-xs font-sans text-stone-600">
+            • {bullet}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** One `githubStats` metric row — value plus its own mark/unmark toggle (a pure annotation, no article effect). */
+function GithubStatRow({
+  label,
+  value,
+  marked,
+  editionId,
+  statKey,
+}: {
+  label: string;
+  value: unknown;
+  marked: boolean;
+  editionId: number;
+  statKey: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5 border-b border-stone-100 last:border-0">
+      <div className="min-w-0">
+        <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500">
+          {label}
+        </p>
+        <p className="text-xs font-sans text-stone-700 truncate">{formatStatValue(value)}</p>
+      </div>
+      <form
+        method="POST"
+        action={`/admin/editions/${editionId}/github-stats/${statKey}/toggle`}
+        className="shrink-0"
+      >
+        <button
+          type="submit"
+          title={marked ? "Unmark" : "Mark"}
+          className={`p-1 border transition-colors ${
+            marked
+              ? "border-amber-500 text-amber-600 bg-amber-50"
+              : "border-stone-200 text-stone-400 hover:bg-stone-100"
+          }`}
+        >
+          <span className="material-icons text-sm">{marked ? "star" : "star_outline"}</span>
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export async function generateMetadata({
   params,
 }: PageProps<"/admin/editions/[editionId]/edit">): Promise<Metadata> {
@@ -247,6 +556,9 @@ export default async function EditionEditPage({
   const defaultArticleDate = toDateInputValue(edition.periodStart);
   const coverSrc = mediaUrl(edition.coverImage);
   const generationProgress = readGenerationProgress(edition);
+  const curatorMarks = readCuratorMarks(edition);
+  const githubStats = readGithubStats(edition);
+  const topicCandidates = readTopicCandidates(edition);
   const { rows: sectionRows, remaining: remainingArticles } = generationProgress
     ? mergeSectionsWithArticles(generationProgress.sections, articles)
     : { rows: [] as SectionRow[], remaining: articles };
@@ -268,7 +580,11 @@ export default async function EditionEditPage({
 
         <FlashBanner messages={messages} />
 
-        <GenerationMessages messages={generationProgress?.messages ?? []} />
+        <GenerationMessages
+          messages={(generationProgress?.messages ?? []).filter(
+            (message) => !HIDDEN_GENERATION_MESSAGE_TEXTS.has(message.text),
+          )}
+        />
 
         {edition.generationStatus === "running" && (
           <GenerationWatcher editionId={edition.id} generationProgress={generationProgress} />
@@ -347,9 +663,9 @@ export default async function EditionEditPage({
                 >
                   <button
                     type="submit"
-                    className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
                   >
-                    Delete
+                    <span className="material-icons text-sm">delete</span> Delete
                   </button>
                 </form>
               )}
@@ -670,6 +986,84 @@ export default async function EditionEditPage({
             )}
           </div>
         </div>
+
+        {/* GitHub Insights — the raw stats bank + heuristic topic candidates
+            computed by `@/lib/github-stats` and `@/lib/topic-candidates`
+            during generation (plan Implementation Step 4). Unmarking a topic
+            candidate hides (not deletes) the article it auto-generated;
+            marking/unmarking a githubStats metric is a pure annotation. */}
+        {(githubStats || (topicCandidates && topicCandidates.length > 0)) && (
+          <div className="mt-12 border-t-4 border-double border-ink pt-8">
+            <h3 className="font-headline text-lg font-bold border-b border-ink pb-2 mb-5">
+              GitHub Insights
+            </h3>
+
+            {topicCandidates && topicCandidates.length > 0 && (
+              <div className="mb-8">
+                <h4 className="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-3">
+                  Topic Candidates
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {topicCandidates.map((candidate, index) => {
+                    // `id` is only present on candidates computed after this
+                    // field was added — an edition whose topicCandidates were
+                    // computed by an older version of computeTopicCandidates()
+                    // (before this session's change) won't have it. Fall back
+                    // to the same `${kind}-${index}` scheme the backend now
+                    // uses, so old data doesn't render with a colliding
+                    // `undefined` key; marking such a candidate still works
+                    // for the session (React key + toggle route both agree on
+                    // the derived id), it just can't be linked to an
+                    // already-existing article generated before this field
+                    // existed — there isn't one, since auto-generation from
+                    // topic candidates is new in this same change.
+                    const candidateId = candidate.id ?? `${candidate.kind}-${index}`;
+                    return (
+                      <TopicCandidateCard
+                        key={candidateId}
+                        candidate={{ ...candidate, id: candidateId }}
+                        marked={isTopicCandidateMarked(curatorMarks, candidateId)}
+                        editionId={edition.id}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {githubStats && (
+              <div>
+                <h4 className="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-3">
+                  Stats Bank
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
+                  {GITHUB_STAT_SECTIONS.map(({ section, label, metrics }) => (
+                    <div key={section}>
+                      <h5 className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mb-1.5">
+                        {label}
+                      </h5>
+                      <div>
+                        {metrics.map((metric) => {
+                          const key = `${section}.${metric.key}`;
+                          return (
+                            <GithubStatRow
+                              key={key}
+                              label={metric.label}
+                              value={getStatValue(githubStats, section, metric.key)}
+                              marked={isGithubStatMarked(curatorMarks, key)}
+                              editionId={edition.id}
+                              statKey={key}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* The `data-confirm` window.confirm() intercept used to live here too,
