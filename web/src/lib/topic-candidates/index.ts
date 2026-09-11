@@ -204,6 +204,68 @@ export function parseStoredStats(stored: string | null | undefined): GithubStats
   return complete ? (parsed as GithubStats) : null;
 }
 
+/**
+ * Read a stored `Edition.topicCandidates` string into its array, or `[]` for
+ * anything unreadable.
+ *
+ * The mirror of {@link parseStoredStats} for the other column this module
+ * writes, and deliberately more forgiving than it: a candidate list is a
+ * ranked shortlist whose consumers all iterate it, so "we can't read it" and
+ * "nothing was proposed" are the same thing to them, whereas a stats bank's
+ * `null` genuinely means "we never looked".
+ */
+export function parseStoredTopicCandidates(
+  stored: string | null | undefined,
+): TopicCandidate[] {
+  if (!stored) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as TopicCandidate[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** `Edition.curatorMarks`'s stored shape — see the doc comment in `prisma/schema.prisma`. */
+export interface CuratorMarks {
+  topicCandidateIds?: string[];
+  githubStatKeys?: string[];
+}
+
+/**
+ * Read a stored `Edition.curatorMarks` string into its object, or `{}` for
+ * anything unreadable — malformed JSON, a hand-edited row, or a non-object.
+ *
+ * `{}` is the "nothing has been curated yet" value, which is exactly what an
+ * unreadable column should degrade to: see {@link isTopicCandidateMarked} for
+ * why that means "everything is marked" rather than "nothing is".
+ */
+export function parseStoredCuratorMarks(raw: string | null | undefined): CuratorMarks {
+  if (!raw) return {};
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as CuratorMarks)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * `topicCandidateIds === undefined` (curatorMarks never touched, or this
+ * field never written to it) means "every candidate is marked/visible" — the
+ * default before any curation action, matching `Article.hidden`'s own default
+ * of `false`. Once the array exists, membership is authoritative (see
+ * `.../topic-candidates/[candidateId]/toggle/route.ts` for how it gets
+ * populated in full on the first unmark).
+ */
+export function isTopicCandidateMarked(marks: CuratorMarks, candidateId: string): boolean {
+  return marks.topicCandidateIds === undefined || marks.topicCandidateIds.includes(candidateId);
+}
+
 export {
   type CandidateDetector,
   type RawCandidate,

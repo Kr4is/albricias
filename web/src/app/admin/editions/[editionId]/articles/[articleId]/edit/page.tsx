@@ -175,7 +175,12 @@ export default async function ArticleEditPage({
                   type="number"
                   name="order"
                   defaultValue={article.order}
-                  min={0}
+                  // Floor at 0 for every normal article, but never above the
+                  // row's own stored value: the synthesis compendium carries a
+                  // negative `order` (see `leadArticleOrder`), and a `min` it
+                  // fails would block this whole form via native constraint
+                  // validation — Save, Generate Audio and Regenerate included.
+                  min={Math.min(0, article.order)}
                   className="w-full bg-transparent border-b-2 border-ink-light focus:border-ink px-2 py-2 text-sm font-sans"
                 />
               </div>

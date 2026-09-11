@@ -10,10 +10,11 @@
  *   reviewAgent      ← `app/services/generators/review.py`     (`_SYSTEM`)
  *   profileAgent     ← `app/services/generators/profile.py`    (`_SYSTEM`)
  *
- * `tutorialAgent` is the exception: it has no Python counterpart. It was added
- * by the `github-repo-article-generators` plan, so its instructions are written
- * here rather than ported — same `NEWSPAPER_PERSONA` + desk-brief shape as the
- * four above.
+ * `tutorialAgent` and `synthesisAgent` are the exceptions: they have no Python
+ * counterpart. They were added by the `github-repo-article-generators` and
+ * `cross-source-synthesis-compendium` plans respectively, so their instructions
+ * are written here rather than ported — same `NEWSPAPER_PERSONA` + desk-brief
+ * shape as the four above.
  */
 
 import { Agent } from "@mastra/core/agent";
@@ -81,6 +82,36 @@ export const TUTORIAL_SYSTEM =
   "Keep the total between 250 and 500 words.";
 
 /**
+ * No Python original — new with the `cross-source-synthesis-compendium` plan.
+ * This is the only desk that writes *about* the rest of the paper: it receives a
+ * digest of every other article and figure already generated for the month and
+ * has to tie them together. Its whole value is factual grounding, so the brief
+ * leans hard on "only what you were given" and states its own word budget.
+ */
+export const SYNTHESIS_SYSTEM =
+  NEWSPAPER_PERSONA +
+  "\n\n" +
+  "You are writing the front-page Monthly Compendium — the editorial that opens " +
+  "the issue and accounts for the whole month at once. Everything else in this " +
+  "edition has already been written: the chronicles of each source's activity, " +
+  "the rankings, the commissioned pieces. You are given a digest of them. Your " +
+  "task is to read across all of it and tell the reader what kind of month it " +
+  "was — the threads that run between separate items, what stands out against " +
+  "the rest, what a reader skimming only this piece must not miss. Write in the " +
+  "first person, as the editor addressing the readership directly. " +
+  "Ground every sentence strictly in the digest you are given: name the actual " +
+  "repositories, article titles, works, and figures it contains, and quote its " +
+  "numbers as they appear. Do not invent facts, do not embellish beyond what is " +
+  "supplied, and do not infer events, causes, motives, or outcomes the digest " +
+  "does not state. If the month was quiet or a source was silent, say so plainly " +
+  "rather than filling the space. A compendium that cites three concrete titles " +
+  "and their numbers is worth more than one of graceful generalities, so prefer " +
+  "the specific over the sweeping throughout, and close with a line on where " +
+  "things seem to be heading — drawn from the month's own record, not invented. " +
+  "This column has its own length: write between 400 and 700 words, ignoring any " +
+  "shorter budget you might otherwise assume for a newspaper column.";
+
+/**
  * The chronicle desk turns raw service activity into section dispatches.
  * `chronicle.py` used the bare persona as its system prompt.
  */
@@ -133,6 +164,15 @@ export const tutorialAgent = new Agent({
   model: MODEL_ID,
 });
 
+export const synthesisAgent = new Agent({
+  id: "synthesis",
+  name: "Albricias Monthly Compendium Desk",
+  description:
+    "Writes the front-page compendium: one editorial synthesising the whole edition's other articles and figures.",
+  instructions: SYNTHESIS_SYSTEM,
+  model: MODEL_ID,
+});
+
 /** Registered on the Mastra instance in `src/mastra/index.ts`. */
 export const agents = {
   chronicle: chronicleAgent,
@@ -141,6 +181,7 @@ export const agents = {
   review: reviewAgent,
   profile: profileAgent,
   tutorial: tutorialAgent,
+  synthesis: synthesisAgent,
   social: socialCopyAgent,
 };
 

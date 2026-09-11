@@ -7,32 +7,17 @@
  * candidate (found via `Article.sourceData.topicCandidateId`, plan Step 3) —
  * unmarking hides it from the public edition page without deleting it; the
  * admin can still edit it. `Edition.curatorMarks` and `Article.hidden` are
- * new Prisma fields another worker adds in parallel (see
- * `prisma/schema.prisma`'s doc comments on both); both are read/written here
- * via `unknown` casts, the same defensive pattern `edit/page.tsx` already
- * uses for `generationProgress`, so this compiles whether or not that
- * migration has landed yet.
+ * both real columns now (see `prisma/schema.prisma`'s doc comments on both),
+ * so reads go straight through `parseStoredCuratorMarks`; the writes still
+ * go via `unknown` casts, left as-is rather than widened in an unrelated
+ * change.
  */
 
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { flashRedirect } from "@/lib/flash";
+import { parseStoredCuratorMarks, type CuratorMarks } from "@/lib/topic-candidates";
 import type { TopicCandidate } from "@/lib/topic-candidates/types";
-
-interface CuratorMarks {
-  topicCandidateIds?: string[];
-  githubStatKeys?: string[];
-}
-
-function readCuratorMarks(raw: string | null | undefined): CuratorMarks {
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as CuratorMarks) : {};
-  } catch {
-    return {};
-  }
-}
 
 function readTopicCandidates(raw: string | null): TopicCandidate[] {
   if (!raw) return [];
@@ -58,9 +43,7 @@ export async function POST(
     return new Response("Not found", { status: 404 });
   }
 
-  const marks = readCuratorMarks(
-    (edition as unknown as { curatorMarks?: string | null }).curatorMarks,
-  );
+  const marks = parseStoredCuratorMarks(edition.curatorMarks);
 
   // Absent `topicCandidateIds` means "every candidate is marked/visible" —
   // the default before any curation (see edit/page.tsx's

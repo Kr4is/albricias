@@ -20,6 +20,11 @@ import { mediaUrl } from "@/lib/media";
 import { toDateInputValue } from "@/lib/date-input";
 import { ARTICLE_CATEGORIES } from "@/lib/article-categories";
 import type { GithubStats } from "@/lib/github-stats";
+import {
+  isTopicCandidateMarked,
+  parseStoredCuratorMarks,
+  type CuratorMarks,
+} from "@/lib/topic-candidates";
 import type { TopicCandidate } from "@/lib/topic-candidates/types";
 import GenerationWatcher, {
   type GenerationProgress,
@@ -67,41 +72,6 @@ function readGenerationProgress(
   } catch {
     return null;
   }
-}
-
-/** `Edition.curatorMarks`'s stored shape — see the doc comment in `prisma/schema.prisma`. */
-interface CuratorMarks {
-  topicCandidateIds?: string[];
-  githubStatKeys?: string[];
-}
-
-/**
- * `Edition.curatorMarks` (plan Implementation Step 1) is read the same
- * defensive way as `readGenerationProgress` above via an `unknown` cast: the
- * migration adding it (owned by another worker, running in parallel) may
- * land after this file. Once the generated Prisma client includes the column
- * this cast becomes a no-op.
- */
-function readCuratorMarks(edition: LoadedEdition): CuratorMarks {
-  const raw = (edition as unknown as { curatorMarks?: string | null }).curatorMarks;
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as CuratorMarks) : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * `topicCandidateIds === undefined` (curatorMarks never touched, or this
- * field never written to it) means "every candidate is marked/visible" — the
- * default before any curation action, matching `Article.hidden`'s own
- * default of `false`. Once the array exists, membership is authoritative
- * (see the toggle route for how it gets populated on the first unmark).
- */
-function isTopicCandidateMarked(marks: CuratorMarks, candidateId: string): boolean {
-  return marks.topicCandidateIds === undefined || marks.topicCandidateIds.includes(candidateId);
 }
 
 /** `githubStatKeys` marking is a pure annotation with no default-visible semantics. */
@@ -556,7 +526,7 @@ export default async function EditionEditPage({
   const defaultArticleDate = toDateInputValue(edition.periodStart);
   const coverSrc = mediaUrl(edition.coverImage);
   const generationProgress = readGenerationProgress(edition);
-  const curatorMarks = readCuratorMarks(edition);
+  const curatorMarks = parseStoredCuratorMarks(edition.curatorMarks);
   const githubStats = readGithubStats(edition);
   const topicCandidates = readTopicCandidates(edition);
   const { rows: sectionRows, remaining: remainingArticles } = generationProgress
