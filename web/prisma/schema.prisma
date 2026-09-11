@@ -80,6 +80,26 @@ model Edition {
   /// fields omitted if GitHub's API didn't return them for stored rows) —
   /// see the plan's Risks section.
   githubStats String? @map("github_stats")
+  /// JSON, nullable, durable — heuristic-scored "topic candidates" for a
+  /// deliberate, single-focus piece this period (a tutorial, a deep dive, a
+  /// "how I fixed X"), computed by `computeTopicCandidates()`
+  /// (`src/lib/topic-candidates/`) from `githubStats` right after it's
+  /// computed, independent of whether an AI provider is configured. `null`
+  /// exactly when `githubStats` is `null` (no GitHub activity); otherwise
+  /// never empty — a "curiosity" candidate is always eligible as a
+  /// fallback. These are not finished articles and nothing here decides a
+  /// winner — see `.omc/plans/github-topic-candidates.md`. Shape: array of
+  ///   {
+  ///     kind: "concentration"|"streak"|"newLanguage"|"fastPrVelocity"|
+  ///           "bugfixStory"|"release"|"externalContribution"|"curiosity",
+  ///     title: string,
+  ///     repos: string[],
+  ///     bullets: string[],
+  ///     score: number,
+  ///     scoreBreakdown: { substance: number, originality: number, narrative: number }
+  ///   }
+  /// sorted by `score` descending, capped at 5.
+  topicCandidates String? @map("topic_candidates")
 
   articles          Article[]
   serviceActivities ServiceActivity[]

@@ -32,6 +32,7 @@ import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
 import { computeGithubStats } from "@/lib/github-stats";
+import { computeTopicCandidates } from "@/lib/topic-candidates";
 import {
   type ActivityItem,
   type AudioMode,
@@ -801,6 +802,25 @@ export async function populateEditionDraft(
     messages.push({
       type: "warning",
       text: `GitHub stats computation warning: ${describeError(error)}`,
+    });
+  }
+
+  // --- GitHub topic candidates (Phase 2 of the github-topic-candidates
+  // plan) — reads the stats bank just persisted above, so it must run
+  // after it. Same "pure computation, no AI provider needed, never let a
+  // bug here break the rest of generation" contract as Phase 1.
+  try {
+    const topicCandidates = await computeTopicCandidates(edition.id);
+    if (topicCandidates) {
+      await prisma.edition.update({
+        where: { id: edition.id },
+        data: { topicCandidates: JSON.stringify(topicCandidates) },
+      });
+    }
+  } catch (error) {
+    messages.push({
+      type: "warning",
+      text: `Topic candidate computation warning: ${describeError(error)}`,
     });
   }
 
