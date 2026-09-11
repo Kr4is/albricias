@@ -69,9 +69,10 @@ export default async function CalendarAdminPage({
           <div className="flex gap-2">
             {token ? (
               <>
-                <form method="POST" action="/admin/calendar/sync">
+                <form method="POST" action="/admin/calendar/sync" data-loading-submit>
                   <button
                     type="submit"
+                    data-loading-text="Syncing…"
                     className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
                   >
                     Sync Calendars

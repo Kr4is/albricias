@@ -194,6 +194,20 @@ export default async function EditionsDashboardPage({
           </a>
         </div>
 
+        {/* Account entry point */}
+        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+            <span className="material-icons text-sm">account_circle</span>
+            Account: change password, manage API token
+          </div>
+          <a
+            href="/admin/account"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+          >
+            Manage
+          </a>
+        </div>
+
         {/* Drafts Section */}
         <section className="mb-14">
           <h3 className="font-headline text-2xl font-bold border-b-2 border-ink pb-2 mb-6 flex items-center gap-2">

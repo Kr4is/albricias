@@ -478,13 +478,20 @@ function GithubStatRow({
         action={`/admin/editions/${editionId}/github-stats/${statKey}/toggle`}
         className="shrink-0"
       >
+        {/* Deliberately borderless and muted, unlike the bordered
+            TopicCandidateCard toggle above: that one hides or shows a real
+            article, this one is a private annotation with no downstream
+            effect (plan Acceptance Criteria 2), so the two must not read as
+            functionally equivalent controls. */}
         <button
           type="submit"
-          title={marked ? "Unmark" : "Mark"}
-          className={`p-1 border transition-colors ${
+          title={
             marked
-              ? "border-amber-500 text-amber-600 bg-amber-50"
-              : "border-stone-200 text-stone-400 hover:bg-stone-100"
+              ? "Remove your personal star (no effect on what's published)"
+              : "Star as a personal note (no effect on what's published)"
+          }
+          className={`p-1 transition-colors ${
+            marked ? "text-amber-500 hover:text-amber-600" : "text-stone-300 hover:text-stone-400"
           }`}
         >
           <span className="material-icons text-sm">{marked ? "star" : "star_outline"}</span>
@@ -606,9 +613,14 @@ export default async function EditionEditPage({
                   >
                     <span className="material-icons text-sm">campaign</span> Distribute
                   </a>
-                  <form method="POST" action={`/admin/editions/${edition.id}/newsletter/send`}>
+                  <form
+                    method="POST"
+                    action={`/admin/editions/${edition.id}/newsletter/send`}
+                    data-loading-submit
+                  >
                     <button
                       type="submit"
+                      data-loading-text="Sending…"
                       className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
                     >
                       <span className="material-icons text-sm">mail</span> Send
@@ -963,7 +975,7 @@ export default async function EditionEditPage({
             candidate hides (not deletes) the article it auto-generated;
             marking/unmarking a githubStats metric is a pure annotation. */}
         {(githubStats || (topicCandidates && topicCandidates.length > 0)) && (
-          <div className="mt-12 border-t-4 border-double border-ink pt-8">
+          <div id="github-insights" className="mt-12 border-t-4 border-double border-ink pt-8">
             <h3 className="font-headline text-lg font-bold border-b border-ink pb-2 mb-5">
               GitHub Insights
             </h3>
@@ -1003,9 +1015,13 @@ export default async function EditionEditPage({
 
             {githubStats && (
               <div>
-                <h4 className="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-3">
+                <h4 className="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-1">
                   Stats Bank
                 </h4>
+                <p className="font-sans text-[11px] text-stone-400 mb-3">
+                  Starring a metric here is a personal note only — it doesn&apos;t affect what gets
+                  published. (Unmarking a topic candidate above does hide its article.)
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
                   {GITHUB_STAT_SECTIONS.map(({ section, label, metrics }) => (
                     <div key={section}>

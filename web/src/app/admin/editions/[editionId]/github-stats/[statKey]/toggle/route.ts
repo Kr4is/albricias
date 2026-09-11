@@ -56,7 +56,11 @@ export async function POST(
     }) => Promise<unknown>
   )({ where: { id }, data: { curatorMarks: JSON.stringify(nextMarks) } });
 
-  return flashRedirect(request, `/admin/editions/${id}/edit`, [
+  // Redirect back to the `#github-insights` anchor on the edit page rather
+  // than its top — this toggle lives far down a long page, and a plain 303 to
+  // the top loses the curator's place on every click (plan Acceptance
+  // Criteria 3, smaller fragment-based variant).
+  return flashRedirect(request, `/admin/editions/${id}/edit#github-insights`, [
     { type: "success", text: isMarked ? "Metric unmarked." : "Metric marked." },
   ]);
 }

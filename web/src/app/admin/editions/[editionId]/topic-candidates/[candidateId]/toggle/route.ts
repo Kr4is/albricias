@@ -84,7 +84,10 @@ export async function POST(
     )({ where: { id: linkedArticle.id }, data: { hidden: !isNowMarked } });
   }
 
-  return flashRedirect(request, `/admin/editions/${id}/edit`, [
+  // Back to the `#github-insights` anchor rather than the top of a long edit
+  // page, so marking several candidates in a row doesn't lose the curator's
+  // place (plan Acceptance Criteria 3, smaller fragment-based variant).
+  return flashRedirect(request, `/admin/editions/${id}/edit#github-insights`, [
     {
       type: "success",
       text: isNowMarked ? "Topic candidate marked." : "Topic candidate unmarked.",

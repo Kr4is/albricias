@@ -160,9 +160,14 @@ export default async function DistributePage({
               Degrades gracefully with a warning if SMTP isn&apos;t configured
               or there are no confirmed subscribers.
             </p>
-            <form method="POST" action={`/admin/editions/${edition.id}/distribute/send-newsletter`}>
+            <form
+              method="POST"
+              action={`/admin/editions/${edition.id}/distribute/send-newsletter`}
+              data-loading-submit
+            >
               <button
                 type="submit"
+                data-loading-text="Sending…"
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
               >
                 <span className="material-icons text-sm">mail</span> Send Newsletter
@@ -218,7 +223,7 @@ function NetworkCard({
           {connected ? "Connected" : "Not connected"}
         </span>
       </div>
-      <form method="POST" action={action} className="flex flex-col flex-1">
+      <form method="POST" action={action} className="flex flex-col flex-1" data-loading-submit>
         <textarea
           name="text"
           defaultValue={defaultValue}
@@ -231,6 +236,7 @@ function NetworkCard({
         {connected ? (
           <button
             type="submit"
+            data-loading-text="Sending…"
             className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
           >
             Send to {label}

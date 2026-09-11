@@ -33,6 +33,7 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import { readFlash } from "@/lib/flash";
 import { getSetting } from "@/lib/config/settings";
 import { getServiceToken } from "@/lib/service-token";
+import { resolveAiModel } from "@/lib/ai/provider";
 import { settingDisplay } from "./setting-display";
 import { SETTINGS_CATEGORIES } from "./field-specs";
 import { CategoryFormFields, resolveFieldValues } from "./fields";
@@ -109,19 +110,38 @@ export default async function SettingsPage({
   // Same presence checks `populateEditionDraft` (`@/lib/generation/index.ts`)
   // uses to decide whether to fetch each source — reused here verbatim so
   // this badge never drifts from what actually gates generation.
-  const [githubToken, githubUsername, blogRssUrl, alexandriaApiUrl, spotifyToken] =
-    await Promise.all([
-      getSetting("integrations.github.token", { encrypted: true }),
-      getSetting("integrations.github.username"),
-      getSetting("integrations.blog.rssUrl"),
-      getSetting("integrations.alexandria.apiUrl"),
-      getServiceToken("spotify"),
-    ]);
+  const [
+    githubToken,
+    githubUsername,
+    blogRssUrl,
+    alexandriaApiUrl,
+    spotifyToken,
+    aiModel,
+    smtpHost,
+    smtpPort,
+    smtpUser,
+    smtpPass,
+    fromAddress,
+  ] = await Promise.all([
+    getSetting("integrations.github.token", { encrypted: true }),
+    getSetting("integrations.github.username"),
+    getSetting("integrations.blog.rssUrl"),
+    getSetting("integrations.alexandria.apiUrl"),
+    getServiceToken("spotify"),
+    resolveAiModel(),
+    getSetting("email.smtpHost"),
+    getSetting("email.smtpPort"),
+    getSetting("email.smtpUser"),
+    getSetting("email.smtpPass", { encrypted: true }),
+    getSetting("email.fromAddress"),
+  ]);
   const connectionStatus: Record<string, boolean> = {
     github: Boolean(githubToken && githubUsername),
     blog: Boolean(blogRssUrl),
     spotify: Boolean(spotifyToken),
     alexandria: Boolean(alexandriaApiUrl),
+    ai: Boolean(aiModel),
+    email: Boolean(smtpHost && smtpPort && smtpUser && smtpPass && fromAddress),
   };
 
   return (

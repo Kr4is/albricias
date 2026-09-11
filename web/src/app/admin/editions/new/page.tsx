@@ -30,6 +30,14 @@ export default async function NewEditionPage({
   return (
     <NewspaperShell endpoint="admin.edition_new">
       <div className="max-w-lg mx-auto my-10 fade-in">
+        <div className="flex items-center gap-2 text-xs font-sans text-stone-500 mb-6">
+          <a href="/admin/editions" className="hover:underline">
+            Dashboard
+          </a>
+          <span className="material-icons text-xs">chevron_right</span>
+          <span className="text-ink font-bold">New Edition</span>
+        </div>
+
         <div className="border-2 border-ink p-8 bg-paper shadow-xl">
           <div className="text-center mb-8 border-b-4 border-double border-ink pb-5">
             <h2 className="font-masthead text-4xl mb-1">New Edition</h2>

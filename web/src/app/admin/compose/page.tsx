@@ -37,6 +37,14 @@ export default async function ComposePage({
   return (
     <NewspaperShell endpoint="admin.compose">
       <div className="max-w-4xl mx-auto my-8 fade-in">
+        <div className="flex items-center gap-2 text-xs font-sans text-stone-500 mb-6">
+          <a href="/admin/editions" className="hover:underline">
+            Dashboard
+          </a>
+          <span className="material-icons text-xs">chevron_right</span>
+          <span className="text-ink font-bold">Editor&apos;s Desk</span>
+        </div>
+
         <div className="border-2 border-ink p-8 bg-paper shadow-xl relative">
           <div className="text-center mb-10 border-b-4 border-ink border-double pb-6">
             <h2 className="font-masthead text-5xl md:text-6xl mb-2">Editor&apos;s Desk</h2>
@@ -51,6 +59,7 @@ export default async function ComposePage({
             method="POST"
             action="/admin/compose/create"
             encType="multipart/form-data"
+            data-loading-submit
             className="space-y-8 font-serif"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -250,6 +259,7 @@ export default async function ComposePage({
             <div className="pt-6 border-t-4 border-ink border-double">
               <button
                 type="submit"
+                data-loading-text="Uploading…"
                 className="w-full bg-ink text-paper py-4 font-sans font-extrabold uppercase tracking-[0.4em] text-xl hover:bg-ink-light hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 shadow-2xl"
               >
                 Save to Edition
