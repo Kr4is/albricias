@@ -9,6 +9,11 @@
  *   interviewAgent   ← `app/services/generators/interview.py`  (`_SYSTEM`)
  *   reviewAgent      ← `app/services/generators/review.py`     (`_SYSTEM`)
  *   profileAgent     ← `app/services/generators/profile.py`    (`_SYSTEM`)
+ *
+ * `tutorialAgent` is the exception: it has no Python counterpart. It was added
+ * by the `github-repo-article-generators` plan, so its instructions are written
+ * here rather than ported — same `NEWSPAPER_PERSONA` + desk-brief shape as the
+ * four above.
  */
 
 import { Agent } from "@mastra/core/agent";
@@ -56,6 +61,26 @@ export const PROFILE_SYSTEM =
   "broadsheet. Keep the total between 250 and 450 words.";
 
 /**
+ * No Python original — new with the `github-repo-article-generators` plan.
+ * The persona's grandiloquence is kept, but deliberately fenced off from the
+ * steps themselves: a reader following a tutorial needs the commands to be
+ * literal, whatever flourish surrounds them.
+ */
+export const TUTORIAL_SYSTEM =
+  NEWSPAPER_PERSONA +
+  "\n\n" +
+  "You are writing the Practical Instruction column — a short, usable how-to. " +
+  "Open with a sentence or two on what the reader will end up with, then give " +
+  "the steps in order, as a numbered list, each one a concrete action taken " +
+  "from the material provided (a command to run, a file to edit, a value to " +
+  "set) rather than a generality. Put commands and code in fenced code blocks " +
+  "and reproduce them exactly — never invent an option or a package name that " +
+  "is not in the source material, and say plainly when the material does not " +
+  "cover a step. Close with what to try next. This is instruction, not " +
+  "promotion: no feature lists, no praise for the project. " +
+  "Keep the total between 250 and 500 words.";
+
+/**
  * The chronicle desk turns raw service activity into section dispatches.
  * `chronicle.py` used the bare persona as its system prompt.
  */
@@ -100,6 +125,14 @@ export const profileAgent = new Agent({
   model: MODEL_ID,
 });
 
+export const tutorialAgent = new Agent({
+  id: "tutorial",
+  name: "Albricias Practical Instruction Desk",
+  description: "Writes short getting-started tutorials from a project's own documentation.",
+  instructions: TUTORIAL_SYSTEM,
+  model: MODEL_ID,
+});
+
 /** Registered on the Mastra instance in `src/mastra/index.ts`. */
 export const agents = {
   chronicle: chronicleAgent,
@@ -107,6 +140,7 @@ export const agents = {
   interview: interviewAgent,
   review: reviewAgent,
   profile: profileAgent,
+  tutorial: tutorialAgent,
   social: socialCopyAgent,
 };
 

@@ -50,12 +50,19 @@ export const activityInputSchema = z.object({
 
 export type ActivityInput = z.infer<typeof activityInputSchema>;
 
-/** Ported from `GENERATORS` in `app/services/generators/__init__.py`. */
+/**
+ * `reflection`/`interview`/`review`/`profile` ported from `GENERATORS` in
+ * `app/services/generators/__init__.py`. `tutorial` is new — the
+ * `github-repo-article-generators` plan's one genuinely new generator type
+ * (its prompt lives in `@/mastra/workflows/assisted`'s `buildTutorialPrompt`),
+ * since none of the ported four fit instructional/how-to content.
+ */
 export const generatorTypeSchema = z.enum([
   "reflection",
   "interview",
   "review",
   "profile",
+  "tutorial",
 ]);
 
 export type GeneratorType = z.infer<typeof generatorTypeSchema>;
@@ -65,14 +72,21 @@ export const GENERATORS: Record<GeneratorType, string> = {
   interview: "Interview",
   review: "Review",
   profile: "Profile / Feature",
+  tutorial: "Tutorial / How-To",
 };
 
-/** Ported from `GENERATOR_CATEGORIES`. */
+/**
+ * Ported from `GENERATOR_CATEGORIES`, plus `tutorial`'s `"How-To"` — not in
+ * `@/lib/article-categories`'s `ARTICLE_CATEGORIES` (the manual-add
+ * dropdown), same as the AI-only chronicle categories ("Discoveries",
+ * "Culture", ...) already aren't; that list is deliberately not exhaustive.
+ */
 export const GENERATOR_CATEGORIES: Record<GeneratorType, string> = {
   reflection: "Editorial",
   interview: "Front Page",
   review: "Arts & Letters",
   profile: "Front Page",
+  tutorial: "How-To",
 };
 
 /** Ported from `_SUBJECT_LABELS` in `app/services/generators/review.py`. */

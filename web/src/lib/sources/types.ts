@@ -70,17 +70,23 @@ export function parseTimestamp(ts: string | null | undefined): Date | null {
 
 /**
  * Ported from `SOURCES` in `app/services/sources/__init__.py`, plus
- * `"calendar_event"` — new in the Google Calendar plan (Phase F): a specific
+ * `"calendar_event"` — from the Google Calendar plan (Phase F): a specific
  * Google Calendar event, whose Gemini meeting notes (or, failing that, its
  * title/description/attendees) become the seed text. See
- * `@/lib/sources/calendar-event.ts`.
+ * `@/lib/sources/calendar-event.ts`. And `"github_repo"` — from the
+ * `github-repo-article-generators` plan: a repo touched/starred this period,
+ * whose README (or, failing that, its topics/description) becomes the seed
+ * text. See `@/lib/sources/github-repo.ts`. Both are "pick from a list, the
+ * server resolves the real content" sources, unlike the four above where the
+ * admin supplies the text/audio directly.
  */
 export type SourceType =
   | "audio_monologue"
   | "audio_conversation"
   | "text"
   | "notes"
-  | "calendar_event";
+  | "calendar_event"
+  | "github_repo";
 
 export const SOURCES: Record<SourceType, string> = {
   audio_monologue: "Audio — Monologue",
@@ -88,6 +94,7 @@ export const SOURCES: Record<SourceType, string> = {
   text: "Text / Transcription",
   notes: "Notes / Bullet Points",
   calendar_event: "Calendar Event — Meeting",
+  github_repo: "GitHub Repository",
 };
 
 /** Normalized output from any source processor. */

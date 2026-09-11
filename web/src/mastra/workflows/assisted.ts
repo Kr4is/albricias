@@ -8,7 +8,10 @@
  * reproduced verbatim here.
  *
  * Shape:
- *   branch(reflection | interview | review | profile)  →  unwrap-branch
+ *   branch(reflection | interview | review | profile | tutorial)  →  unwrap-branch
+ *
+ * `tutorial` is the one generator with no Python ancestor — see
+ * {@link buildTutorialPrompt}.
  *
  * Source *processing* (Whisper transcription, text normalisation) stays outside
  * the workflow, in `src/lib/sources/`, because binary uploads do not belong in
@@ -27,6 +30,7 @@ import {
   reflectionAgent,
   reviewAgent,
   runNewspaperAgent,
+  tutorialAgent,
 } from "../agents";
 import {
   type GeneratorResult,
@@ -36,8 +40,6 @@ import {
   reviewSubjectTypeSchema,
 } from "../schemas";
 
-/** `interview.py` and `profile.py` raised `max_tokens` from the 800 default. */
-const LONG_FORM_MAX_TOKENS = 900;
 
 /** Verbatim from `review.py:_SUBJECT_LABELS`. */
 const SUBJECT_LABELS: Record<string, string> = {
@@ -147,6 +149,32 @@ export function buildProfilePrompt(input: AssistedInput): string {
   );
 }
 
+/**
+ * No Python original — new with the `github-repo-article-generators` plan,
+ * built on `buildReviewPrompt`'s shape (subject line, instruction, headline/
+ * body framing, source material last). The negative instructions are the point
+ * of the prompt, not padding: a README is itself largely promotional, so
+ * without them the model restates the project's pitch instead of teaching.
+ */
+export function buildTutorialPrompt(input: AssistedInput): string {
+  const subjectLine = input.subjectName
+    ? `The project being taught is: ${input.subjectName}.\n\n`
+    : "";
+  return withTopicHint(
+    "Based on the following project documentation, write a minimal, practical " +
+      "getting-started tutorial for ¡Albricias!.\n" +
+      "\n" +
+      `${subjectLine}Begin with a compelling headline (Markdown H1), then the tutorial body: ` +
+      "the concrete steps a reader would actually follow to get this working, in order, " +
+      "drawn from the source material. Do not restate the project's description or sell " +
+      "its merits. Do not include a byline or date.\n" +
+      "\n" +
+      "Source material:\n" +
+      `${input.text}\n`,
+    input.topicHint,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Steps
 // ---------------------------------------------------------------------------
@@ -210,7 +238,6 @@ const interviewStep = makeGeneratorStep({
   generator: "interview",
   category: "Front Page",
   fallbackTitle: "An Interview With a Remarkable Personage",
-  maxTokens: LONG_FORM_MAX_TOKENS,
   buildPrompt: buildInterviewPrompt,
   extraSourceData: (input) => ({
     interviewee_name: input.intervieweeName,
@@ -238,8 +265,33 @@ const profileStep = makeGeneratorStep({
   generator: "profile",
   category: "Front Page",
   fallbackTitle: "A Profile of a Notable Figure",
-  maxTokens: LONG_FORM_MAX_TOKENS,
   buildPrompt: buildProfilePrompt,
+  extraSourceData: (input) => ({
+    subject_name: input.subjectName,
+    topic_hint: input.topicHint,
+  }),
+});
+
+/**
+ * No `maxTokens` here, same as every other generator now — none of the five
+ * pass one. `interview`/`profile` used to (`LONG_FORM_MAX_TOKENS = 900`,
+ * ported from `interview.py`/`profile.py` raising the 800 default), but a
+ * live run against a real reasoning-model deployment surfaced the fix
+ * `@/mastra/agents/base`'s `runNewspaperAgent` already made for chronicle and
+ * the ranking generators had never been applied here: an explicit cap that
+ * small reasoning-truncates the exact same way — verified against the same
+ * finishReason: "length" failure this codebase already fixed once — and the
+ * retry in `runNewspaperAgent` reuses the caller's own `maxTokens`, so a
+ * capped call fails identically twice, not just once. Removing the cap here
+ * too was the fix, not a new tutorial-specific accommodation.
+ */
+const tutorialStep = makeGeneratorStep({
+  stepId: "generate-tutorial",
+  agent: tutorialAgent,
+  generator: "tutorial",
+  category: "How-To",
+  fallbackTitle: "A Practical Primer for the Curious Reader",
+  buildPrompt: buildTutorialPrompt,
   extraSourceData: (input) => ({
     subject_name: input.subjectName,
     topic_hint: input.topicHint,
@@ -251,6 +303,7 @@ const BRANCH_STEP_IDS = [
   "generate-interview",
   "generate-review",
   "generate-profile",
+  "generate-tutorial",
 ] as const;
 
 /**
@@ -271,6 +324,7 @@ export const assistedGenerationWorkflow = createWorkflow({
     [async ({ inputData }) => inputData.generatorType === "interview", interviewStep],
     [async ({ inputData }) => inputData.generatorType === "review", reviewStep],
     [async ({ inputData }) => inputData.generatorType === "profile", profileStep],
+    [async ({ inputData }) => inputData.generatorType === "tutorial", tutorialStep],
   ])
   .map(async ({ inputData }) => {
     const branches = inputData as Record<string, GeneratorResult | undefined>;

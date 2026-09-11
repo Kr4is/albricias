@@ -57,6 +57,7 @@ export async function POST(
   let textInput = "";
   let calendarId: string | undefined;
   let googleEventId: string | undefined;
+  let githubRepo: string | undefined;
 
   if (sourceType.startsWith("audio_")) {
     const file = form.get("audio_file");
@@ -88,6 +89,13 @@ export async function POST(
     }
     calendarId = rawCalendarId;
     googleEventId = rawEventId;
+  } else if (sourceType === "github_repo") {
+    githubRepo = form.get("github_repo")?.toString() ?? "";
+    if (!githubRepo) {
+      return flashRedirect(request, `/admin/editions/${id}/articles/generate`, [
+        { type: "error", text: "Please pick a repository." },
+      ]);
+    }
   } else {
     textInput = form.get("text_input")?.toString().trim() ?? "";
     if (!textInput) {
@@ -99,7 +107,12 @@ export async function POST(
 
   const topicHint = form.get("topic_hint")?.toString().trim() ?? "";
   const subjectName = form.get("subject_name")?.toString().trim() ?? "";
-  const subjectType = (form.get("subject_type")?.toString().trim() || "other") as ReviewSubjectType;
+  // The form's subject-type field is hidden for a GitHub-repo source (the
+  // picked repo already implies "tool") — default it here rather than
+  // relying on a hidden input the browser might not send.
+  const defaultSubjectType = sourceType === "github_repo" ? "tool" : "other";
+  const subjectType = (form.get("subject_type")?.toString().trim() ||
+    defaultSubjectType) as ReviewSubjectType;
   const intervieweeName = form.get("interviewee_name")?.toString().trim() ?? "";
   const author = form.get("author")?.toString().trim() || DEFAULT_AUTHOR;
   const articleDate = parseDateInputValue(form.get("date")?.toString()) ?? edition.periodStart;
@@ -116,6 +129,7 @@ export async function POST(
       textInput,
       calendarId,
       googleEventId,
+      githubRepo,
       topicHint,
       subjectName,
       subjectType,

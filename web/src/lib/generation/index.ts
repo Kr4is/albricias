@@ -42,6 +42,7 @@ import {
   fetchBlogActivity,
   fetchCalendarEventSource,
   fetchGithubActivity,
+  fetchGithubRepoSource,
   fetchSpotifyActivity,
   getValidGoogleAccessToken,
   processAudio,
@@ -284,6 +285,8 @@ export interface GenerateArticleFromSourceOptions {
   calendarId?: string;
   /** Google Calendar event ID — required when `sourceType` is `"calendar_event"`. */
   googleEventId?: string;
+  /** `owner/name` of the repo to write about — required when `sourceType` is `"github_repo"`. */
+  githubRepo?: string;
   /** Optional extra instruction passed to all generators. */
   topicHint?: string;
   /** Subject name (review / profile generators). */
@@ -316,6 +319,7 @@ export async function generateArticleFromSource({
   textInput = "",
   calendarId,
   googleEventId,
+  githubRepo,
   topicHint = "",
   subjectName = "",
   subjectType = "other",
@@ -325,6 +329,12 @@ export async function generateArticleFromSource({
 }: GenerateArticleFromSourceOptions): Promise<Article> {
   // 1. Process source → normalized text.
   let sourceResult: SourceResult;
+  /**
+   * The `github_repo` branch below fills this in from the picked repo when the
+   * caller left it blank — everything else just passes the caller's value
+   * through.
+   */
+  let resolvedSubjectName = subjectName;
   if (sourceType === "audio_monologue" || sourceType === "audio_conversation") {
     if (!audioFile) {
       throw new Error(`audioFile is required for sourceType "${sourceType}".`);
@@ -348,6 +358,21 @@ export async function generateArticleFromSource({
       throw new Error("Google Calendar is not connected.");
     }
     sourceResult = await fetchCalendarEventSource({ accessToken, calendarId, eventId: googleEventId });
+  } else if (sourceType === "github_repo") {
+    if (!githubRepo) {
+      throw new Error(`githubRepo is required for sourceType "github_repo".`);
+    }
+    const token = await getSetting("integrations.github.token", { encrypted: true });
+    if (!token) {
+      throw new Error("GitHub token is not configured. Set it at /admin/settings.");
+    }
+    sourceResult = await fetchGithubRepoSource({ token, repo: githubRepo });
+    // The repo picker already told the form which repo this is, so the admin
+    // should not have to retype it as the review/profile subject. `owner/` is
+    // dropped: the subject of the piece is the project, not its namespace.
+    if (!resolvedSubjectName.trim() && (generatorType === "review" || generatorType === "profile")) {
+      resolvedSubjectName = githubRepo.split("/")[1] ?? githubRepo;
+    }
   } else {
     throw new Error(`Unknown sourceType: ${String(sourceType)}`);
   }
@@ -359,7 +384,7 @@ export async function generateArticleFromSource({
       text: sourceResult.text,
       generatorType,
       topicHint,
-      subjectName,
+      subjectName: resolvedSubjectName,
       subjectType,
       intervieweeName,
       aiModel,

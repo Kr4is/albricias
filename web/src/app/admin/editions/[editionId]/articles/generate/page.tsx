@@ -9,6 +9,7 @@
  */
 
 import type { Metadata } from "next";
+import Script from "next/script";
 import { notFound } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
@@ -27,6 +28,7 @@ const SOURCE_ICONS: Record<string, string> = {
   text: "article",
   notes: "notes",
   calendar_event: "event",
+  github_repo: "code",
 };
 
 const SOURCE_DESCRIPTIONS: Record<string, string> = {
@@ -35,6 +37,7 @@ const SOURCE_DESCRIPTIONS: Record<string, string> = {
   text: "An existing transcript or prose passage.",
   notes: "Rough bullet points or ideas to be expanded.",
   calendar_event: "A recent meeting — Gemini notes if available, else its details.",
+  github_repo: "A repo you touched or starred this period — its README, or failing that its topics.",
 };
 
 /** Recent-events window for the meeting picker below. */
@@ -100,11 +103,61 @@ async function loadCalendarEventOptions(): Promise<CalendarEventOption[]> {
     .map(({ value, label }) => ({ value, label }));
 }
 
+/** Event types that put a repo in front of the correspondent this period — see the plan's Findings. */
+const REPO_TOUCH_EVENT_TYPES = ["commit", "pr", "review", "issue", "star", "repo_created"];
+
+interface GithubRepoOption {
+  value: string;
+  label: string;
+  recommended: boolean;
+}
+
+/**
+ * Every repo this edition's GitHub activity touched or starred, topic-
+ * candidate-recommended ones first — mirrors `loadCalendarEventOptions`'s
+ * shape (a real, bounded pick-list, not free text). Reads only already-
+ * stored data (`ServiceActivity`, `Edition.topicCandidates`); never calls
+ * GitHub itself — the README/topics fetch happens on submit, for the one
+ * repo actually picked, not for every option in this list.
+ */
+async function loadGithubRepoOptions(editionId: number): Promise<GithubRepoOption[]> {
+  const edition = await prisma.edition.findUnique({
+    where: { id: editionId },
+    select: { topicCandidates: true },
+  });
+  const recommended = new Set<string>();
+  if (edition?.topicCandidates) {
+    try {
+      const candidates = JSON.parse(edition.topicCandidates) as { repos?: unknown[] }[];
+      for (const candidate of candidates) {
+        for (const repo of candidate.repos ?? []) {
+          if (typeof repo === "string") recommended.add(repo);
+        }
+      }
+    } catch {
+      // A malformed stored value costs the "recommended" flag, not the list.
+    }
+  }
+
+  const rows = await prisma.serviceActivity.findMany({
+    where: { editionId, source: "github", eventType: { in: REPO_TOUCH_EVENT_TYPES }, repo: { not: null } },
+    select: { repo: true },
+    distinct: ["repo"],
+  });
+
+  return rows
+    .map((row) => row.repo)
+    .filter((repo): repo is string => repo !== null)
+    .map((repo) => ({ value: repo, label: repo, recommended: recommended.has(repo) }))
+    .sort((a, b) => Number(b.recommended) - Number(a.recommended) || a.value.localeCompare(b.value));
+}
+
 const GENERATOR_ICONS: Record<string, string> = {
   reflection: "psychology",
   interview: "question_answer",
   review: "star_rate",
   profile: "person",
+  tutorial: "school",
 };
 
 const GENERATOR_DESCRIPTIONS: Record<string, string> = {
@@ -112,13 +165,15 @@ const GENERATOR_DESCRIPTIONS: Record<string, string> = {
   interview: "A polished Q&A with editorial introduction.",
   review: "A structured critique with a clear verdict.",
   profile: "A narrative feature spotlighting a person or project.",
+  tutorial: "A minimal, concrete getting-started guide.",
 };
 
 const GENERATOR_BEST_WITH: Record<string, string> = {
   reflection: "Best with: monologue, notes",
   interview: "Best with: conversation, transcription",
-  review: "Best with: notes, text",
-  profile: "Best with: conversation, notes",
+  review: "Best with: notes, text, GitHub repo",
+  profile: "Best with: conversation, notes, GitHub repo",
+  tutorial: "Best with: GitHub repo",
 };
 
 function parseId(raw: string): number | null {
@@ -150,6 +205,7 @@ export default async function ArticleGeneratePage({
   const sourceEntries = Object.entries(SOURCES);
   const generatorEntries = Object.entries(GENERATORS);
   const calendarEventOptions = await loadCalendarEventOptions();
+  const githubRepoOptions = await loadGithubRepoOptions(edition.id);
 
   return (
     <NewspaperShell endpoint="admin.article_generate">
@@ -280,6 +336,36 @@ export default async function ArticleGeneratePage({
                 <p className="text-[10px] font-sans text-stone-400">
                   Uses Gemini meeting notes when available, otherwise the event&apos;s
                   title, description, and attendees.
+                </p>
+              </div>
+
+              <div id="github-repo-section" className="hidden space-y-2">
+                <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
+                  Pick a Repository *
+                </label>
+                {githubRepoOptions.length > 0 ? (
+                  <select
+                    name="github_repo"
+                    required
+                    className="w-full bg-transparent border-2 border-ink p-3 text-sm font-sans"
+                  >
+                    <option value="">— Select a repository —</option>
+                    {githubRepoOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.recommended ? `★ ${option.label}` : option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-[11px] font-sans text-stone-500 border border-dashed border-stone-300 p-3">
+                    No GitHub activity found for this edition yet — generate the edition
+                    first, or add GitHub credentials at /admin/settings.
+                  </p>
+                )}
+                <p className="text-[10px] font-sans text-stone-400">
+                  ★ marks a repo this period&apos;s topic candidates flagged as worth a
+                  closer look. Uses the repo&apos;s README, or failing that its topics and
+                  description.
                 </p>
               </div>
             </fieldset>
@@ -446,7 +532,13 @@ export default async function ArticleGeneratePage({
         </div>
       </div>
 
-      <script
+      <Script
+        id="article-generate-form-panels"
+        strategy="afterInteractive"
+        // Source/generator-type show-hide, plus the loading-button state on
+        // submit — next/script (not a raw <script>) so this actually runs on
+        // a client-side navigation into this page, not just a full load; see
+        // NewspaperShell.tsx's own conversion for the same reason.
         dangerouslySetInnerHTML={{
           __html: `
             (function () {
@@ -454,6 +546,7 @@ export default async function ArticleGeneratePage({
               var audioSection = document.getElementById('audio-input-section');
               var textSection = document.getElementById('text-input-section');
               var calendarEventSection = document.getElementById('calendar-event-section');
+              var githubRepoSection = document.getElementById('github-repo-section');
               var interviewFields = document.getElementById('interview-fields');
               var subjectFields = document.getElementById('subject-fields');
               var subjectTypeField = document.getElementById('subject-type-field');
@@ -461,21 +554,36 @@ export default async function ArticleGeneratePage({
               var generateIcon = document.getElementById('generate-icon');
               var generateLabel = document.getElementById('generate-label');
 
-              function updateSourcePanel() {
+              function selectedSource() {
                 var selected = document.querySelector('input[name="source_type"]:checked');
-                if (!selected) return;
-                var isAudio = selected.value.indexOf('audio_') === 0;
-                var isCalendarEvent = selected.value === 'calendar_event';
+                return selected ? selected.value : '';
+              }
+
+              function updateSourcePanel() {
+                var source = selectedSource();
+                if (!source) return;
+                var isAudio = source.indexOf('audio_') === 0;
+                var isCalendarEvent = source === 'calendar_event';
+                var isGithubRepo = source === 'github_repo';
                 audioSection.classList.toggle('hidden', !isAudio);
-                textSection.classList.toggle('hidden', isAudio || isCalendarEvent);
+                textSection.classList.toggle('hidden', isAudio || isCalendarEvent || isGithubRepo);
                 calendarEventSection.classList.toggle('hidden', !isCalendarEvent);
+                githubRepoSection.classList.toggle('hidden', !isGithubRepo);
+                updateGeneratorPanel();
               }
 
               function updateGeneratorPanel() {
                 var selected = document.querySelector('input[name="generator_type"]:checked');
                 if (!selected) return;
+                var isGithubRepo = selectedSource() === 'github_repo';
                 interviewFields.classList.toggle('hidden', selected.value !== 'interview');
-                subjectFields.classList.toggle('hidden', ['review', 'profile'].indexOf(selected.value) === -1);
+                // A GitHub-repo source already supplies the subject (the
+                // picked repo) — see generateArticleFromSource's server-side
+                // auto-fill — so these fields would just be redundant here.
+                subjectFields.classList.toggle(
+                  'hidden',
+                  isGithubRepo || ['review', 'profile'].indexOf(selected.value) === -1,
+                );
                 subjectTypeField.classList.toggle('hidden', selected.value !== 'review');
               }
 
@@ -493,7 +601,6 @@ export default async function ArticleGeneratePage({
               });
 
               updateSourcePanel();
-              updateGeneratorPanel();
             })();
           `,
         }}

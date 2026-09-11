@@ -59,3 +59,4 @@ export {
   refreshGoogleAccessToken,
 } from "./google";
 export { fetchCalendarEventSource } from "./calendar-event";
+export { type FetchGithubRepoSourceOptions, fetchGithubRepoSource } from "./github-repo";
