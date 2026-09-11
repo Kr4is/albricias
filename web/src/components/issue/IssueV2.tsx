@@ -7,6 +7,7 @@
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV2({
@@ -45,7 +46,7 @@ export default function IssueV2({
               </span>
             </div>
 
-            <a href={`/article/${article.id}`}>
+            <a href={articleHref(issue.id, article.id, isPreview)}>
               <h2
                 className={`font-headline font-bold leading-tight mb-2 hover:underline
                 ${index < 2 ? "text-2xl" : "text-lg"}`}

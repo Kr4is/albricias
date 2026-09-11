@@ -15,6 +15,7 @@ import { Fragment } from "react";
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
 
 /** Python's `seq[start::3]`. */
@@ -64,7 +65,7 @@ export default function IssueV1({
                   )}
                 </div>
 
-                <a href={`/article/${article.id}`}>
+                <a href={articleHref(issue.id, article.id, isPreview)}>
                   <h2 className="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
                     {article.title}
                   </h2>
@@ -86,7 +87,7 @@ export default function IssueV1({
           {/* LEAD ARTICLE */}
           {mainArticle && (
             <article className="mb-12 border-b-4 border-double border-stone-300 pb-8">
-              <a href={`/article/${mainArticle.id}`}>
+              <a href={articleHref(issue.id, mainArticle.id, isPreview)}>
                 <h2 className="font-headline text-5xl md:text-7xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 transition-opacity">
                   {mainArticle.title}
                 </h2>
@@ -127,7 +128,7 @@ export default function IssueV1({
                       {article.category}
                     </span>
                   </div>
-                  <a href={`/article/${article.id}`}>
+                  <a href={articleHref(issue.id, article.id, isPreview)}>
                     <h2 className="font-headline text-2xl font-bold leading-tight mb-2 hover:underline">
                       {article.title}
                     </h2>
@@ -154,7 +155,7 @@ export default function IssueV1({
                     {article.category}
                   </span>
                 </div>
-                <a href={`/article/${article.id}`}>
+                <a href={articleHref(issue.id, article.id, isPreview)}>
                   <h3 className="font-headline text-lg font-bold leading-tight mb-2 hover:opacity-70">
                     {article.title}
                   </h3>

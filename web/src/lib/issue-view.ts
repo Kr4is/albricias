@@ -76,3 +76,15 @@ export function toIssueArticle(article: ArticleRow): IssueArticle {
     deck: article.deck,
   };
 }
+
+/**
+ * Where an article link in an issue layout should point. The public
+ * `/article/[id]` route 404s for unpublished editions (see `isPublished` in
+ * `edition-helpers.ts`), so admin preview links — where the edition may still
+ * be a draft — go to the `/admin/*`-gated article preview route instead.
+ */
+export function articleHref(editionId: number, articleId: number, isPreview: boolean): string {
+  return isPreview
+    ? `/admin/editions/${editionId}/articles/${articleId}/preview`
+    : `/article/${articleId}`;
+}

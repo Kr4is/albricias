@@ -7,6 +7,7 @@
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV3({
@@ -35,7 +36,7 @@ export default function IssueV3({
           <div className="relative border-b-2 border-black pb-8">
             <div className="grid grid-cols-12 gap-6">
               <div className="col-span-12 lg:col-span-8">
-                <a href={`/article/${main.id}`}>
+                <a href={articleHref(issue.id, main.id, isPreview)}>
                   <figure className="grayscale hover:grayscale-0 transition-all duration-700">
                     <img
                       src={mediaUrl(issue.coverImage)}
@@ -51,7 +52,7 @@ export default function IssueV3({
                     {main.category}
                   </span>
                 </div>
-                <a href={`/article/${main.id}`}>
+                <a href={articleHref(issue.id, main.id, isPreview)}>
                   <h1 className="font-headline text-5xl lg:text-6xl font-black uppercase leading-none mb-4 hover:opacity-70 transition-opacity">
                     {main.title}
                   </h1>
@@ -68,7 +69,7 @@ export default function IssueV3({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 divide-x divide-stone-300">
           {rest.map((article, index) => (
             <article key={article.id} className={index !== 0 ? "pl-8" : ""}>
-              <a href={`/article/${article.id}`}>
+              <a href={articleHref(issue.id, article.id, isPreview)}>
                 <h3 className="font-headline text-xl font-bold mb-2 hover:underline">
                   {article.title}
                 </h3>
