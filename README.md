@@ -12,8 +12,17 @@ generation pipeline.
 
 - **Configurable cadence**: generate editions weekly or monthly, set globally
   in the admin panel.
-- **AI-assisted generation**: fetches GitHub activity and blog RSS posts, and
-  uses an AI agent to draft articles in a classic newspaper voice.
+- **AI-assisted generation**: fetches GitHub activity, blog RSS posts,
+  Spotify listening activity, Google Calendar events, and Alexandria reading
+  activity, then uses an AI agent to draft articles in a classic newspaper
+  voice — including a synthesized front-page "Compendium" editorial that
+  ties the whole period together.
+- **Multi-provider AI**: pick LiteLLM (any OpenAI-compatible proxy, the
+  default), OpenAI, Google Gemini, or a local Ollama model as the active
+  provider, switchable anytime from the admin settings.
+- **GitHub Insights**: a monthly stats bank (busiest days, commit/PR/issue
+  breakdown, languages, ...) and heuristically-scored topic candidates,
+  auto-generated into articles and curated from the edition edit page.
 - **Admin workflow**: Draft → Preview → Edit → Publish, all through a
   browser-based admin dashboard.
 - **Archive**: browse all published editions by year with pagination.
