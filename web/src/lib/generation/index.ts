@@ -31,6 +31,7 @@ import { EDITION_STATUS_DRAFT, type Cadence, periodLabel } from "@/lib/edition-h
 import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
+import { computeGithubStats } from "@/lib/github-stats";
 import {
   type ActivityItem,
   type AudioMode,
@@ -779,6 +780,28 @@ export async function populateEditionDraft(
       ...p,
       sourceProgress: { ...p.sourceProgress, github: "skipped" },
     }));
+  }
+
+  // --- GitHub stats bank (Phase 1 of the github-monthly-stats-extraction
+  // plan) — pure arithmetic over the ServiceActivity rows just saved above,
+  // so it runs whether or not an AI provider is configured, unlike every
+  // AI-generation step below. Never lets a stats bug break the rest of the
+  // pipeline: computeGithubStats() itself never throws, but the persistence
+  // write still gets its own try/catch, matching every other optional step
+  // in this function.
+  try {
+    const githubStats = await computeGithubStats(edition.id);
+    if (githubStats) {
+      await prisma.edition.update({
+        where: { id: edition.id },
+        data: { githubStats: JSON.stringify(githubStats) },
+      });
+    }
+  } catch (error) {
+    messages.push({
+      type: "warning",
+      text: `GitHub stats computation warning: ${describeError(error)}`,
+    });
   }
 
   // --- Blog RSS fetch ---

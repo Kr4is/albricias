@@ -271,7 +271,10 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: "github",
     title: "GitHub",
-    description: "Fetches your activity for the automatic edition-generation pipeline.",
+    description:
+      "Fetches your activity for the automatic edition-generation pipeline. The token needs the " +
+      "repo scope (private commits/PRs/issues/releases) and the gist scope (gists) — a public-only " +
+      "token still works, but under-reports anything in private repos.",
     fields: GITHUB_FIELDS,
   },
   { id: "blog", title: "Blog", description: "RSS feed used as an activity source.", fields: BLOG_FIELDS },

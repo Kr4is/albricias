@@ -53,6 +53,33 @@ model Edition {
   ///     sections: [{ category: string, status: "pending"|"writing"|"done"|"failed"|"aborted" }]
   ///   }
   generationProgress String? @map("generation_progress")
+  /// JSON, nullable, durable (unlike `generationProgress`, never cleared) —
+  /// the computed "GitHub monthly stats bank" for this period, populated by
+  /// `computeGithubStats()` (`src/lib/github-stats/`) right after the GitHub
+  /// fetch step in `populateEditionDraft`, independent of whether an AI
+  /// provider is configured (pure arithmetic over this edition's
+  /// `ServiceActivity` rows, plus a bounded per-repo language fetch reusing
+  /// `fetchRepoLanguages`). `null` when GitHub isn't configured or the
+  /// period had zero GitHub activity. See
+  /// `.omc/plans/github-monthly-stats-extraction.md` for the full metric
+  /// catalog and rationale. Shape:
+  ///   {
+  ///     temporal: { busiestDay, mostProductiveHour, preferredWeekday, timeOfDaySplit,
+  ///                 longestStreakDays, longestGapDays, firstEventAt, lastEventAt },
+  ///     volume: { totalCommits, totalPrs, totalIssues, totalReleases, distinctRepos,
+  ///               mostActiveRepo, newRepos, starredRepos },
+  ///     collaboration: { externalRepos, prsOpened, prsMerged, prsClosedUnmerged,
+  ///                      avgPrLifetimeHours, issuesOpened, issuesClosed, reviewsGiven,
+  ///                      releasesPublished },
+  ///     content: { avgCommitMessageLength, conventionalCommitBreakdown,
+  ///                shortestCommitMessage, longestCommitMessage, mostUsedEmoji },
+  ///     language: { topLanguagesByBytes: [{ language, bytes }] },
+  ///     trend: { vsPreviousPeriod, bestPeriodThisYear, consecutiveActivePeriods } | null
+  ///   }
+  /// Any group can be partially populated (e.g. `collaboration`'s PR-state
+  /// fields omitted if GitHub's API didn't return them for stored rows) —
+  /// see the plan's Risks section.
+  githubStats String? @map("github_stats")
 
   articles          Article[]
   serviceActivities ServiceActivity[]
