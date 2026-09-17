@@ -39,8 +39,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Kept so `prisma migrate deploy` can be run against the container's database.
+# The standalone output only traces what's needed to *run* the app, so the
+# prisma CLI itself is missing there — pull the full node_modules from
+# `deps` (already `npm ci`-installed at the right versions) to make the
+# `prisma` binary available without npx trying to fetch it over the network.
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma7.config.ts ./prisma7.config.ts
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 USER nextjs
 EXPOSE 3000
