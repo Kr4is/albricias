@@ -16,6 +16,11 @@ COPY . .
 # Generates src/generated/prisma, which is gitignored and required by the build.
 RUN npx prisma generate
 ENV NEXT_TELEMETRY_DISABLED=1
+# Next.js statically collects page data at build time, which instantiates the
+# Prisma client for pages like /admin/account/api-token. DATABASE_URL only
+# needs to be present (not reachable) for this to succeed; the real runtime
+# value is provided separately when the container starts.
+ENV DATABASE_URL="file:./build-placeholder.db"
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runner
