@@ -21,6 +21,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # needs to be present (not reachable) for this to succeed; the real runtime
 # value is provided separately when the container starts.
 ENV DATABASE_URL="file:./build-placeholder.db"
+# Static page collection queries these tables (empty results are fine, a
+# missing schema is not), so migrate the placeholder db before building.
+RUN npx prisma migrate deploy
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runner
