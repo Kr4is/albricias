@@ -1,7 +1,9 @@
 /**
  * Re-run AI generation for a single article — ported from
  * `admin.article_regenerate` (`app/routes/admin.py:482-509`). Both success and
- * failure redirect back to the article edit page, matching the original.
+ * failure redirect back to the article's admin preview page — where the
+ * button lives now (moved from the draft list, which showed no content to
+ * judge a regeneration against) — rather than the original's edit page.
  */
 
 import type { NextRequest } from "next/server";
@@ -25,7 +27,7 @@ export async function POST(
 
   const aiModel = await resolveAiModel();
   if (!aiModel) {
-    return flashRedirect(request, `/admin/editions/${eId}/edit`, [
+    return flashRedirect(request, `/admin/editions/${eId}/articles/${aId}/preview`, [
       { type: "error", text: AI_PROVIDER_NOT_CONFIGURED_MESSAGE },
     ]);
   }
@@ -38,5 +40,5 @@ export async function POST(
     message = { type: "error", text: `AI regeneration failed: ${describeError(error)}` };
   }
 
-  return flashRedirect(request, `/admin/editions/${eId}/articles/${aId}/edit`, [message]);
+  return flashRedirect(request, `/admin/editions/${eId}/articles/${aId}/preview`, [message]);
 }

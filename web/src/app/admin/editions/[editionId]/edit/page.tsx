@@ -12,7 +12,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
+import Disclosure from "@/components/admin/Disclosure";
 import { prisma } from "@/lib/prisma";
+import { computeMissingGenerationPieces } from "@/lib/generation";
 import { ARTICLE_ORDER } from "@/lib/editions";
 import { EDITION_STATUS_DRAFT } from "@/lib/edition-helpers";
 import { readFlash, type FlashMessage, type FlashType } from "@/lib/flash";
@@ -327,7 +329,10 @@ function ArticleCard({ article, editionId }: { article: ArticleRow; editionId: n
       <div className="font-masthead text-3xl text-stone-300 leading-none shrink-0 w-8 text-center">
         {article.order}
       </div>
-      <div className="flex-1 min-w-0">
+      <a
+        href={`/admin/editions/${editionId}/articles/${article.id}/preview`}
+        className="flex-1 min-w-0"
+      >
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
           <span className="text-[9px] font-sans font-bold uppercase tracking-widest bg-stone-100 px-1.5 py-0.5">
             {article.category}
@@ -353,23 +358,8 @@ function ArticleCard({ article, editionId }: { article: ArticleRow; editionId: n
         <p className="text-xs font-sans text-stone-500 mt-0.5 line-clamp-1">
           {article.content.slice(0, 100)}...
         </p>
-      </div>
+      </a>
       <div className="flex items-center gap-2 shrink-0">
-        {article.sourceType === "ai_generated" && (
-          <form
-            method="POST"
-            action={`/admin/editions/${editionId}/articles/${article.id}/regenerate`}
-            data-loading-submit
-          >
-            <button
-              type="submit"
-              title="Regenerate with AI"
-              className="p-1.5 text-purple-600 hover:bg-purple-50 transition-colors border border-purple-200"
-            >
-              <span className="material-icons text-sm">auto_awesome</span>
-            </button>
-          </form>
-        )}
         <a
           href={`/admin/editions/${editionId}/articles/${article.id}/edit`}
           className="p-1.5 text-ink hover:bg-stone-100 transition-colors border border-stone-200"
@@ -395,51 +385,90 @@ function ArticleCard({ article, editionId }: { article: ArticleRow; editionId: n
 
 /**
  * One topic candidate card in the "GitHub Insights" section — title, bullets,
- * score, and a mark/unmark toggle. Unmarking hides (not deletes) whichever
- * `Article` this candidate auto-generated, via `sourceData.topicCandidateId`
- * (see `.../topic-candidates/[candidateId]/toggle/route.ts`).
+ * score, and either a mark/unmark toggle (normal case) or a "failed, retry"
+ * state (`isMissing: true`) when the candidate qualified for
+ * auto-generation but generation never produced its article — see
+ * `computeMissingGenerationPieces` in `@/lib/generation`. A low-scoring
+ * candidate that never qualified in the first place is not "missing"
+ * anything and always gets the normal card. Unmarking hides (not deletes)
+ * whichever `Article` this candidate auto-generated, via
+ * `sourceData.topicCandidateId` (see
+ * `.../topic-candidates/[candidateId]/toggle/route.ts`).
  */
 function TopicCandidateCard({
   candidate,
   marked,
+  isMissing,
   editionId,
 }: {
   candidate: TopicCandidate;
   marked: boolean;
+  isMissing: boolean;
   editionId: number;
 }) {
   return (
     <div
-      className={`border p-4 ${marked ? "border-stone-200 bg-white" : "border-stone-200 bg-stone-50 opacity-60"}`}
+      className={`border p-4 ${
+        isMissing
+          ? "border-red-200 bg-red-50"
+          : marked
+            ? "border-stone-200 bg-white"
+            : "border-stone-200 bg-stone-50 opacity-60"
+      }`}
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[9px] font-sans font-bold uppercase tracking-widest bg-stone-100 px-1.5 py-0.5">
             {candidate.kind}
           </span>
-          <span className="text-[9px] font-sans text-stone-400">score {candidate.score}</span>
+          {!isMissing && (
+            <span className="text-[9px] font-sans text-stone-400">score {candidate.score}</span>
+          )}
         </div>
-        <form
-          method="POST"
-          action={`/admin/editions/${editionId}/topic-candidates/${candidate.id}/toggle`}
-          className="shrink-0"
-        >
-          <button
-            type="submit"
-            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest border transition-colors ${
-              marked
-                ? "border-green-600 text-green-700 hover:bg-green-50"
-                : "border-stone-300 text-stone-500 hover:bg-stone-100"
-            }`}
+        {!isMissing ? (
+          <form
+            method="POST"
+            action={`/admin/editions/${editionId}/topic-candidates/${candidate.id}/toggle`}
+            className="shrink-0"
           >
-            <span className="material-icons text-xs">
-              {marked ? "visibility" : "visibility_off"}
-            </span>
-            {marked ? "Marked" : "Unmarked"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest border transition-colors ${
+                marked
+                  ? "border-green-600 text-green-700 hover:bg-green-50"
+                  : "border-stone-300 text-stone-500 hover:bg-stone-100"
+              }`}
+            >
+              <span className="material-icons text-xs">
+                {marked ? "visibility" : "visibility_off"}
+              </span>
+              {marked ? "Marked" : "Unmarked"}
+            </button>
+          </form>
+        ) : (
+          <form
+            method="POST"
+            action={`/admin/editions/${editionId}/topic-candidates/${candidate.id}/regenerate`}
+            className="shrink-0"
+            data-loading-submit
+          >
+            <button
+              type="submit"
+              data-loading-text="Regenerando…"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest border border-red-400 text-red-700 hover:bg-red-100 transition-colors"
+            >
+              <span className="material-icons text-xs">refresh</span>
+              Reintentar
+            </button>
+          </form>
+        )}
       </div>
       <p className="font-headline font-bold text-sm mb-1.5">{candidate.title}</p>
+      {isMissing && (
+        <p className="text-xs font-sans text-red-700 mb-1.5">
+          No se pudo generar el artículo para este candidato.
+        </p>
+      )}
       <ul className="space-y-0.5">
         {candidate.bullets.map((bullet, index) => (
           <li key={index} className="text-xs font-sans text-stone-600">
@@ -536,12 +565,21 @@ export default async function EditionEditPage({
   const curatorMarks = parseStoredCuratorMarks(edition.curatorMarks);
   const githubStats = readGithubStats(edition);
   const topicCandidates = readTopicCandidates(edition);
+  // Durable "what's missing" diff — only meaningful once a run has actually
+  // happened; a never-generated edition has no activity to diff against (see
+  // `computeMissingGenerationPieces`'s doc comment).
+  const { missingSections, missingCandidates } =
+    edition.generationStatus === "done"
+      ? await computeMissingGenerationPieces(edition.id)
+      : { missingSections: [], missingCandidates: [] };
+  const missingCandidateIds = new Set(missingCandidates.map((c) => c.id));
   const { rows: sectionRows, remaining: remainingArticles } = generationProgress
     ? mergeSectionsWithArticles(generationProgress.sections, articles)
     : { rows: [] as SectionRow[], remaining: articles };
   const hasAnythingToShow =
     remainingArticles.length > 0 ||
-    sectionRows.some((row) => row.articles.length > 0 || row.placeholder !== null);
+    sectionRows.some((row) => row.articles.length > 0 || row.placeholder !== null) ||
+    missingSections.length > 0;
 
   return (
     <NewspaperShell endpoint="admin.edition_edit">
@@ -959,6 +997,34 @@ export default async function EditionEditPage({
                 {remainingArticles.map((article) => (
                   <ArticleCard key={article.id} article={article} editionId={edition.id} />
                 ))}
+                {/* Durable counterpart to the transient "failed" placeholder
+                    above: computed fresh from persisted data on every load
+                    (see computeMissingGenerationPieces), so a section that
+                    failed still shows here — with a working retry — long
+                    after the run that caused it ended and generationProgress
+                    was cleared. */}
+                {missingSections.map((category) => (
+                  <div key={category} className="border border-red-200 bg-red-50 p-4 flex items-center gap-3">
+                    <span className="material-icons text-red-500 text-lg">error_outline</span>
+                    <p className="text-xs font-sans text-red-700 flex-1">
+                      No se pudo generar la sección <span className="font-bold">{category}</span>.
+                    </p>
+                    <form
+                      method="POST"
+                      action={`/admin/editions/${edition.id}/sections/${encodeURIComponent(category)}/regenerate`}
+                      data-loading-submit
+                    >
+                      <button
+                        type="submit"
+                        data-loading-text="Regenerando…"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest border border-red-400 text-red-700 hover:bg-red-100 transition-colors"
+                      >
+                        <span className="material-icons text-xs">refresh</span>
+                        Reintentar
+                      </button>
+                    </form>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="text-center py-10 border-2 border-dashed border-stone-200">
@@ -1005,6 +1071,7 @@ export default async function EditionEditPage({
                         key={candidateId}
                         candidate={{ ...candidate, id: candidateId }}
                         marked={isTopicCandidateMarked(curatorMarks, candidateId)}
+                        isMissing={missingCandidateIds.has(candidateId)}
                         editionId={edition.id}
                       />
                     );
@@ -1014,11 +1081,8 @@ export default async function EditionEditPage({
             )}
 
             {githubStats && (
-              <div>
-                <h4 className="font-sans text-xs font-bold uppercase tracking-widest text-stone-500 mb-1">
-                  Stats Bank
-                </h4>
-                <p className="font-sans text-[11px] text-stone-400 mb-3">
+              <Disclosure summary="GitHub Stats (35 metrics)">
+                <p className="font-sans text-[11px] text-stone-400 mb-3 mt-3">
                   Starring a metric here is a personal note only — it doesn&apos;t affect what gets
                   published. (Unmarking a topic candidate above does hide its article.)
                 </p>
@@ -1046,7 +1110,7 @@ export default async function EditionEditPage({
                     </div>
                   ))}
                 </div>
-              </div>
+              </Disclosure>
             )}
           </div>
         )}

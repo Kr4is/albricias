@@ -27,6 +27,22 @@ export type TopicCandidateKind =
   | "curiosity";
 
 /**
+ * `TopicCandidate.kind`'s actual type — {@link TopicCandidateKind} plus
+ * `"star"`. Kept separate because `"star"` candidates never go through the
+ * detector/scoring machinery (`./detectors`, `./scoring`) those eight kinds
+ * do: a starred repo already carries its own justification (the admin chose
+ * to star it), so there is no `CandidateDetector` or substance/originality/
+ * narrative weight to give it. Widening `TopicCandidateKind` itself would
+ * force a meaningless `"star"` entry into every `Record<TopicCandidateKind, …>`
+ * table in `./detectors` and `./scoring`; this keeps those exhaustive over
+ * the eight real detector kinds and widens only where `"star"` is actually
+ * handled (`./index`'s `computeStarCandidates`, `generation/index.ts`'s
+ * `TOPIC_CANDIDATE_GENERATOR_TYPE`, and the stored/curated candidate shape
+ * below).
+ */
+export type CuratedArticleKind = TopicCandidateKind | "star";
+
+/**
  * What a detector produces when its kind fires: the story, the data behind it,
  * and one number standing in for "how much material there is".
  */
@@ -67,10 +83,12 @@ export interface TopicCandidate {
    * key. Not stable *across* editions/regenerations — only used to link an
    * auto-generated `Article.sourceData.topicCandidateId` and
    * `Edition.curatorMarks.topicCandidateIds` back to a candidate within the
-   * same stored array.
+   * same stored array. `"star"` candidates use `` `star-${repo}` `` instead
+   * (see {@link import("./index").computeStarCandidates}) — a repo can only
+   * be starred once per period, so `repo` alone is already unique.
    */
   id: string;
-  kind: TopicCandidateKind;
+  kind: CuratedArticleKind;
   title: string;
   repos: string[];
   bullets: string[];

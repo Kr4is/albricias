@@ -33,9 +33,10 @@ import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
 import { computeGithubStats } from "@/lib/github-stats";
 import {
+  computeStarCandidates,
   computeTopicCandidates,
+  type CuratedArticleKind,
   type TopicCandidate,
-  type TopicCandidateKind,
 } from "@/lib/topic-candidates";
 import {
   type ActivityItem,
@@ -53,7 +54,13 @@ import {
   processText,
   refreshAccessToken,
 } from "@/lib/sources";
-import { chronicleAgent, parseResponse, runNewspaperAgent, type ResolvedAiModel } from "@/mastra/agents";
+import {
+  MODEL_NAME,
+  chronicleAgent,
+  parseResponse,
+  runNewspaperAgent,
+  type ResolvedAiModel,
+} from "@/mastra/agents";
 import { createActivityRankingArticle, createCalendarRankingArticle } from "@/lib/rankings";
 import {
   SYNTHESIS_GENERATOR,
@@ -67,9 +74,12 @@ import {
 } from "@/mastra/schemas";
 import {
   CHRONICLE_CONCURRENCY,
+  type ChronicleCategory,
   assistedGenerationWorkflow,
+  buildChroniclePrompt,
   chronicleWorkflow,
   groupActivities,
+  summariseGroup,
 } from "@/mastra/workflows";
 
 /** By-line stamped on every AI-written piece. */
@@ -462,10 +472,16 @@ export const TOPIC_CANDIDATE_AUTO_GENERATE_THRESHOLD = 35;
 
 /**
  * `TopicCandidate.kind` → `GeneratorType` for the automatic pipeline.
- * `interview` has no entry because it isn't a `TopicCandidateKind` at all —
+ * `interview` has no entry because it isn't a `CuratedArticleKind` at all —
  * it needs a real conversation to transcribe, which no topic candidate has.
+ *
+ * `star` maps to `profile`: `PROFILE_SYSTEM`'s "long-form narrative
+ * journalism... their background, what makes them remarkable" framing fits a
+ * starred-repo deep dive far better than any of the other five generator
+ * types, which are all shaped around GitHub activity (a release, a bugfix, a
+ * burst of commits) rather than a single project taken on its own.
  */
-const TOPIC_CANDIDATE_GENERATOR_TYPE: Record<TopicCandidateKind, GeneratorType> = {
+const TOPIC_CANDIDATE_GENERATOR_TYPE: Record<CuratedArticleKind, GeneratorType> = {
   release: "review",
   bugfixStory: "reflection",
   newLanguage: "tutorial",
@@ -474,6 +490,7 @@ const TOPIC_CANDIDATE_GENERATOR_TYPE: Record<TopicCandidateKind, GeneratorType> 
   fastPrVelocity: "profile",
   externalContribution: "profile",
   curiosity: "reflection",
+  star: "profile",
 };
 
 /** Read + validate a stored `Edition.topicCandidates` column, defaulting to none. */
@@ -508,6 +525,46 @@ function parseStoredTopicCandidates(stored: string | null | undefined): TopicCan
  * others, the same non-fatal-per-item pattern used everywhere else in this
  * file (e.g. the chronicle workflow's per-section handling above).
  */
+/**
+ * `star` candidates always qualify — see `computeStarCandidates`'s doc
+ * comment on why a starred repo has no heuristic score to compare against
+ * the threshold in the first place. Exported so both the bulk pass below and
+ * {@link computeMissingGenerationPieces} (the durable "what's missing" diff
+ * the edit page renders) agree on exactly which candidates are expected to
+ * have an article.
+ */
+export function qualifiesForAutoGeneration(candidate: TopicCandidate): boolean {
+  return candidate.kind === "star" || candidate.score >= TOPIC_CANDIDATE_AUTO_GENERATE_THRESHOLD;
+}
+
+/**
+ * Generate the one `Article` a single topic candidate is owed. Pulled out of
+ * {@link generateTopicCandidateArticles}'s loop so a later single-candidate
+ * retry (`regenerateTopicCandidateArticle`, for the edit page's per-item
+ * "failed, retry" card) calls the exact same code the bulk auto-generation
+ * pass does, instead of a second copy that could drift.
+ */
+async function generateOneTopicCandidateArticle(
+  editionId: number,
+  candidate: TopicCandidate,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<Article> {
+  const repo = candidate.repos[0];
+  if (!repo) {
+    throw new Error(
+      `Topic candidate "${candidate.title}" (${candidate.kind}) has no repo to write about.`,
+    );
+  }
+  return generateArticleFromSource({
+    editionId,
+    sourceType: "github_repo",
+    generatorType: TOPIC_CANDIDATE_GENERATOR_TYPE[candidate.kind],
+    githubRepo: repo,
+    aiModel,
+    extraSourceData: { topicCandidateId: candidate.id },
+  });
+}
+
 export async function generateTopicCandidateArticles(
   editionId: number,
   aiModel: ResolvedAiModel | undefined,
@@ -518,28 +575,12 @@ export async function generateTopicCandidateArticles(
     select: { topicCandidates: true },
   });
   const candidates = parseStoredTopicCandidates(edition?.topicCandidates);
-  const qualifying = candidates.filter(
-    (candidate) => candidate.score >= TOPIC_CANDIDATE_AUTO_GENERATE_THRESHOLD,
-  );
+  const qualifying = candidates.filter(qualifiesForAutoGeneration);
 
   const created: Article[] = [];
   for (const candidate of qualifying) {
     try {
-      const repo = candidate.repos[0];
-      if (!repo) {
-        throw new Error(
-          `Topic candidate "${candidate.title}" (${candidate.kind}) has no repo to write about.`,
-        );
-      }
-      const article = await generateArticleFromSource({
-        editionId,
-        sourceType: "github_repo",
-        generatorType: TOPIC_CANDIDATE_GENERATOR_TYPE[candidate.kind],
-        githubRepo: repo,
-        aiModel,
-        extraSourceData: { topicCandidateId: candidate.id },
-      });
-      created.push(article);
+      created.push(await generateOneTopicCandidateArticle(editionId, candidate, aiModel));
     } catch (error) {
       messages.push({
         type: "warning",
@@ -548,6 +589,142 @@ export async function generateTopicCandidateArticles(
     }
   }
   return created;
+}
+
+/**
+ * Retry a single topic candidate that qualified for auto-generation but
+ * never got its article (see `computeMissingGenerationPieces`) — the
+ * backend half of the edit page's per-candidate "failed, retry" card.
+ * Throws if the candidate id isn't in the edition's stored `topicCandidates`.
+ */
+export async function regenerateTopicCandidateArticle(
+  editionId: number,
+  candidateId: string,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<Article> {
+  const edition = await prisma.edition.findUnique({
+    where: { id: editionId },
+    select: { topicCandidates: true },
+  });
+  const candidate = parseStoredTopicCandidates(edition?.topicCandidates).find(
+    (c) => c.id === candidateId,
+  );
+  if (!candidate) {
+    throw new Error(`Topic candidate "${candidateId}" not found on edition ${editionId}.`);
+  }
+  return generateOneTopicCandidateArticle(editionId, candidate, aiModel);
+}
+
+/**
+ * Retry one chronicle section that had activity but never got a written
+ * article — the backend half of the edit page's per-section "failed, retry"
+ * card. Reuses the same prompt-building primitives `generateEditionDraft`'s
+ * chronicle pass does (`groupActivities`/`summariseGroup`/
+ * `buildChroniclePrompt`, all from `@/mastra/workflows`), just for one
+ * category instead of the whole activity set, and persists the result the
+ * same way that pass does. Throws if the category has no activity to write
+ * from (nothing to regenerate) — mirrors `regenerateArticle`'s "throws if
+ * the target doesn't exist" contract.
+ */
+export async function regenerateChronicleSection(
+  editionId: number,
+  category: ChronicleCategory,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<Article> {
+  const [activities, edition] = await Promise.all([
+    prisma.serviceActivity.findMany({ where: { editionId, eventType: { not: "star" } } }),
+    prisma.edition.findUnique({ where: { id: editionId } }),
+  ]);
+  const label = edition ? periodLabel(edition) : "this month";
+
+  const activityInputs = activities.map((row) => ({
+    eventType: row.eventType,
+    repo: row.repo,
+    title: row.title,
+    url: row.url,
+    timestamp: row.timestamp,
+  }));
+  const group = groupActivities(activityInputs).get(category);
+  if (!group || group.length === 0) {
+    throw new Error(`No activity to write the "${category}" section from.`);
+  }
+
+  const prompt = buildChroniclePrompt(category, label, summariseGroup(group));
+  const raw = await runNewspaperAgent(chronicleAgent, { user: prompt, aiModel });
+  const { title, content } = parseResponse(raw, `${category} Dispatch — ${label}`);
+
+  return prisma.article.create({
+    data: {
+      editionId,
+      title,
+      content,
+      category,
+      author: DEFAULT_AUTHOR,
+      deck: deckFor(content),
+      order: await nextArticleOrder(editionId),
+      date: edition?.periodStart ?? new Date(),
+      sourceType: AI_SOURCE_TYPE,
+      sourceData: JSON.stringify({
+        generator: "chronicle",
+        prompt,
+        response: raw,
+        model: MODEL_NAME,
+        activity_count: group.length,
+      }),
+    },
+  });
+}
+
+/**
+ * What the edit page needs to render "failed, retry" cards for — computed
+ * fresh from durable data (`ServiceActivity`, `Article`, `Edition.
+ * topicCandidates`) rather than from `Edition.generationProgress`, which
+ * `populateEditionDraft` clears the moment a run ends (see that function's
+ * `finally` block). This is what makes a failure still visible — and
+ * retriable — on a page load long after the run that caused it finished.
+ *
+ * Only meaningful once generation has actually run at least once; callers
+ * should gate on `edition.generationStatus === "done"` themselves (a
+ * never-generated edition has no activity to diff against and would just
+ * report everything as "missing", which is not what a blank draft means).
+ */
+export async function computeMissingGenerationPieces(
+  editionId: number,
+): Promise<{ missingSections: ChronicleCategory[]; missingCandidates: TopicCandidate[] }> {
+  const [activities, articles, edition] = await Promise.all([
+    prisma.serviceActivity.findMany({
+      where: { editionId, eventType: { not: "star" } },
+      select: { eventType: true, repo: true, title: true, url: true, timestamp: true },
+    }),
+    prisma.article.findMany({
+      where: { editionId, sourceType: AI_SOURCE_TYPE },
+      select: { category: true, sourceData: true },
+    }),
+    prisma.edition.findUnique({ where: { id: editionId }, select: { topicCandidates: true } }),
+  ]);
+
+  const expectedCategories = groupActivities(activities).keys();
+  const writtenCategories = new Set(articles.map((a) => a.category));
+  const missingSections = [...expectedCategories].filter(
+    (category) => !writtenCategories.has(category),
+  );
+
+  const generatedCandidateIds = new Set(
+    articles
+      .map((a) => {
+        try {
+          return a.sourceData ? (JSON.parse(a.sourceData) as { topicCandidateId?: string }).topicCandidateId : undefined;
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((id): id is string => Boolean(id)),
+  );
+  const missingCandidates = parseStoredTopicCandidates(edition?.topicCandidates).filter(
+    (candidate) => qualifiesForAutoGeneration(candidate) && !generatedCandidateIds.has(candidate.id),
+  );
+
+  return { missingSections, missingCandidates };
 }
 
 // ---------------------------------------------------------------------------
@@ -579,13 +756,21 @@ export async function generateEditionDraft(
   const edition = await prisma.edition.findUnique({ where: { id: editionId } });
   const label = edition ? periodLabel(edition) : "this month";
 
-  const activityInputs = activities.map((row) => ({
-    eventType: row.eventType,
-    repo: row.repo,
-    title: row.title,
-    url: row.url,
-    timestamp: row.timestamp,
-  }));
+  // Stars no longer feed the chronicle roundup — each one gets its own
+  // deep-dive article instead, via the topic-candidate pipeline
+  // (`computeStarCandidates` + `generateTopicCandidateArticles`, wired in
+  // `populateEditionDraft`). Filtered out here rather than in
+  // `groupActivities` so this stays the one place that decides what the
+  // chronicle sees.
+  const activityInputs = activities
+    .filter((row) => row.eventType !== "star")
+    .map((row) => ({
+      eventType: row.eventType,
+      repo: row.repo,
+      title: row.title,
+      url: row.url,
+      timestamp: row.timestamp,
+    }));
 
   // Seed generationProgress.sections/totalSections up front, before the
   // workflow starts — `workflow-step-progress` only fires when an iteration
@@ -971,12 +1156,22 @@ export async function populateEditionDraft(
   // plan) — reads the stats bank just persisted above, so it must run
   // after it. Same "pure computation, no AI provider needed, never let a
   // bug here break the rest of generation" contract as Phase 1.
+  //
+  // Star candidates (one per starred repo, see `computeStarCandidates`'s doc
+  // comment) are computed independently of the stats-bank-derived detector
+  // candidates above — straight from the `ServiceActivity` rows the GitHub
+  // fetch just saved — and merged into the same stored array so both kinds
+  // share the existing "GitHub Insights" curation UI and mark/unmark toggle.
   try {
-    const topicCandidates = await computeTopicCandidates(edition.id);
-    if (topicCandidates) {
+    const [topicCandidates, starCandidates] = await Promise.all([
+      computeTopicCandidates(edition.id),
+      computeStarCandidates(edition.id),
+    ]);
+    const merged = [...(topicCandidates ?? []), ...starCandidates];
+    if (merged.length > 0) {
       await prisma.edition.update({
         where: { id: edition.id },
-        data: { topicCandidates: JSON.stringify(topicCandidates) },
+        data: { topicCandidates: JSON.stringify(merged) },
       });
     }
   } catch (error) {

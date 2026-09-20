@@ -26,7 +26,7 @@ import { prisma } from "@/lib/prisma";
 import { CANDIDATE_DETECTORS, CANDIDATE_KINDS } from "./detectors";
 import { scoreCandidate } from "./scoring";
 import { describe } from "./shared";
-import type { RawCandidate, TopicCandidate, TopicCandidateKind } from "./types";
+import type { CuratedArticleKind, RawCandidate, TopicCandidate, TopicCandidateKind } from "./types";
 
 /**
  * How far back originality looks — the same year-of-monthly-editions window
@@ -65,6 +65,51 @@ export async function computeTopicCandidates(editionId: number): Promise<TopicCa
 
   const priors = await loadPriorStats(edition.id, edition.cadence, edition.periodStart);
   return rankCandidates(collectCandidates(stats, priors), priors);
+}
+
+/**
+ * One `TopicCandidate` per starred repo in the edition's period — computed
+ * straight from `ServiceActivity` (`eventType: "star"`), independently of
+ * {@link computeTopicCandidates} and its `githubStats`-derived detectors.
+ *
+ * Unlike the eight detector kinds, every star qualifies: the admin already
+ * made the judgment call by starring the repo, so there is nothing here for a
+ * heuristic to score. `score: 100` is a fixed "always qualifies" marker, not
+ * a value comparable to a detector kind's 0-100 heuristic score — see
+ * `generateTopicCandidateArticles`'s explicit `kind === "star"` bypass of the
+ * score threshold in `@/lib/generation`. `scoreBreakdown` is present only to
+ * satisfy {@link TopicCandidate}'s shape and carries no meaning for this kind.
+ *
+ * Returns `[]` (never throws) for an edition with no starred repos, matching
+ * `computeTopicCandidates`'s "never let a bug here break the rest of
+ * generation" contract — the caller in `populateEditionDraft` merges this
+ * into the same `Edition.topicCandidates` array.
+ */
+export async function computeStarCandidates(editionId: number): Promise<TopicCandidate[]> {
+  const stars = await prisma.serviceActivity.findMany({
+    where: { editionId, eventType: "star" },
+  });
+
+  return stars
+    .filter((star) => star.repo)
+    .map((star) => {
+      const repo = star.repo as string;
+      const name = repo.split("/")[1] ?? repo;
+      // Sanitized: this id is a Next.js dynamic route segment
+      // (`.../topic-candidates/[candidateId]/toggle`), so it must not
+      // contain "/" — `repo` always does (`owner/name`).
+      const id = `star-${repo.replace(/\//g, "__")}`;
+      const bullets = [star.title, star.url].filter((value): value is string => Boolean(value));
+      return {
+        id,
+        kind: "star" as const,
+        title: name,
+        repos: [repo],
+        bullets: bullets.length > 0 ? bullets : [repo],
+        score: 100,
+        scoreBreakdown: { substance: 0, originality: 0, narrative: 0 },
+      };
+    });
 }
 
 /**
@@ -126,8 +171,16 @@ export function rankCandidates(candidates: RawCandidate[], priors: GithubStats[]
     .slice(0, MAX_CANDIDATES);
 }
 
-function kindOrder(kind: TopicCandidateKind): number {
-  return CANDIDATE_KINDS.indexOf(kind);
+/**
+ * `scored`'s `kind` field is typed as the wider `CuratedArticleKind`
+ * (`TopicCandidate.kind`'s declared type) even though every value pushed
+ * into it here came from a `RawCandidate` (one of the eight real detector
+ * kinds only — `"star"` candidates are built directly in
+ * `computeStarCandidates` and never pass through `rankCandidates`). The cast
+ * reflects that invariant rather than changing it.
+ */
+function kindOrder(kind: CuratedArticleKind): number {
+  return CANDIDATE_KINDS.indexOf(kind as TopicCandidateKind);
 }
 
 /**
@@ -268,6 +321,7 @@ export function isTopicCandidateMarked(marks: CuratorMarks, candidateId: string)
 
 export {
   type CandidateDetector,
+  type CuratedArticleKind,
   type RawCandidate,
   type ScoreBreakdown,
   type TopicCandidate,

@@ -59,9 +59,9 @@ export default function NewspaperShell({
 
             // Site-wide opt-in loading state for slow full-page-navigation form
             // submits (AI generation and similar). A form marked
-            // \`data-loading-submit\` gets its submit button(s) disabled and
-            // relabeled on submit — inert on every other form, since the
-            // browser's own navigation covers the rest.
+            // \`data-loading-submit\` gets its submit button(s) disabled,
+            // relabeled, and given a spinning icon on submit — inert on every
+            // other form, since the browser's own navigation covers the rest.
             document.addEventListener('submit', function (event) {
               // A submit cancelled by the data-confirm gate above must not
               // still be treated as "in flight" here.
@@ -75,8 +75,17 @@ export default function NewspaperShell({
               if (!(btn instanceof HTMLButtonElement)) return;
               btn.disabled = true;
               var loadingText = btn.getAttribute('data-loading-text');
+              // Safe to blow away existing children here: every current
+              // data-loading-text button is plain text, no icon child to lose.
               if (loadingText) btn.textContent = loadingText;
               btn.classList.add('opacity-60', 'cursor-wait');
+              // Prepended, not textContent-based, so it never destroys an
+              // icon+label button that didn't set data-loading-text.
+              var spinner = document.createElement('span');
+              spinner.className = 'material-icons text-sm animate-spin align-middle mr-1.5';
+              spinner.textContent = 'autorenew';
+              spinner.setAttribute('aria-hidden', 'true');
+              btn.prepend(spinner);
             });
           `,
         }}

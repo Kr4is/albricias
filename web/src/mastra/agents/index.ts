@@ -22,15 +22,30 @@ import { Agent } from "@mastra/core/agent";
 import { MODEL_ID, NEWSPAPER_PERSONA } from "./base";
 import { socialCopyAgent } from "./social";
 
-/** Verbatim from `reflection.py:_SYSTEM`. */
+/**
+ * Shared depth/length clause appended to every article-writing desk below
+ * (not `NEWSPAPER_PERSONA` itself, which also backs `socialCopyAgent`'s
+ * short-form platform posts, and not verbatim from any `_SYSTEM` original —
+ * those were all written for a 200-500 word default). Each desk still states
+ * its own word range immediately after this, since the right range differs
+ * by form (a Q&A interview needs more room than a book review).
+ */
+const DEPTH_CLAUSE =
+  "Go in depth: give real context and background, cite specific concrete " +
+  "details (names, numbers, dates, quotes) rather than generalities, and " +
+  "use markdown subheadings to structure the piece where it helps.";
+
+/** Ported from `reflection.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const REFLECTION_SYSTEM =
   NEWSPAPER_PERSONA +
   "\n\n" +
   "You are writing the Opinion & Reflection column — a first-person editorial " +
   "in the tradition of great essayists. The piece should feel personal, contemplative, " +
-  "and eloquently argued. Use 'I' throughout. Keep it between 200 and 400 words.";
+  "and eloquently argued. Use 'I' throughout. " +
+  DEPTH_CLAUSE +
+  " Keep it between 700 and 1200 words.";
 
-/** Verbatim from `interview.py:_SYSTEM`. */
+/** Ported from `interview.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const INTERVIEW_SYSTEM =
   NEWSPAPER_PERSONA +
   "\n\n" +
@@ -39,9 +54,10 @@ export const INTERVIEW_SYSTEM =
   "form 'Q: ...' and 'A: ...' (or with real names if discernible). " +
   "The interviewer's voice should be incisive and curious; the subject's replies " +
   "should be faithfully reproduced but lightly polished for the printed page. " +
-  "Keep the total length between 250 and 500 words.";
+  DEPTH_CLAUSE +
+  " Keep the total length between 700 and 1300 words.";
 
-/** Verbatim from `review.py:_SYSTEM`. */
+/** Ported from `review.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const REVIEW_SYSTEM =
   NEWSPAPER_PERSONA +
   "\n\n" +
@@ -49,9 +65,10 @@ export const REVIEW_SYSTEM =
   "vintage newspaper review: a brief summary of the subject, followed by the " +
   "correspondent's measured assessment (praise and criticism alike), and a " +
   "final verdict. Be opinionated — the great critics were never neutral. " +
-  "Keep the total between 200 and 350 words.";
+  DEPTH_CLAUSE +
+  " Keep the total between 700 and 1100 words.";
 
-/** Verbatim from `profile.py:_SYSTEM`. */
+/** Ported from `profile.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const PROFILE_SYSTEM =
   NEWSPAPER_PERSONA +
   "\n\n" +
@@ -59,13 +76,17 @@ export const PROFILE_SYSTEM =
   "Tell the story of the subject with colour and precision: their background, what " +
   "makes them remarkable, and why the readers of ¡Albricias! should take note. " +
   "The tone is warm but discerning, like a society-page profile from a distinguished " +
-  "broadsheet. Keep the total between 250 and 450 words.";
+  "broadsheet. " +
+  DEPTH_CLAUSE +
+  " Keep the total between 900 and 1500 words.";
 
 /**
  * No Python original — new with the `github-repo-article-generators` plan.
  * The persona's grandiloquence is kept, but deliberately fenced off from the
  * steps themselves: a reader following a tutorial needs the commands to be
- * literal, whatever flourish surrounds them.
+ * literal, whatever flourish surrounds them. `DEPTH_CLAUSE` is folded in
+ * loosely for this reason — subheadings and concrete detail apply to the
+ * surrounding narration, never to inventing steps beyond the source.
  */
 export const TUTORIAL_SYSTEM =
   NEWSPAPER_PERSONA +
@@ -78,8 +99,11 @@ export const TUTORIAL_SYSTEM =
   "and reproduce them exactly — never invent an option or a package name that " +
   "is not in the source material, and say plainly when the material does not " +
   "cover a step. Close with what to try next. This is instruction, not " +
-  "promotion: no feature lists, no praise for the project. " +
-  "Keep the total between 250 and 500 words.";
+  "promotion: no feature lists, no praise for the project. Go in depth on the " +
+  "surrounding narration — why each step matters, what it does under the " +
+  "hood, what could go wrong — using markdown subheadings to structure longer " +
+  "sequences, but never invent a step or option beyond what the material " +
+  "supports. Keep the total between 700 and 1200 words.";
 
 /**
  * No Python original — new with the `cross-source-synthesis-compendium` plan.
@@ -108,8 +132,11 @@ export const SYNTHESIS_SYSTEM =
   "and their numbers is worth more than one of graceful generalities, so prefer " +
   "the specific over the sweeping throughout, and close with a line on where " +
   "things seem to be heading — drawn from the month's own record, not invented. " +
-  "This column has its own length: write between 400 and 700 words, ignoring any " +
-  "shorter budget you might otherwise assume for a newspaper column.";
+  "Use markdown subheadings to structure the piece where the digest supports " +
+  "enough material for distinct threads. This column has its own length: write " +
+  "between 600 and 900 words, ignoring any shorter budget you might otherwise " +
+  "assume for a newspaper column, but never padding past what the digest " +
+  "actually grounds.";
 
 /**
  * The chronicle desk turns raw service activity into section dispatches.

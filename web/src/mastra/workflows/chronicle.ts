@@ -30,17 +30,23 @@ import {
  * Verbatim from `chronicle.py:CATEGORIES` — also the output ordering — plus
  * two additions: `"Podcasts"` (see the rationale note below
  * `EVENT_CATEGORY_MAP`) and `"Bookshelf"` (Alexandria reading activity, Phase
- * G). Like `Culture`/`Discoveries`, these are chronicle-only section names
- * and deliberately do not appear in `ARTICLE_CATEGORIES`
+ * G). Like `Culture`, these are chronicle-only section names and
+ * deliberately do not appear in `ARTICLE_CATEGORIES`
  * (`src/lib/article-categories.ts`), the admin's manual-article category
  * dropdown — that mismatch already exists for the other AI-only sections.
+ *
+ * `"Discoveries"` (starred repos) used to live here as a bundled "Repos of
+ * the Month" roundup. It's gone: each starred repo now gets its own
+ * deep-dive article instead, via the topic-candidate pipeline
+ * (`computeStarCandidates` in `@/lib/topic-candidates`, wired in
+ * `populateEditionDraft`) rather than the chronicle's group-and-summarise
+ * shape — see `EVENT_CATEGORY_MAP`'s doc comment.
  */
 export const CATEGORIES = [
   "Open Source",
   "Project Updates",
   "Community",
   "Technology",
-  "Discoveries",
   "Culture",
   "Podcasts",
   "Bookshelf",
@@ -66,10 +72,17 @@ export type ChronicleCategory = (typeof CATEGORIES)[number];
  * Rather than stretch one prompt to cover two different kinds of listening
  * (and produce a muddled or misleading column when both are present in the
  * same period), podcasts get their own section with its own newspaper-voice
- * prompt, same as how "Discoveries" (starred repos) got its own column
- * instead of being folded into "Technology". If podcast activity later turns
- * out to be sparse in practice, folding it back into "Culture" under a
- * combined "Sounds & Stories" prompt would be the natural walk-back.
+ * prompt. If podcast activity later turns out to be sparse in practice,
+ * folding it back into "Culture" under a combined "Sounds & Stories" prompt
+ * would be the natural walk-back.
+ *
+ * `star` has no entry, and is not grouped by this map at all: it is filtered
+ * out of the chronicle's input before grouping ever runs (see
+ * `generateEditionDraft` in `@/lib/generation`) and handled by the
+ * topic-candidate pipeline instead — one deep-dive article per starred repo,
+ * not a bundled roundup. Left out of `EVENT_CATEGORY_MAP` (rather than kept
+ * with a now-dead mapping) so an activity row that somehow skips that filter
+ * falls to "General" instead of silently reviving the old bundled column.
  *
  * `book_finished`/`book_reading` → "Bookshelf" (new category, Phase G /
  * Alexandria). Same reasoning as Podcasts: a finished-books column is its
@@ -88,7 +101,6 @@ export const EVENT_CATEGORY_MAP: Record<string, ChronicleCategory> = {
   release: "Project Updates",
   repo_created: "Project Updates",
   gist: "Technology",
-  star: "Discoveries",
   spotify_track: "Culture",
   spotify_artist: "Culture",
   spotify_played: "Culture",
@@ -112,10 +124,6 @@ export const CATEGORY_PROMPTS: Record<ChronicleCategory, string> = {
   Technology:
     "Illuminate the craft: gists shared, snippets of wisdom distributed to " +
     "the wider technical community.",
-  Discoveries:
-    "Write a 'Repos of the Month' roundup in the style of a society column — " +
-    "each starred repository introduced as a remarkable new acquaintance. " +
-    "Include the repo name and a brief description of why it is worthy of note.",
   Culture:
     "Write a 'Sounds of the Month' column. Report the top tracks and artists " +
     "as though reviewing a concert season — grandiloquent, opinionated, and " +
@@ -210,8 +218,24 @@ export function summariseGroup(group: ActivityInput[]): string {
 }
 
 /**
- * The user prompt for one section. Ported verbatim from
- * `chronicle.py:generate_from_activities`.
+ * Depth/length instruction shared by every chronicle section — not part of
+ * the original `chronicle.py` port, added so these monthly roundups read as
+ * real columns rather than a quick bulleted summary. Applied once here
+ * rather than appended to each of `CATEGORY_PROMPTS`'s eight entries.
+ */
+const DEPTH_INSTRUCTION =
+  "Go in depth: aim for roughly 700-1200 words, give real context around " +
+  "each item rather than a one-line mention, cite specific concrete details " +
+  "(names, numbers, dates) drawn from the activity below, and use markdown " +
+  "subheadings to structure the piece where that helps. Ground everything " +
+  "in the activity provided — if there isn't enough of it to sustain the " +
+  "full length, write what it actually supports rather than inventing " +
+  "detail to fill space.";
+
+/**
+ * The user prompt for one section. Ported from
+ * `chronicle.py:generate_from_activities`, plus {@link DEPTH_INSTRUCTION}
+ * (no Python equivalent — the original columns were short by default).
  */
 export function buildChroniclePrompt(
   category: ChronicleCategory,
@@ -224,6 +248,7 @@ export function buildChroniclePrompt(
     `Write a newspaper article for the '${category}' section of the ` +
     `${periodLabel} edition of ¡Albricias!.\n\n` +
     `${categoryInstruction}\n\n` +
+    `${DEPTH_INSTRUCTION}\n\n` +
     `Base it on the following activity:\n${summary}\n\n` +
     `Give the article a compelling headline (as a markdown H1), then the ` +
     `body text. Do not include a byline or date — those are added separately.`

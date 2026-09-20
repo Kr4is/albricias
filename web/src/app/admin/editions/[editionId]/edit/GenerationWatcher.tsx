@@ -165,12 +165,12 @@ export default function GenerationWatcher({
 
   const total = progress?.totalSections ?? 0;
   const completed = progress?.completedSections ?? 0;
-  // Sections are written concurrently and settle independently, so a failure
-  // says nothing about its siblings: count every unsuccessful section, and
-  // word it as "these ones" rather than "everything after the first failure".
-  const failedCount =
-    progress?.sections.filter((s) => s.status === "aborted" || s.status === "failed").length ?? 0;
 
+  // A per-section failure surfaces where it actually happened — the article
+  // list below shows each "writing…"/"failed" placeholder in place while
+  // running, and any piece still missing once the run ends gets a durable
+  // "failed, retry" card (see computeMissingGenerationPieces) instead of an
+  // aggregate count here that the article list would only repeat.
   return (
     <div
       id="generation-in-progress"
@@ -189,13 +189,6 @@ export default function GenerationWatcher({
             now. Activity and articles will appear below as they&apos;re
             created.
           </>
-        )}
-        {failedCount > 0 && (
-          <span className="block mt-1 text-amber-700 font-bold">
-            {failedCount} section{failedCount === 1 ? "" : "s"} could not be
-            generated — the remaining ones are unaffected and the edition keeps
-            every article already written.
-          </span>
         )}
       </p>
     </div>

@@ -10,10 +10,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
+import FlashBanner from "@/components/admin/FlashBanner";
 import { prisma } from "@/lib/prisma";
 import { editionArticles } from "@/lib/editions";
 import { toEditionHeaderInfo, articleHref } from "@/lib/issue-view";
 import { periodLabel, periodLabelShort } from "@/lib/edition-helpers";
+import { readFlash } from "@/lib/flash";
 import { renderMarkdown } from "@/lib/markdown";
 import { mediaUrl } from "@/lib/media";
 
@@ -64,8 +66,11 @@ export async function generateMetadata({
 
 export default async function AdminArticlePreviewPage({
   params,
+  searchParams,
 }: PageProps<"/admin/editions/[editionId]/articles/[articleId]/preview">) {
   const { editionId, articleId } = await params;
+  const query = await searchParams;
+  const messages = readFlash(query);
   const article = await loadArticle(editionId, articleId);
   if (article === null) notFound();
 
@@ -94,6 +99,8 @@ export default async function AdminArticlePreviewPage({
       endpoint="admin.edition_preview"
       article={{ edition: toEditionHeaderInfo(edition) }}
     >
+      <FlashBanner messages={messages} />
+
       {/* Article Layout: Matching Issue Grid */}
       <div className="grid grid-cols-12 gap-6 lg:gap-8 relative">
         {/* Sidebar (Left): Navigation & Context (3 Cols) */}
@@ -180,8 +187,29 @@ export default async function AdminArticlePreviewPage({
             <span className="font-sans text-[10px] uppercase tracking-widest text-stone-500">
               {periodLabel(edition)}
             </span>
+            {article.sourceType === "ai_generated" && (
+              <form
+                method="POST"
+                action={`/admin/editions/${edition.id}/articles/${article.id}/regenerate`}
+                className="ml-auto"
+                data-loading-submit
+              >
+                <button
+                  type="submit"
+                  title="Regenerate with AI"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest text-purple-600 hover:bg-purple-50 transition-colors border border-purple-200"
+                >
+                  <span className="material-icons text-xs">auto_awesome</span>
+                  Regenerate with AI
+                </button>
+              </form>
+            )}
             {article.author && (
-              <span className="ml-auto font-sans text-[10px] uppercase tracking-widest text-stone-500">
+              <span
+                className={`font-sans text-[10px] uppercase tracking-widest text-stone-500 ${
+                  article.sourceType === "ai_generated" ? "" : "ml-auto"
+                }`}
+              >
                 By {article.author}
               </span>
             )}
