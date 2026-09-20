@@ -52,7 +52,12 @@ export default async function AccountPage({
             <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-4">
               Change Admin Password
             </h3>
-            <form method="POST" action="/admin/account/password" className="space-y-3">
+            <form
+              method="POST"
+              action="/admin/account/password"
+              className="space-y-3"
+              data-loading-submit
+            >
               <div>
                 <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
                   New Password
@@ -83,6 +88,7 @@ export default async function AccountPage({
               </p>
               <button
                 type="submit"
+                data-loading-text="Updating…"
                 className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
               >
                 Update Password
@@ -100,9 +106,15 @@ export default async function AccountPage({
               replaces the current token (or sets one for the first time, if the
               API was previously open) — update any client using the old one.
             </p>
-            <form method="POST" action="/admin/account/api-token">
+            <form
+              method="POST"
+              action="/admin/account/api-token"
+              data-confirm="Regenerate the API token? The current one stops working immediately — any client using it will need the new one."
+              data-loading-submit
+            >
               <button
                 type="submit"
+                data-loading-text="Regenerating…"
                 className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
               >
                 Regenerate API Token

@@ -243,6 +243,7 @@ export default async function ArticleGeneratePage({
             encType="multipart/form-data"
             className="space-y-8 font-serif"
             id="generate-form"
+            data-loading-submit
           >
             {/* Step 1: Source */}
             <fieldset>
@@ -519,13 +520,11 @@ export default async function ArticleGeneratePage({
               </a>
               <button
                 type="submit"
-                id="generate-btn"
+                data-loading-text="Generating…"
                 className="flex-2 flex-grow-[2] inline-flex items-center justify-center gap-2 px-6 py-3 text-xs font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
               >
-                <span className="material-icons text-sm" id="generate-icon">
-                  auto_awesome
-                </span>
-                <span id="generate-label">Generate Article</span>
+                <span className="material-icons text-sm">auto_awesome</span>
+                <span data-loading-label>Generate Article</span>
               </button>
             </div>
           </form>
@@ -535,14 +534,16 @@ export default async function ArticleGeneratePage({
       <Script
         id="article-generate-form-panels"
         strategy="afterInteractive"
-        // Source/generator-type show-hide, plus the loading-button state on
-        // submit — next/script (not a raw <script>) so this actually runs on
-        // a client-side navigation into this page, not just a full load; see
-        // NewspaperShell.tsx's own conversion for the same reason.
+        // Source/generator-type show-hide only now — the loading-button state
+        // on submit is the shared data-loading-submit handler in
+        // NewspaperShell.tsx (this form opts in via that attribute above), not
+        // a second implementation of the same thing. next/script (not a raw
+        // <script>) so this actually runs on a client-side navigation into
+        // this page, not just a full load; see NewspaperShell.tsx's own
+        // conversion for the same reason.
         dangerouslySetInnerHTML={{
           __html: `
             (function () {
-              var form = document.getElementById('generate-form');
               var audioSection = document.getElementById('audio-input-section');
               var textSection = document.getElementById('text-input-section');
               var calendarEventSection = document.getElementById('calendar-event-section');
@@ -550,9 +551,6 @@ export default async function ArticleGeneratePage({
               var interviewFields = document.getElementById('interview-fields');
               var subjectFields = document.getElementById('subject-fields');
               var subjectTypeField = document.getElementById('subject-type-field');
-              var generateBtn = document.getElementById('generate-btn');
-              var generateIcon = document.getElementById('generate-icon');
-              var generateLabel = document.getElementById('generate-label');
 
               function selectedSource() {
                 var selected = document.querySelector('input[name="source_type"]:checked');
@@ -592,12 +590,6 @@ export default async function ArticleGeneratePage({
               });
               document.querySelectorAll('input[name="generator_type"]').forEach(function (radio) {
                 radio.addEventListener('change', updateGeneratorPanel);
-              });
-
-              form.addEventListener('submit', function () {
-                generateBtn.disabled = true;
-                generateIcon.textContent = 'hourglass_top';
-                generateLabel.textContent = 'Generating…';
               });
 
               updateSourcePanel();

@@ -78,9 +78,15 @@ export default async function CalendarAdminPage({
                     Sync Calendars
                   </button>
                 </form>
-                <form method="POST" action="/admin/calendar/disconnect">
+                <form
+                  method="POST"
+                  action="/admin/calendar/disconnect"
+                  data-confirm="Disconnect Google Calendar? Ranking articles and manual notes-based generation stop working until you reconnect."
+                  data-loading-submit
+                >
                   <button
                     type="submit"
+                    data-loading-text="Disconnecting…"
                     className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
                   >
                     Disconnect

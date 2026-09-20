@@ -75,9 +75,15 @@ export default function NewspaperShell({
               if (!(btn instanceof HTMLButtonElement)) return;
               btn.disabled = true;
               var loadingText = btn.getAttribute('data-loading-text');
-              // Safe to blow away existing children here: every current
-              // data-loading-text button is plain text, no icon child to lose.
-              if (loadingText) btn.textContent = loadingText;
+              if (loadingText) {
+                // A button with an icon child marks its text with
+                // data-loading-label so only that span gets replaced —
+                // textContent on the whole button would destroy the icon.
+                // Falls back to the whole button for a plain-text one.
+                var label = btn.querySelector('[data-loading-label]');
+                if (label) label.textContent = loadingText;
+                else btn.textContent = loadingText;
+              }
               btn.classList.add('opacity-60', 'cursor-wait');
               // Prepended, not textContent-based, so it never destroys an
               // icon+label button that didn't set data-loading-text.

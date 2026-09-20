@@ -90,13 +90,15 @@ export default async function EditionsDashboardPage({
               </a>
               <a
                 href="/admin/editions/new"
+                title="Creates an empty issue with no articles — you write everything by hand."
                 className="inline-flex items-center gap-2 px-5 py-2.5 border-2 border-ink text-xs font-bold uppercase tracking-widest hover:bg-stone-100 transition-colors"
               >
-                <span className="material-icons text-sm">add</span> New Edition
+                <span className="material-icons text-sm">add</span> Blank Draft
               </a>
               <button
                 type="button"
                 data-open-generate-modal
+                title="Fetches your GitHub/blog/Spotify activity and writes the articles with AI."
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-ink text-paper text-xs font-bold uppercase tracking-widest hover:bg-ink-light transition-colors"
               >
                 <span className="material-icons text-sm">auto_awesome</span> Generate
@@ -104,6 +106,11 @@ export default async function EditionsDashboardPage({
               </button>
             </div>
           </div>
+          <p className="mt-3 text-[11px] font-sans text-stone-400">
+            <strong className="text-stone-500">Blank Draft</strong> starts an empty issue you fill in
+            by hand — <strong className="text-stone-500">Generate with AI</strong> fetches your
+            activity for the period and writes it for you.
+          </p>
         </div>
 
         <FlashBanner messages={messages} />
@@ -134,7 +141,11 @@ export default async function EditionsDashboardPage({
             <strong>{spotifyToken ? "Connected" : "Not connected"}</strong>
           </div>
           {spotifyToken ? (
-            <form method="POST" action="/admin/spotify/disconnect">
+            <form
+              method="POST"
+              action="/admin/spotify/disconnect"
+              data-confirm="Disconnect Spotify? You'll need to reconnect to keep including listening activity in new editions."
+            >
               <button
                 type="submit"
                 className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
@@ -266,9 +277,15 @@ export default async function EditionsDashboardPage({
                     >
                       Preview
                     </a>
-                    <form method="POST" action={`/admin/editions/${edition.id}/publish`} className="flex-1">
+                    <form
+                      method="POST"
+                      action={`/admin/editions/${edition.id}/publish`}
+                      className="flex-1"
+                      data-loading-submit
+                    >
                       <button
                         type="submit"
+                        data-loading-text="Publishing…"
                         className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
                       >
                         Publish
@@ -360,9 +377,15 @@ export default async function EditionsDashboardPage({
                     >
                       Distribute
                     </a>
-                    <form method="POST" action={`/admin/editions/${edition.id}/unpublish`}>
+                    <form
+                      method="POST"
+                      action={`/admin/editions/${edition.id}/unpublish`}
+                      data-confirm="Unpublish this edition? It stops being visible to readers until you publish it again."
+                      data-loading-submit
+                    >
                       <button
                         type="submit"
+                        data-loading-text="Unpublishing…"
                         className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
                       >
                         Unpublish

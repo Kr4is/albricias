@@ -71,7 +71,11 @@ export default async function SocialAccountsPage({
               set them at <a href="/admin/settings" className="underline">/admin/settings</a>.
             </p>
             {twitter?.enabled ? (
-              <form method="POST" action="/admin/social/twitter/disconnect">
+              <form
+                method="POST"
+                action="/admin/social/twitter/disconnect"
+                data-confirm="Disconnect X? New editions stop auto-posting there until you reconnect."
+              >
                 <button
                   type="submit"
                   className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
@@ -99,7 +103,11 @@ export default async function SocialAccountsPage({
               <strong>{bluesky?.enabled ? "Connected" : "Not connected"}</strong>
             </div>
             {bluesky?.enabled ? (
-              <form method="POST" action="/admin/social/bluesky/disconnect">
+              <form
+                method="POST"
+                action="/admin/social/bluesky/disconnect"
+                data-confirm="Disconnect Bluesky? New editions stop auto-posting there until you reconnect."
+              >
                 <button
                   type="submit"
                   className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
@@ -155,7 +163,11 @@ export default async function SocialAccountsPage({
               <strong>{mastodon?.enabled ? "Connected" : "Not connected"}</strong>
             </div>
             {mastodon?.enabled ? (
-              <form method="POST" action="/admin/social/mastodon/disconnect">
+              <form
+                method="POST"
+                action="/admin/social/mastodon/disconnect"
+                data-confirm="Disconnect Mastodon? New editions stop auto-posting there until you reconnect."
+              >
                 <button
                   type="submit"
                   className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
