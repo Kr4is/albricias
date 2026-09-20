@@ -109,6 +109,29 @@ export default async function ArticleEditPage({
             <h2 className="font-masthead text-4xl">Edit Article</h2>
           </div>
 
+          {/* Generate Audio and Regenerate submit to their own routes, which
+              read nothing from this form's fields (they operate on the
+              article as already saved in the DB) — see generate-audio/route.ts
+              and regenerate/route.ts. Their buttons live below, physically
+              outside this <form> (HTML forbids nesting), and target these by
+              id via the `form` attribute, so clicking either one leaves
+              whatever you've typed here untouched instead of silently
+              submitting (and losing) it to a handler that ignores it. */}
+          <form
+            id="generate-audio-form"
+            method="POST"
+            action={`/admin/editions/${edition.id}/articles/${article.id}/generate-audio`}
+            data-loading-submit
+          />
+          {article.sourceType === "ai_generated" && (
+            <form
+              id="regenerate-article-form"
+              method="POST"
+              action={`/admin/editions/${edition.id}/articles/${article.id}/regenerate`}
+              data-loading-submit
+            />
+          )}
+
           <form
             method="POST"
             action={`/admin/editions/${edition.id}/articles/${article.id}/update`}
@@ -260,7 +283,7 @@ export default async function ArticleEditPage({
                 <p className="text-[9px] text-stone-400 mt-1">Leave empty to keep existing audio.</p>
                 <button
                   type="submit"
-                  formAction={`/admin/editions/${edition.id}/articles/${article.id}/generate-audio`}
+                  form="generate-audio-form"
                   data-loading-text="Generating…"
                   className="mt-2 w-full px-3 py-2 text-[10px] font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
                 >
@@ -304,7 +327,7 @@ export default async function ArticleEditPage({
                 </p>
                 <button
                   type="submit"
-                  formAction={`/admin/editions/${edition.id}/articles/${article.id}/regenerate`}
+                  form="regenerate-article-form"
                   data-loading-text="Regenerating…"
                   className="px-4 py-2 text-xs font-bold font-sans uppercase tracking-widest bg-purple-700 text-white hover:bg-purple-800 transition-colors"
                 >
