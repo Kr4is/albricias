@@ -200,6 +200,21 @@ export const synthesisAgent = new Agent({
   model: MODEL_ID,
 });
 
+/**
+ * No Python original, no newspaper voice — the whole point is a trivial,
+ * cheap call that proves the configured provider/model actually answers a
+ * request. Backs `/admin/settings`'s "Test connection" action for the AI
+ * category, via `runNewspaperAgent` like every other agent here, so the test
+ * exercises the exact same call path a real generation would.
+ */
+export const connectionTestAgent = new Agent({
+  id: "connection-test",
+  name: "Connection Test",
+  description: "Answers a trivial prompt to verify an AI provider is reachable and authenticated.",
+  instructions: "Reply with the single word OK.",
+  model: MODEL_ID,
+});
+
 /** Registered on the Mastra instance in `src/mastra/index.ts`. */
 export const agents = {
   chronicle: chronicleAgent,
@@ -210,6 +225,7 @@ export const agents = {
   tutorial: tutorialAgent,
   synthesis: synthesisAgent,
   social: socialCopyAgent,
+  connectionTest: connectionTestAgent,
 };
 
 export { socialCopyAgent } from "./social";

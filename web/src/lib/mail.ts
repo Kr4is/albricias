@@ -93,6 +93,20 @@ export async function sendMail({ to, subject, html }: SendMailOptions): Promise<
   await transporter.sendMail({ from: config.from, to, subject, html });
 }
 
+/**
+ * `/admin/settings`'s "Test connection" action for the Email category —
+ * confirms the configured SMTP server actually accepts a login, via
+ * Nodemailer's `verify()` (a real SMTP handshake, no message sent). Throws
+ * the same "missing setting(s)" or transport error `sendMail` would; the
+ * caller (the test route) catches and flashes it.
+ */
+export async function verifySmtpConnection(): Promise<{ host: string }> {
+  const config = await smtpConfig();
+  const transporter = transporterFor(config);
+  await transporter.verify();
+  return { host: config.host };
+}
+
 /** Absolute site origin used to build links inside outbound email. */
 async function siteUrl(): Promise<string> {
   const value = await getSetting("site.url", { default: "http://localhost:3000" });

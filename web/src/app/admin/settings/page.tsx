@@ -67,12 +67,15 @@ function Card({
   title,
   description,
   action,
+  testAction,
   connected,
   children,
 }: {
   title: string;
   description?: string;
   action: string;
+  /** When set, renders a secondary "Test connection" action below Save — see its doc comment for why "saved" and "works" are checked separately. */
+  testAction?: string;
   connected?: boolean;
   children: React.ReactNode;
 }) {
@@ -85,15 +88,27 @@ function Card({
         {connected !== undefined && <ConnectionBadge connected={connected} />}
       </div>
       {description && <p className="text-xs font-serif text-stone-500 mb-4">{description}</p>}
-      <form method="POST" action={action} className="space-y-3">
+      <form method="POST" action={action} className="space-y-3" data-loading-submit>
         {children}
         <button
           type="submit"
+          data-loading-text="Saving…"
           className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors mt-2"
         >
           Save
         </button>
       </form>
+      {testAction && (
+        <form method="POST" action={testAction} className="mt-2" data-loading-submit>
+          <button
+            type="submit"
+            data-loading-text="Testing…"
+            className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-600 hover:border-ink hover:text-ink transition-colors"
+          >
+            Test connection
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -144,6 +159,12 @@ export default async function SettingsPage({
     email: Boolean(smtpHost && smtpPort && smtpUser && smtpPass && fromAddress),
   };
 
+  // The three categories with a cheap, real "does it actually work" check —
+  // see each route under ./<category>/test/route.ts. The rest only have a
+  // "saved" check (connectionStatus above); extending this list is future
+  // work, not a limitation of the Card component itself.
+  const testableCategories = new Set(["ai", "github", "email"]);
+
   return (
     <NewspaperShell endpoint="admin.settings">
       <div className="pb-16 fade-in">
@@ -175,6 +196,9 @@ export default async function SettingsPage({
               title={category.title}
               description={category.description}
               action={`/admin/settings/${category.id}`}
+              testAction={
+                testableCategories.has(category.id) ? `/admin/settings/${category.id}/test` : undefined
+              }
               connected={connectionStatus[category.id]}
             >
               <CategoryFormFields fields={category.fields} values={values} />
