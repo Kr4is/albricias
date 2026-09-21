@@ -6,6 +6,13 @@
 
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
+# better-sqlite3 ships prebuilt glibc binaries for amd64, but not reliably for
+# every arch the multi-arch build targets (arm64 in particular) — install a
+# minimal native toolchain so npm ci can compile it from source as a
+# fallback instead of failing outright when no prebuild matches.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
 
