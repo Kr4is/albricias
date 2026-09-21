@@ -890,6 +890,57 @@ export async function finishActivityRankingRetry(
   });
 }
 
+/**
+ * Recover any edition left in `generationStatus: "running"` by a server
+ * process that died mid-generation — a crash, a `next dev` restart, a
+ * redeploy — before it ever reached the code (the `finally` in
+ * `populateEditionDraft`, or {@link finishSinglePieceRetry}) that would have
+ * flipped it back to `"done"`. Called once from `instrumentation.ts` on
+ * server boot, before any request is served, so a stuck row is never left
+ * stuck longer than one restart — the exact case an admin has no way to
+ * recover from otherwise short of editing the database by hand.
+ *
+ * There is no in-flight work to resume: whatever `after()` callback or
+ * chronicle call was running belonged to the process that's now gone, and
+ * its HTTP request to the AI provider died with it. So this doesn't try to
+ * pick that back up — it flips the row back to `"done"` with a message
+ * explaining what happened, which is what lets the edit page's existing
+ * durable missing-piece detection (`computeMissingGenerationPieces`) and
+ * its retry cards take over for whatever never finished, the same recovery
+ * path an ordinary failure already has. Not a special case, just this
+ * failure mode's route into the one that already exists.
+ */
+export async function recoverStuckGenerations(): Promise<void> {
+  const stuck = await prisma.edition.findMany({
+    where: { generationStatus: "running" },
+    select: { id: true, title: true },
+  });
+
+  for (const edition of stuck) {
+    console.warn(
+      `[generation] Recovering edition ${edition.id} ("${edition.title}") — ` +
+        `left "running" by a previous server process.`,
+    );
+    await prisma.edition.update({
+      where: { id: edition.id },
+      data: {
+        generationStatus: "done",
+        generationProgress: JSON.stringify({
+          ...initialGenerationProgress(),
+          messages: [
+            {
+              type: "warning",
+              text:
+                "Generation was interrupted (the server restarted mid-run) — " +
+                "anything not yet written can be retried below.",
+            },
+          ],
+        }),
+      },
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Edition draft pipeline — `ai_writer.py:187-249`
 // ---------------------------------------------------------------------------
