@@ -35,6 +35,27 @@ const DEPTH_CLAUSE =
   "details (names, numbers, dates, quotes) rather than generalities, and " +
   "use markdown subheadings to structure the piece where it helps.";
 
+/**
+ * Shared chart clause — appended wherever a desk might plausibly have real,
+ * countable numbers worth plotting (every long-form desk except Interviews,
+ * whose Q&A format doesn't fit a chart). Renders via the `chart` fenced-code
+ * convention `@/lib/markdown` and `@/components/ArticleCharts` implement —
+ * see `@/lib/article-chart` for the exact JSON shape enforced here. The
+ * "never invent a figure" line matters more here than almost anywhere else
+ * in these prompts: a wrong number in prose reads as an odd sentence, a
+ * wrong number in a chart reads as fact.
+ */
+const CHART_CLAUSE =
+  " When the material gives you real, countable numbers worth seeing as " +
+  "well as reading — a tally, a comparison, a trend over the period — you " +
+  "may include one chart alongside the prose: a fenced code block written " +
+  'exactly as ```chart containing a single JSON object shaped {"type": ' +
+  '"bar" | "line", "title": string, "labels": string[], "datasets": ' +
+  '[{"label": string, "data": number[]}]}, each dataset\'s data array the ' +
+  "same length as labels. Use only numbers that actually appear in the " +
+  "material — never invent or estimate a figure to fill a chart — and " +
+  "leave it out entirely when there is nothing quantitative worth plotting.";
+
 /** Ported from `reflection.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const REFLECTION_SYSTEM =
   NEWSPAPER_PERSONA +
@@ -43,7 +64,8 @@ export const REFLECTION_SYSTEM =
   "in the tradition of great essayists. The piece should feel personal, contemplative, " +
   "and eloquently argued. Use 'I' throughout. " +
   DEPTH_CLAUSE +
-  " Keep it between 700 and 1200 words.";
+  " Keep it between 700 and 1200 words." +
+  CHART_CLAUSE;
 
 /** Ported from `interview.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const INTERVIEW_SYSTEM =
@@ -66,7 +88,8 @@ export const REVIEW_SYSTEM =
   "correspondent's measured assessment (praise and criticism alike), and a " +
   "final verdict. Be opinionated — the great critics were never neutral. " +
   DEPTH_CLAUSE +
-  " Keep the total between 700 and 1100 words.";
+  " Keep the total between 700 and 1100 words." +
+  CHART_CLAUSE;
 
 /** Ported from `profile.py:_SYSTEM`, with `DEPTH_CLAUSE` and a wider word range. */
 export const PROFILE_SYSTEM =
@@ -78,7 +101,8 @@ export const PROFILE_SYSTEM =
   "The tone is warm but discerning, like a society-page profile from a distinguished " +
   "broadsheet. " +
   DEPTH_CLAUSE +
-  " Keep the total between 900 and 1500 words.";
+  " Keep the total between 900 and 1500 words." +
+  CHART_CLAUSE;
 
 /**
  * No Python original — new with the `github-repo-article-generators` plan.
@@ -103,7 +127,8 @@ export const TUTORIAL_SYSTEM =
   "surrounding narration — why each step matters, what it does under the " +
   "hood, what could go wrong — using markdown subheadings to structure longer " +
   "sequences, but never invent a step or option beyond what the material " +
-  "supports. Keep the total between 700 and 1200 words.";
+  "supports. Keep the total between 700 and 1200 words." +
+  CHART_CLAUSE;
 
 /**
  * No Python original — new with the `cross-source-synthesis-compendium` plan.
@@ -136,7 +161,8 @@ export const SYNTHESIS_SYSTEM =
   "enough material for distinct threads. This column has its own length: write " +
   "between 600 and 900 words, ignoring any shorter budget you might otherwise " +
   "assume for a newspaper column, but never padding past what the digest " +
-  "actually grounds.";
+  "actually grounds." +
+  CHART_CLAUSE;
 
 /**
  * The chronicle desk turns raw service activity into section dispatches.
@@ -147,7 +173,7 @@ export const chronicleAgent = new Agent({
   name: "Albricias Chronicle Desk",
   description:
     "Turns GitHub / blog / Spotify activity into vintage newspaper dispatches, one per section.",
-  instructions: NEWSPAPER_PERSONA,
+  instructions: NEWSPAPER_PERSONA + "\n\n" + CHART_CLAUSE.trim(),
   model: MODEL_ID,
 });
 

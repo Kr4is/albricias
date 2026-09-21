@@ -262,6 +262,15 @@ article:nth-child(5) { animation-delay: 0.5s; }
   letter-spacing: 0.03em;
 }
 
+.content-body .article-chart {
+  break-inside: avoid;
+  margin: 1.5rem 0;
+  padding: 1rem 0.75rem 0.5rem;
+  border: 1px solid #d6d3cd;
+  background: #fdfcf9;
+  height: 320px;
+}
+
 .content-body :where(img) {
   display: block;
   width: 100%;

@@ -20,6 +20,7 @@ import { toEditionHeaderInfo } from "@/lib/issue-view";
 import { isPublished, periodLabel, periodLabelShort } from "@/lib/edition-helpers";
 import { renderMarkdown } from "@/lib/markdown";
 import { mediaUrl } from "@/lib/media";
+import ArticleBody from "@/components/ArticleBody";
 
 export const dynamic = "force-dynamic";
 
@@ -247,10 +248,7 @@ export default async function ArticlePage({
             )}
 
             {/* Drop Cap for first P */}
-            <div
-              className="first-p-drop-cap"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(article.content) }}
-            />
+            <ArticleBody className="first-p-drop-cap" html={renderMarkdown(article.content)} />
           </div>
 
           {/* Footer / End Mark */}
