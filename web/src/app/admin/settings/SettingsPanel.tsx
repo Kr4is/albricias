@@ -168,7 +168,11 @@ function Section({
       {description && (
         <p className="text-xs font-serif text-stone-500 mb-5 max-w-2xl">{description}</p>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{children}</div>
+      {/* items-start: without it, CSS Grid's default row-stretch makes a
+          collapsed card in one column visually grow to match an expanded
+          card next to it in the same row — reading as if it had opened too,
+          empty, even though its own <details> stayed closed. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">{children}</div>
     </section>
   );
 }
