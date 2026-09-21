@@ -5,6 +5,7 @@
 
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
+import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -44,7 +45,7 @@ export default function IssueV5({
                 </h2>
               </a>
               <div className="text-sm font-body leading-relaxed text-ink justified-text">
-                <p>{article.content.slice(0, 350)}...</p>
+                <p>{excerpt(article.content, 350)}</p>
               </div>
             </article>
           ))}
@@ -67,7 +68,7 @@ export default function IssueV5({
                 </h4>
               </a>
               <p className="text-xs font-body text-stone-500 leading-snug">
-                {article.content.slice(0, 100)}...
+                {excerpt(article.content, 100)}
               </p>
             </article>
           ))}

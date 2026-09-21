@@ -7,6 +7,7 @@
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -55,7 +56,7 @@ export default function IssueV2({
               </h2>
             </a>
 
-            {index === 0 && (
+            {index === 0 && issue.coverImage && (
               <figure className="mb-3 grayscale hover:grayscale-0 transition-all">
                 <img
                   src={mediaUrl(issue.coverImage)}
@@ -66,12 +67,7 @@ export default function IssueV2({
             )}
 
             <div className="text-xs font-body leading-snug text-ink justified-text flex-grow">
-              <p>
-                {index < 2
-                  ? article.content.slice(0, 300)
-                  : article.content.slice(0, 150)}
-                ...
-              </p>
+              <p>{excerpt(article.content, index < 2 ? 300 : 150)}</p>
             </div>
           </article>
         ))}

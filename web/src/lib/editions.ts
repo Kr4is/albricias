@@ -25,6 +25,7 @@ const editionSelect = {
   status: true,
   vol: true,
   coverImage: true,
+  layoutVariant: true,
 } as const;
 
 /** Columns needed to render an article inside an issue layout. */

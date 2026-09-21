@@ -29,6 +29,7 @@ export interface EditionRow {
   status: string;
   vol: string;
   coverImage: string | null;
+  layoutVariant?: number | null;
 }
 
 /** The Article columns the layouts read. */

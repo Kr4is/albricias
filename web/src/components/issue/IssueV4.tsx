@@ -1,15 +1,18 @@
 /* eslint-disable @next/next/no-img-element */
 /**
  * V4 — asymmetric: an 8-column feature beside a 4-column "In Brief" rail.
- * Ported from `app/templates/issue_v4.html`, markup and classes unchanged
- * (including the sidebar's `active-text` class, which no stylesheet defines —
- * it is a typo for `justified-text` in the original and is kept as-is so the
- * rendering does not change).
+ * Ported from `app/templates/issue_v4.html`. One deviation from the original:
+ * the sidebar used the class `active-text`, a typo for `justified-text` that
+ * no stylesheet ever defined, so its excerpts rendered ragged while every
+ * other column on the front page was justified — fixed here rather than kept
+ * for pixel parity, since this pass is specifically about the front page
+ * reading as a properly finished vintage layout.
  */
 
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -53,16 +56,18 @@ export default function IssueV4({
                 </h1>
               </a>
 
-              <figure className="mb-6 grayscale hover:grayscale-0 transition-all">
-                <img
-                  src={mediaUrl(issue.coverImage)}
-                  alt=""
-                  className="w-full h-auto object-cover border border-stone-300"
-                />
-              </figure>
+              {issue.coverImage && (
+                <figure className="mb-6 grayscale hover:grayscale-0 transition-all">
+                  <img
+                    src={mediaUrl(issue.coverImage)}
+                    alt=""
+                    className="w-full h-auto object-cover border border-stone-300"
+                  />
+                </figure>
+              )}
 
               <div className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text drop-cap">
-                <p>{main.content.slice(0, 600)}...</p>
+                <p>{excerpt(main.content, 600)}</p>
               </div>
             </article>
           )}
@@ -83,8 +88,8 @@ export default function IssueV4({
                   {article.title}
                 </h3>
               </a>
-              <p className="text-xs font-body active-text text-stone-600 mb-2">
-                {article.content.slice(0, 120)}...
+              <p className="text-xs font-body justified-text text-stone-600 mb-2">
+                {excerpt(article.content, 120)}
               </p>
               <div className="w-12 h-px bg-stone-300"></div>
             </article>

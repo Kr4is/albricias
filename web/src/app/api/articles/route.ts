@@ -16,6 +16,7 @@ import { EDITION_STATUS_DRAFT } from "@/lib/edition-helpers";
 import { defaultEditionTitle, defaultEditionVol, getCadence, periodBoundsForDate } from "@/lib/cadence";
 import { nextArticleOrder } from "@/lib/article-order";
 import { parseDateInputValue } from "@/lib/date-input";
+import { randomLayoutIndex } from "@/lib/layout";
 
 const REQUIRED_FIELDS = ["title", "content", "category", "date"] as const;
 
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
         title: defaultEditionTitle(shape),
         vol: defaultEditionVol(shape),
         status: EDITION_STATUS_DRAFT,
+        layoutVariant: randomLayoutIndex(),
       },
     });
   }

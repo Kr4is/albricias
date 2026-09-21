@@ -19,6 +19,7 @@ import OpenAI from "openai";
 import { getSetting } from "@/lib/config/settings";
 import { saveMediaFile, editionMediaPrefix } from "@/lib/media-upload";
 import { prisma } from "@/lib/prisma";
+import { stripMarkdown } from "@/lib/markdown";
 
 /** Same family of small, cheap models used elsewhere (`WHISPER_MODEL` sibling). */
 export const TTS_MODEL = "tts-1";
@@ -37,31 +38,6 @@ async function requireOpenAiKey(apiKey?: string): Promise<string> {
   const key = apiKey ?? (await getSetting("integrations.openai.apiKey", { encrypted: true }));
   if (!key) throw new Error("OpenAI API key is not configured. Set it at /admin/settings.");
   return key;
-}
-
-/**
- * Strip common Markdown formatting down to plain narration text.
- *
- * `@/lib/markdown.ts` only renders Markdown to HTML (for the web page), it
- * has no plain-text extraction path — this is a small, purpose-built
- * stripper rather than a second markdown-to-html pass plus HTML stripping.
- */
-export function stripMarkdownForNarration(markdown: string): string {
-  return markdown
-    .replace(/```[\s\S]*?```/g, " ") // fenced code blocks
-    .replace(/`([^`]+)`/g, "$1") // inline code
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1") // images
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // links
-    .replace(/^#{1,6}\s+/gm, "") // headers
-    .replace(/(\*\*\*|___)(.*?)\1/g, "$2") // bold+italic
-    .replace(/(\*\*|__)(.*?)\1/g, "$2") // bold
-    .replace(/(\*|_)(.*?)\1/g, "$2") // italic
-    .replace(/^>\s?/gm, "") // blockquotes
-    .replace(/^\s*([-*_]\s*){3,}$/gm, "") // horizontal rules
-    .replace(/^\s*[-*+]\s+/gm, "") // bullet list markers
-    .replace(/^\s*\d+\.\s+/gm, "") // numbered list markers
-    .replace(/\n{3,}/g, "\n\n") // collapse extra blank lines
-    .trim();
 }
 
 /**
@@ -88,7 +64,7 @@ export async function generateArticleAudio(
     throw new Error(`Article ${articleId} not found.`);
   }
 
-  const narrationText = [article.title, stripMarkdownForNarration(article.content)]
+  const narrationText = [article.title, stripMarkdown(article.content)]
     .filter(Boolean)
     .join(".\n\n")
     .slice(0, TTS_INPUT_MAX);

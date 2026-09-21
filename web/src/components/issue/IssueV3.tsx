@@ -7,6 +7,7 @@
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -35,18 +36,20 @@ export default function IssueV3({
         {main && (
           <div className="relative border-b-2 border-black pb-8">
             <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 lg:col-span-8">
-                <a href={articleHref(issue.id, main.id, isPreview)}>
-                  <figure className="grayscale hover:grayscale-0 transition-all duration-700">
-                    <img
-                      src={mediaUrl(issue.coverImage)}
-                      alt=""
-                      className="w-full h-96 object-cover border border-black p-1"
-                    />
-                  </figure>
-                </a>
-              </div>
-              <div className="col-span-12 lg:col-span-4 flex flex-col justify-center">
+              {issue.coverImage && (
+                <div className="col-span-12 lg:col-span-8">
+                  <a href={articleHref(issue.id, main.id, isPreview)}>
+                    <figure className="grayscale hover:grayscale-0 transition-all duration-700">
+                      <img
+                        src={mediaUrl(issue.coverImage)}
+                        alt=""
+                        className="w-full h-96 object-cover border border-black p-1"
+                      />
+                    </figure>
+                  </a>
+                </div>
+              )}
+              <div className={`col-span-12 flex flex-col justify-center ${issue.coverImage ? "lg:col-span-4" : ""}`}>
                 <div className="mb-2">
                   <span className="font-sans text-xs font-bold uppercase tracking-[0.2em] bg-black text-white px-2 py-1">
                     {main.category}
@@ -58,7 +61,7 @@ export default function IssueV3({
                   </h1>
                 </a>
                 <p className="font-body text-sm leading-relaxed border-l-4 border-stone-300 pl-4 italic">
-                  {main.content.slice(0, 200)}...
+                  {excerpt(main.content, 200)}
                 </p>
               </div>
             </div>
@@ -75,7 +78,7 @@ export default function IssueV3({
                 </h3>
               </a>
               <div className="text-xs font-body justified-text text-stone-600">
-                <p>{article.content.slice(0, 200)}...</p>
+                <p>{excerpt(article.content, 200)}</p>
               </div>
             </article>
           ))}

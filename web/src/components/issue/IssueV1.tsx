@@ -15,6 +15,7 @@ import { Fragment } from "react";
 import IssueNav from "@/components/issue/IssueNav";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { mediaUrl } from "@/lib/media";
+import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
 
@@ -72,7 +73,7 @@ export default function IssueV1({
                 </a>
 
                 <div className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text">
-                  <p>{article.content.slice(0, 200)}...</p>
+                  <p>{excerpt(article.content, 200)}</p>
                 </div>
               </article>
               {index !== leftColumn.length - 1 && (
@@ -103,16 +104,18 @@ export default function IssueV1({
                 </h4>
               </div>
 
-              <figure className="mb-6 grayscale hover:grayscale-0 transition-all duration-700 cursor-pointer">
-                <img
-                  src={mediaUrl(issue.coverImage)}
-                  alt={mainArticle.title}
-                  className="w-full h-auto object-cover border border-stone-300 p-1 bg-white"
-                />
-              </figure>
+              {issue.coverImage && (
+                <figure className="mb-6 grayscale hover:grayscale-0 transition-all duration-700 cursor-pointer">
+                  <img
+                    src={mediaUrl(issue.coverImage)}
+                    alt={mainArticle.title}
+                    className="w-full h-auto object-cover border border-stone-300 p-1 bg-white"
+                  />
+                </figure>
+              )}
 
               <div className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap">
-                <p>{mainArticle.content.slice(0, 500)}...</p>
+                <p>{excerpt(mainArticle.content, 500)}</p>
               </div>
             </article>
           )}
@@ -134,7 +137,7 @@ export default function IssueV1({
                     </h2>
                   </a>
                   <p className="text-sm font-body leading-relaxed text-ink-light">
-                    {article.content.slice(0, 250)}...
+                    {excerpt(article.content, 250)}
                   </p>
                 </article>
                 {index !== centerColumn.length - 1 && (
@@ -161,7 +164,7 @@ export default function IssueV1({
                   </h3>
                 </a>
                 <p className="text-xs font-body justified-text leading-snug text-stone-600">
-                  {article.content.slice(0, 150)}...
+                  {excerpt(article.content, 150)}
                 </p>
               </article>
               <div className="w-full border-t border-stone-200"></div>

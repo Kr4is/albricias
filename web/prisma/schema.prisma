@@ -36,6 +36,13 @@ model Edition {
   vol         String
   publishedAt DateTime? @map("published_at")
   createdAt   DateTime  @default(now()) @map("created_at")
+  /// 1–5, which of the front-page layouts (issue_v1 … issue_v5) this edition
+  /// renders with — chosen once at random when the edition is created
+  /// (`randomLayoutIndex()` in src/lib/layout.ts) and never re-rolled, so the
+  /// front page varies edition to edition but stays stable on reload. `null`
+  /// for editions created before this column existed; `layoutIndex()` falls
+  /// back to the old month-based rotation for those.
+  layoutVariant Int? @map("layout_variant")
   /// "running" | "done" — tracks the async "Generate with AI" pipeline
   /// (see runEditionGeneration in src/lib/generation/index.ts) so
   /// /admin/editions/[id]/edit can show a live view while it's in progress.

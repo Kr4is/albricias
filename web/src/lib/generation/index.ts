@@ -28,6 +28,7 @@ import { defaultEditionTitle, defaultEditionVol } from "@/lib/cadence";
 import { getSetting } from "@/lib/config/settings";
 import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
 import { EDITION_STATUS_DRAFT, type Cadence, periodLabel } from "@/lib/edition-helpers";
+import { randomLayoutIndex } from "@/lib/layout";
 import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
@@ -1286,6 +1287,7 @@ export async function createDraftEdition(
       vol: defaultEditionVol(period),
       status: EDITION_STATUS_DRAFT,
       generationStatus: "running",
+      layoutVariant: randomLayoutIndex(),
     },
   });
   return { status: "started", edition };
