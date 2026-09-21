@@ -206,9 +206,14 @@ export default async function ArticlePage({
             </figure>
           )}
 
-          {/* Two Column Text Layout for Content */}
-          <div className="content-body font-body text-lg leading-relaxed justified-text text-ink-light space-y-6 md:columns-2 md:gap-8 md:space-y-0 text-justify">
-            {/* Rich Media Injections (Video/Audio) - Place at top of first column */}
+          {/* Single-column reading layout — CSS multi-column reads well on a
+              print page you can flip, not on a page you scroll: the reader
+              hits the bottom of column one and has to scroll back up to find
+              column two. Multi-column stays reserved for the front-page
+              teaser grid (IssueV1/IssueV4), where each "column" is a short,
+              independently-scannable blurb rather than one long piece. */}
+          <div className="content-body font-body text-lg leading-relaxed justified-text text-ink-light space-y-6 text-justify">
+            {/* Rich Media Injections (Video/Audio) */}
             {(videoSrc || audioSrc) && (
               <div className="break-inside-avoid mb-6">
                 {videoSrc && (

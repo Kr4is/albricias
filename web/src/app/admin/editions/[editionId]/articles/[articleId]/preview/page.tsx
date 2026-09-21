@@ -232,9 +232,11 @@ export default async function AdminArticlePreviewPage({
             </figure>
           )}
 
-          {/* Two Column Text Layout for Content */}
-          <div className="content-body font-body text-lg leading-relaxed justified-text text-ink-light space-y-6 md:columns-2 md:gap-8 md:space-y-0 text-justify">
-            {/* Rich Media Injections (Video/Audio) - Place at top of first column */}
+          {/* Single-column reading layout — see the public article page for
+              why (@/app/article/[articleId]/page.tsx). Kept identical here so
+              the admin preview matches what readers actually see. */}
+          <div className="content-body font-body text-lg leading-relaxed justified-text text-ink-light space-y-6 text-justify">
+            {/* Rich Media Injections (Video/Audio) */}
             {(videoSrc || audioSrc) && (
               <div className="break-inside-avoid mb-6">
                 {videoSrc && (
