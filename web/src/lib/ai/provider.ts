@@ -72,13 +72,15 @@ async function resolveLitellm(): Promise<ResolvedAiModel | null> {
 }
 
 /**
- * The active provider's resolved Mastra model config, or `null` when it
- * isn't fully configured yet — matching this app's existing "skip this step
- * with a warning" convention for every other optional integration.
+ * Any one provider's resolved Mastra model config, or `null` when *that*
+ * provider isn't fully configured — regardless of which one `ai.provider`
+ * currently points at. Exported for `/admin/settings/ai/[provider]/test`
+ * (`SettingsPanel.tsx`'s per-provider "Test connection"), which needs to
+ * check the provider the admin is looking at, not only the active one — the
+ * whole point of being able to configure and verify several before picking
+ * which is live.
  */
-export async function resolveAiModel(): Promise<ResolvedAiModel | null> {
-  const provider = ((await getSetting("ai.provider", { default: "litellm" })) ??
-    "litellm") as AiProviderId;
+export async function resolveAiModelFor(provider: AiProviderId): Promise<ResolvedAiModel | null> {
   switch (provider) {
     case "gemini":
       return resolveGemini();
@@ -90,4 +92,15 @@ export async function resolveAiModel(): Promise<ResolvedAiModel | null> {
     default:
       return resolveLitellm();
   }
+}
+
+/**
+ * The active provider's resolved Mastra model config, or `null` when it
+ * isn't fully configured yet — matching this app's existing "skip this step
+ * with a warning" convention for every other optional integration.
+ */
+export async function resolveAiModel(): Promise<ResolvedAiModel | null> {
+  const provider = ((await getSetting("ai.provider", { default: "litellm" })) ??
+    "litellm") as AiProviderId;
+  return resolveAiModelFor(provider);
 }

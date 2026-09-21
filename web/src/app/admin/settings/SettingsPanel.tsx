@@ -42,26 +42,37 @@
  */
 
 import FlashBanner from "@/components/admin/FlashBanner";
+import Disclosure from "@/components/admin/Disclosure";
 import type { FlashMessage } from "@/lib/flash";
 import { getSetting } from "@/lib/config/settings";
 import { getServiceToken } from "@/lib/service-token";
 import { getSocialAccount } from "@/lib/social/store";
-import { resolveAiModel } from "@/lib/ai/provider";
+import { resolveAiModelFor, type AiProviderId } from "@/lib/ai/provider";
 import { getCadence } from "@/lib/cadence";
 import { CADENCE_MONTHLY, CADENCE_WEEKLY } from "@/lib/edition-helpers";
 import { DEFAULT_SCHEDULE_CRON, getScheduleSettings, nextScheduledRun } from "@/lib/scheduler";
 import { settingDisplay } from "./setting-display";
-import { SETTINGS_CATEGORIES, findCategory } from "./field-specs";
+import { SETTINGS_CATEGORIES, AI_FIELDS, findCategory } from "./field-specs";
 import { CategoryFormFields, resolveFieldValues } from "./fields";
+import { AI_PROVIDER_LABELS } from "./ai/provider-param";
 
 /**
  * Permanent connection-status badge for the categories whose "configured?"
  * state also gates a source in `populateEditionDraft`
  * (`@/lib/generation/index.ts`) — shown next to the card title so the admin
- * doesn't have to generate an edition first to see it. `undefined` (any
- * other category) renders nothing.
+ * doesn't have to generate an edition first to see it, and next to a
+ * collapsed card's title so that's true even without opening it.
+ * `undefined` (any other category) renders nothing. `active` (the one AI
+ * provider `ai.provider` currently points at) takes precedence over both.
  */
-function ConnectionBadge({ connected }: { connected: boolean }) {
+function ConnectionBadge({ connected, active = false }: { connected: boolean; active?: boolean }) {
+  if (active) {
+    return (
+      <span className="inline-block px-2 py-0.5 text-[9px] font-sans font-bold uppercase tracking-widest border border-ink bg-ink text-paper">
+        Active
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-block px-2 py-0.5 text-[9px] font-sans font-bold uppercase tracking-widest border ${
@@ -75,12 +86,19 @@ function ConnectionBadge({ connected }: { connected: boolean }) {
   );
 }
 
+/**
+ * A category's card — collapsed by default (just the title + status badge)
+ * so a page of many services reads as a status list first, a form only once
+ * you actually need to change something. `<details>`-based (`Disclosure`),
+ * not new client state, matching this app's minimal-JS ethos.
+ */
 function Card({
   title,
   description,
   action,
   testAction,
   connected,
+  active,
   extra,
   children,
 }: {
@@ -90,19 +108,24 @@ function Card({
   /** When set, renders a secondary "Test connection" action below Save — see its doc comment for why "saved" and "works" are checked separately. */
   testAction?: string;
   connected?: boolean;
-  /** Extra content below Save/Test — the account-level Connect/Disconnect or "Manage →" block for the three OAuth categories. */
+  /** The one AI provider currently selected in `ai.provider` — see `ConnectionBadge`. */
+  active?: boolean;
+  /** Extra content below Save/Test — the account-level Connect/Disconnect, "Manage →", or "Set as active" block. */
   extra?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className="border border-stone-200 bg-white p-6">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600">
-          {title}
-        </h3>
-        {connected !== undefined && <ConnectionBadge connected={connected} />}
-      </div>
-      {description && <p className="text-xs font-serif text-stone-500 mb-4">{description}</p>}
+    <Disclosure
+      summary={
+        <span className="flex items-center gap-2">
+          <span>{title}</span>
+          {(connected !== undefined || active) && (
+            <ConnectionBadge connected={Boolean(connected)} active={active} />
+          )}
+        </span>
+      }
+    >
+      {description && <p className="text-xs font-serif text-stone-500 mb-4 mt-3">{description}</p>}
       <form method="POST" action={action} className="space-y-3" data-loading-submit>
         {children}
         <button
@@ -125,7 +148,7 @@ function Card({
         </form>
       )}
       {extra && <div className="mt-4 pt-4 border-t border-stone-100">{extra}</div>}
-    </div>
+    </Disclosure>
   );
 }
 
@@ -219,6 +242,45 @@ function OAuthAction({
   );
 }
 
+/**
+ * "Set as active" for one AI provider card — a provider can be fully
+ * configured and tested without being the one `ai.provider` points at (the
+ * whole point of per-provider cards: keep several ready, switch which one
+ * generation actually uses with one click). Not offered for an unconfigured
+ * provider — nothing to switch to yet — or for the provider already active.
+ */
+function ActivateAction({
+  configured,
+  active,
+  activateAction,
+}: {
+  configured: boolean;
+  active: boolean;
+  activateAction: string;
+}) {
+  if (active) {
+    return <p className="text-xs font-sans text-stone-500">This is the active provider.</p>;
+  }
+  if (!configured) {
+    return (
+      <p className="text-xs font-sans text-stone-400 italic">
+        Configure and save the fields above to make this provider usable.
+      </p>
+    );
+  }
+  return (
+    <form method="POST" action={activateAction} data-loading-submit>
+      <button
+        type="submit"
+        data-loading-text="Switching…"
+        className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+      >
+        Use this provider
+      </button>
+    </form>
+  );
+}
+
 /** Non-null wrapper around `findCategory` — every id used below is a literal from `SETTINGS_CATEGORIES` itself. */
 function category(id: string) {
   const found = findCategory(id);
@@ -244,7 +306,11 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     twitterAccount,
     twitterClientId,
     twitterClientSecret,
-    aiModel,
+    activeProvider,
+    litellmResolved,
+    openaiResolved,
+    ollamaResolved,
+    geminiResolved,
     smtpHost,
     smtpPort,
     smtpUser,
@@ -267,7 +333,11 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     getSocialAccount("twitter"),
     getSetting("integrations.twitter.clientId"),
     getSetting("integrations.twitter.clientSecret", { encrypted: true }),
-    resolveAiModel(),
+    getSetting("ai.provider", { default: "litellm" }),
+    resolveAiModelFor("litellm"),
+    resolveAiModelFor("openai"),
+    resolveAiModelFor("ollama"),
+    resolveAiModelFor("gemini"),
     getSetting("email.smtpHost"),
     getSetting("email.smtpPort"),
     getSetting("email.smtpUser"),
@@ -285,13 +355,24 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     blog: Boolean(blogRssUrl),
     spotify: Boolean(spotifyToken),
     alexandria: Boolean(alexandriaApiUrl),
-    ai: Boolean(aiModel),
     email: Boolean(smtpHost && smtpPort && smtpUser && smtpPass && fromAddress),
   };
   const spotifyAppConfigured = Boolean(spotifyClientId && spotifyClientSecret);
   const googleAppConfigured = Boolean(googleClientId && googleClientSecret);
   const twitterAppConfigured = Boolean(twitterClientId && twitterClientSecret);
+
+  // Each provider's own configured state, independent of which one is
+  // active — the whole point of separate cards: LiteLLM can be fully working
+  // while OpenAI is what's actually selected, and the admin should be able
+  // to see and test both.
+  const aiProviders: { id: AiProviderId; configured: boolean }[] = [
+    { id: "litellm", configured: Boolean(litellmResolved) },
+    { id: "openai", configured: Boolean(openaiResolved) },
+    { id: "ollama", configured: Boolean(ollamaResolved) },
+    { id: "gemini", configured: Boolean(geminiResolved) },
+  ];
   const nextRun = schedule.enabled ? nextScheduledRun() : null;
+  const activeProviderId = (activeProvider ?? "litellm") as AiProviderId;
 
   return (
     <>
@@ -302,16 +383,32 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
 
       <FlashBanner messages={messages} />
 
-      <Section title="AI Generation" description="Powers article generation, activity/calendar rankings, and social copy.">
-        <Card
-          title={category("ai").title}
-          description={category("ai").description}
-          action="/admin/settings/ai"
-          testAction="/admin/settings/ai/test"
-          connected={connectionStatus.ai}
-        >
-          <CategoryFormFields fields={category("ai").fields} values={values} />
-        </Card>
+      <Section
+        title="AI Generation"
+        description="Powers article generation, activity/calendar rankings, and social copy. Configure as many providers as you like and test each independently — one of them is the active provider generation actually uses."
+      >
+        {aiProviders.map(({ id, configured }) => (
+          <Card
+            key={id}
+            title={AI_PROVIDER_LABELS[id]}
+            action={`/admin/settings/ai/${id}`}
+            testAction={`/admin/settings/ai/${id}/test`}
+            connected={configured}
+            active={id === activeProviderId}
+            extra={
+              <ActivateAction
+                configured={configured}
+                active={id === activeProviderId}
+                activateAction={`/admin/settings/ai/${id}/activate`}
+              />
+            }
+          >
+            <CategoryFormFields
+              fields={AI_FIELDS.filter((field) => field.providerGroup === id)}
+              values={values}
+            />
+          </Card>
+        ))}
       </Section>
 
       <Section

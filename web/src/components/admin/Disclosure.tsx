@@ -11,7 +11,8 @@ export default function Disclosure({
   defaultOpen = false,
   children,
 }: {
-  summary: string;
+  /** A plain label, or richer content (e.g. a title + status badge) — kept non-interactive, per `<summary>`'s own constraints; put buttons/links/forms in `children` instead. */
+  summary: React.ReactNode;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {

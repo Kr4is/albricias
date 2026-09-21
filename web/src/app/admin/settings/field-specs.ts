@@ -59,11 +59,19 @@ const BRANDING_FIELDS: SettingFieldSpec[] = [
 ];
 
 /**
- * Order here is also the segmented-button order in `AiProviderFields` — the
- * first option (LiteLLM) is the default for a fresh instance, since it's the
- * one most likely to already be free to call (a local/self-hosted proxy).
+ * Order here is also the segmented-button order in `AiProviderFields` (used
+ * by the "ai" category below, still the `/setup` onboarding wizard's single
+ * "pick one provider" step) — the first option (LiteLLM) is the default for
+ * a fresh instance, since it's the one most likely to already be free to
+ * call (a local/self-hosted proxy).
+ *
+ * Exported so `SettingsPanel.tsx`'s AI Generation section can filter this
+ * same array by `providerGroup` into four independent cards (configure,
+ * test, and activate any provider on its own, not just whichever is
+ * currently active) — reusing these exact field objects rather than a
+ * second copy that could drift from what onboarding still uses.
  */
-const AI_FIELDS: SettingFieldSpec[] = [
+export const AI_FIELDS: SettingFieldSpec[] = [
   {
     formKey: "provider",
     settingKey: "ai.provider",
