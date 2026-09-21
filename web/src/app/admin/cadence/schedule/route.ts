@@ -1,4 +1,4 @@
-/** POST half of the schedule form at `/admin/cadence` (Phase A / scheduler). */
+/** POST half of the schedule form — now a card inside `/admin/settings` (`SettingsPanel.tsx`), not its own page (Phase A / scheduler). */
 
 import cron from "node-cron";
 import type { NextRequest } from "next/server";
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   const enabled = form.get("enabled") != null;
 
   if (enabled && !cron.validate(cronExpr)) {
-    return flashRedirect(request, "/admin/cadence", [
+    return flashRedirect(request, "/admin/settings", [
       { type: "error", text: `Invalid cron expression: "${cronExpr}".` },
     ]);
   }
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   await setScheduleSettings({ cronExpr, enabled });
   await registerSchedule();
 
-  return flashRedirect(request, "/admin/cadence", [
+  return flashRedirect(request, "/admin/settings", [
     {
       type: "success",
       text: enabled

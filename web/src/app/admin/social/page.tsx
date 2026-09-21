@@ -18,6 +18,7 @@ import type { Metadata } from "next";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import { getSocialAccount } from "@/lib/social/store";
+import { getSetting } from "@/lib/config/settings";
 import { readFlash } from "@/lib/flash";
 
 export const dynamic = "force-dynamic";
@@ -30,11 +31,19 @@ export default async function SocialAccountsPage({
   const query = await searchParams;
   const messages = readFlash(query);
 
-  const [twitter, bluesky, mastodon] = await Promise.all([
+  const [twitter, bluesky, mastodon, twitterClientId, twitterClientSecret] = await Promise.all([
     getSocialAccount("twitter"),
     getSocialAccount("bluesky"),
     getSocialAccount("mastodon"),
+    getSetting("integrations.twitter.clientId"),
+    getSetting("integrations.twitter.clientSecret", { encrypted: true }),
   ]);
+  // Same check `social/twitter/connect/route.ts` itself makes before it'll
+  // even attempt an OAuth redirect — mirrored here so the button reflects
+  // reality instead of looking clickable and then bouncing back with an
+  // error. Bluesky/Mastodon take pasted credentials directly below, no
+  // OAuth app to misconfigure, so they need no equivalent gate.
+  const twitterAppConfigured = Boolean(twitterClientId && twitterClientSecret);
 
   return (
     <NewspaperShell endpoint="admin.social">
@@ -83,13 +92,17 @@ export default async function SocialAccountsPage({
                   Disconnect
                 </button>
               </form>
-            ) : (
+            ) : twitterAppConfigured ? (
               <a
                 href="/admin/social/twitter/connect"
                 className="block text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
               >
                 Connect X
               </a>
+            ) : (
+              <p className="text-center px-3 py-2 text-xs font-sans text-stone-400 italic">
+                Configure the X OAuth app in Settings first
+              </p>
             )}
           </div>
 

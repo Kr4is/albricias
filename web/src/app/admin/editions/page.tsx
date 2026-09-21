@@ -3,9 +3,10 @@
  * (`app/routes/admin.py:43-56`) and `app/templates/admin/editions.html`.
  *
  * The "Generate with AI" modal and its period picker are inline here (as in
- * the original), posting to `/admin/editions/generate`. The Spotify status
- * card is new — the original surfaced connect/disconnect only via bare links
- * (`admin.py:622-687`) with no dashboard entry point.
+ * the original), posting to `/admin/editions/generate`. Everything that
+ * isn't Drafts/Published — connections, AI config, newspaper config — lives
+ * in `/admin/settings` now (see `SettingsPanel.tsx`), reached via the single
+ * "Settings" header link; this page's job is only ever the edition list.
  */
 
 import type { Metadata } from "next";
@@ -15,7 +16,6 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import PeriodPickerFields from "@/components/admin/PeriodPickerFields";
 import { prisma } from "@/lib/prisma";
 import { getCadence } from "@/lib/cadence";
-import { getServiceToken } from "@/lib/service-token";
 import { EDITION_STATUS_DRAFT, EDITION_STATUS_PUBLISHED, periodLabelShort } from "@/lib/edition-helpers";
 import { readFlash } from "@/lib/flash";
 import { getOnboardingStep, isOnboardingCompleted } from "@/app/setup/onboarding";
@@ -43,7 +43,7 @@ export default async function EditionsDashboardPage({
   const query = await searchParams;
   const messages = readFlash(query);
 
-  const [drafts, published, cadence, spotifyToken, onboardingCompleted, onboardingStep] = await Promise.all([
+  const [drafts, published, cadence, onboardingCompleted, onboardingStep] = await Promise.all([
     prisma.edition.findMany({
       where: { status: EDITION_STATUS_DRAFT },
       orderBy: { periodStart: "desc" },
@@ -55,7 +55,6 @@ export default async function EditionsDashboardPage({
       select: editionSelect,
     }),
     getCadence(),
-    getServiceToken("spotify"),
     isOnboardingCompleted(),
     getOnboardingStep(),
   ]);
@@ -75,13 +74,12 @@ export default async function EditionsDashboardPage({
               <h2 className="font-masthead text-5xl text-ink">Editions Dashboard</h2>
             </div>
             <div className="flex items-center gap-3 no-print flex-wrap">
-              <a
-                href="/admin/cadence"
+              <Link
+                href="/admin/settings"
                 className="inline-flex items-center gap-2 px-5 py-2.5 border border-stone-300 text-xs font-bold uppercase tracking-widest text-stone-500 hover:border-ink hover:text-ink transition-colors"
               >
-                <span className="material-icons text-sm">tune</span> Cadence:{" "}
-                {cadence}
-              </a>
+                <span className="material-icons text-sm">settings</span> Settings
+              </Link>
               <button
                 type="button"
                 data-open-generate-modal
@@ -290,100 +288,6 @@ export default async function EditionsDashboardPage({
           )}
         </section>
 
-        {/* Connections & account — secondary to Drafts/Published, which are
-            what this dashboard is actually for. */}
-        <div className="mt-14 pt-8 border-t border-stone-200 space-y-3">
-          {/* Spotify status */}
-          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-              <span className="material-icons text-sm text-green-600">
-                {spotifyToken ? "check_circle" : "radio_button_unchecked"}
-              </span>
-              Spotify:{" "}
-              <strong>{spotifyToken ? "Connected" : "Not connected"}</strong>
-            </div>
-            {spotifyToken ? (
-              <form
-                method="POST"
-                action="/admin/spotify/disconnect"
-                data-confirm="Disconnect Spotify? You'll need to reconnect to keep including listening activity in new editions."
-              >
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
-                >
-                  Disconnect
-                </button>
-              </form>
-            ) : (
-              <a
-                href="/admin/spotify/connect"
-                className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-              >
-                Connect Spotify
-              </a>
-            )}
-          </div>
-
-          {/* Social accounts entry point (Phase D) */}
-          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-              <span className="material-icons text-sm">share</span>
-              Social auto-post accounts (X, Bluesky, Mastodon)
-            </div>
-            <a
-              href="/admin/social"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-            >
-              Manage
-            </a>
-          </div>
-
-          {/* Google Calendar entry point (Phase F) */}
-          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-              <span className="material-icons text-sm">event</span>
-              Google Calendar (stats ranking + meeting-notes articles)
-            </div>
-            <a
-              href="/admin/calendar"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-            >
-              Manage
-            </a>
-          </div>
-
-          {/* Settings entry point (Phase H3) — a Next <Link>, not a plain <a>:
-              interception (the settings-as-modal route in admin/@modal) only
-              fires on client-side navigation. */}
-          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-              <span className="material-icons text-sm">settings</span>
-              Branding, AI, GitHub, email, and OAuth app credentials
-            </div>
-            <Link
-              href="/admin/settings"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-            >
-              Manage
-            </Link>
-          </div>
-
-          {/* Account entry point */}
-          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-              <span className="material-icons text-sm">account_circle</span>
-              Account: change password, manage API token
-            </div>
-            <a
-              href="/admin/account"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-            >
-              Manage
-            </a>
-          </div>
-
-        </div>
       </div>
 
       {/* Generate Edition Modal */}

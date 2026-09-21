@@ -7,6 +7,25 @@
  * `NewspaperShell` + breadcrumb for the real page, a `Modal` for the
  * intercepted one).
  *
+ * Organized into three sections — the user's own framing for what used to
+ * be one flat grid of 9 unrelated categories plus two more pages
+ * (`/admin/cadence`, `/admin/account`) entirely outside Settings:
+ *
+ *   1. AI Generation — the one thing that decides how articles get written.
+ *   2. Service Connections — every external source/destination (GitHub,
+ *      blog, Spotify, Google Calendar, X, Alexandria), each showing not just
+ *      "is a credential saved" but, for the three OAuth ones, "is the
+ *      *account* actually connected" — and never offering a Connect action
+ *      that's guaranteed to bounce back with an error because the OAuth
+ *      app's client ID/secret isn't saved yet (see the gated `<span>`
+ *      fallback in each of the three).
+ *   3. Newspaper Configuration — Branding, Email, and (transplanted here
+ *      verbatim from the now-deleted `/admin/cadence` and `/admin/account`
+ *      pages) Cadence and Account. Neither fits the generic
+ *      `SETTINGS_CATEGORIES`/`CategoryFormFields` shape (a cron expression,
+ *      a password-confirm pair), so they're bespoke cards rather than one
+ *      more field-spec entry.
+ *
  * Category/field metadata (labels, placeholders, defaults, which fields are
  * secrets) lives in `./field-specs.ts`'s `SETTINGS_CATEGORIES`, and the field
  * renderers live in `./fields.tsx` — both shared with the `/setup`
@@ -26,9 +45,13 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import type { FlashMessage } from "@/lib/flash";
 import { getSetting } from "@/lib/config/settings";
 import { getServiceToken } from "@/lib/service-token";
+import { getSocialAccount } from "@/lib/social/store";
 import { resolveAiModel } from "@/lib/ai/provider";
+import { getCadence } from "@/lib/cadence";
+import { CADENCE_MONTHLY, CADENCE_WEEKLY } from "@/lib/edition-helpers";
+import { DEFAULT_SCHEDULE_CRON, getScheduleSettings, nextScheduledRun } from "@/lib/scheduler";
 import { settingDisplay } from "./setting-display";
-import { SETTINGS_CATEGORIES } from "./field-specs";
+import { SETTINGS_CATEGORIES, findCategory } from "./field-specs";
 import { CategoryFormFields, resolveFieldValues } from "./fields";
 
 /**
@@ -58,6 +81,7 @@ function Card({
   action,
   testAction,
   connected,
+  extra,
   children,
 }: {
   title: string;
@@ -66,6 +90,8 @@ function Card({
   /** When set, renders a secondary "Test connection" action below Save — see its doc comment for why "saved" and "works" are checked separately. */
   testAction?: string;
   connected?: boolean;
+  /** Extra content below Save/Test — the account-level Connect/Disconnect or "Manage →" block for the three OAuth categories. */
+  extra?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -98,42 +124,162 @@ function Card({
           </button>
         </form>
       )}
+      {extra && <div className="mt-4 pt-4 border-t border-stone-100">{extra}</div>}
     </div>
   );
 }
 
-export default async function SettingsPanel({ messages }: { messages: FlashMessage[] }) {
-  const allFields = SETTINGS_CATEGORIES.flatMap((category) => category.fields);
-  const values = await resolveFieldValues(allFields, settingDisplay);
+/** Section header — the visual separator between the three groups. */
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mb-12 last:mb-0">
+      <h3 className="font-headline text-xl font-bold border-b-2 border-ink pb-2 mb-2">{title}</h3>
+      {description && (
+        <p className="text-xs font-serif text-stone-500 mb-5 max-w-2xl">{description}</p>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{children}</div>
+    </section>
+  );
+}
 
-  // Same presence checks `populateEditionDraft` (`@/lib/generation/index.ts`)
-  // uses to decide whether to fetch each source — reused here verbatim so
-  // this badge never drifts from what actually gates generation.
+/** A gated "do the OAuth thing" affordance — a real link once the app credentials exist, a plain explanation otherwise. */
+function OAuthAction({
+  appConfigured,
+  connected,
+  connectHref,
+  connectLabel,
+  disconnectAction,
+  disconnectConfirm,
+  manageHref,
+}: {
+  appConfigured: boolean;
+  connected: boolean;
+  connectHref: string;
+  connectLabel: string;
+  disconnectAction?: string;
+  disconnectConfirm?: string;
+  /** When set (Google/X), a "Manage →" link to the richer dedicated page instead of an inline Disconnect form. */
+  manageHref?: string;
+}) {
+  if (!appConfigured) {
+    return (
+      <p className="text-xs font-sans text-stone-400 italic">
+        Set the client ID and secret above, then save, to connect your account.
+      </p>
+    );
+  }
+  if (connected && manageHref) {
+    return (
+      <a
+        href={manageHref}
+        className="inline-flex items-center gap-1 text-xs font-bold font-sans uppercase tracking-widest text-ink hover:underline"
+      >
+        Manage connection <span className="material-icons text-sm">arrow_forward</span>
+      </a>
+    );
+  }
+  if (connected && disconnectAction) {
+    return (
+      <form method="POST" action={disconnectAction} data-confirm={disconnectConfirm} data-loading-submit>
+        <button
+          type="submit"
+          data-loading-text="Disconnecting…"
+          className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
+        >
+          Disconnect
+        </button>
+      </form>
+    );
+  }
+  if (manageHref) {
+    return (
+      <a
+        href={manageHref}
+        className="inline-flex items-center gap-1 text-xs font-bold font-sans uppercase tracking-widest text-ink hover:underline"
+      >
+        Manage connection <span className="material-icons text-sm">arrow_forward</span>
+      </a>
+    );
+  }
+  return (
+    <a
+      href={connectHref}
+      className="block text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+    >
+      {connectLabel}
+    </a>
+  );
+}
+
+/** Non-null wrapper around `findCategory` — every id used below is a literal from `SETTINGS_CATEGORIES` itself. */
+function category(id: string) {
+  const found = findCategory(id);
+  if (!found) throw new Error(`Unknown settings category "${id}".`);
+  return found;
+}
+
+export default async function SettingsPanel({ messages }: { messages: FlashMessage[] }) {
+  const allFields = SETTINGS_CATEGORIES.flatMap((cat) => cat.fields);
+
   const [
+    values,
     githubToken,
     githubUsername,
     blogRssUrl,
     alexandriaApiUrl,
     spotifyToken,
+    spotifyClientId,
+    spotifyClientSecret,
+    googleToken,
+    googleClientId,
+    googleClientSecret,
+    twitterAccount,
+    twitterClientId,
+    twitterClientSecret,
     aiModel,
     smtpHost,
     smtpPort,
     smtpUser,
     smtpPass,
     fromAddress,
+    cadence,
+    schedule,
   ] = await Promise.all([
+    resolveFieldValues(allFields, settingDisplay),
     getSetting("integrations.github.token", { encrypted: true }),
     getSetting("integrations.github.username"),
     getSetting("integrations.blog.rssUrl"),
     getSetting("integrations.alexandria.apiUrl"),
     getServiceToken("spotify"),
+    getSetting("integrations.spotify.clientId"),
+    getSetting("integrations.spotify.clientSecret", { encrypted: true }),
+    getServiceToken("google"),
+    getSetting("integrations.google.clientId"),
+    getSetting("integrations.google.clientSecret", { encrypted: true }),
+    getSocialAccount("twitter"),
+    getSetting("integrations.twitter.clientId"),
+    getSetting("integrations.twitter.clientSecret", { encrypted: true }),
     resolveAiModel(),
     getSetting("email.smtpHost"),
     getSetting("email.smtpPort"),
     getSetting("email.smtpUser"),
     getSetting("email.smtpPass", { encrypted: true }),
     getSetting("email.fromAddress"),
+    getCadence(),
+    getScheduleSettings(),
   ]);
+
+  // Same presence checks `populateEditionDraft` (`@/lib/generation/index.ts`)
+  // uses to decide whether to fetch each source — reused here verbatim so
+  // this badge never drifts from what actually gates generation.
   const connectionStatus: Record<string, boolean> = {
     github: Boolean(githubToken && githubUsername),
     blog: Boolean(blogRssUrl),
@@ -142,38 +288,301 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     ai: Boolean(aiModel),
     email: Boolean(smtpHost && smtpPort && smtpUser && smtpPass && fromAddress),
   };
-
-  // The three categories with a cheap, real "does it actually work" check —
-  // see each route under ./<category>/test/route.ts. The rest only have a
-  // "saved" check (connectionStatus above); extending this list is future
-  // work, not a limitation of the Card component itself.
-  const testableCategories = new Set(["ai", "github", "email"]);
+  const spotifyAppConfigured = Boolean(spotifyClientId && spotifyClientSecret);
+  const googleAppConfigured = Boolean(googleClientId && googleClientSecret);
+  const twitterAppConfigured = Boolean(twitterClientId && twitterClientSecret);
+  const nextRun = schedule.enabled ? nextScheduledRun() : null;
 
   return (
     <>
-      <p className="text-xs font-serif text-stone-500 mb-6 max-w-2xl">
+      <p className="text-xs font-serif text-stone-500 mb-8 max-w-2xl">
         Every credential is configured here — there is no `.env` fallback.
         Saved values take effect immediately, no restart needed.
       </p>
 
       <FlashBanner messages={messages} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {SETTINGS_CATEGORIES.map((category) => (
-          <Card
-            key={category.id}
-            title={category.title}
-            description={category.description}
-            action={`/admin/settings/${category.id}`}
-            testAction={
-              testableCategories.has(category.id) ? `/admin/settings/${category.id}/test` : undefined
-            }
-            connected={connectionStatus[category.id]}
-          >
-            <CategoryFormFields fields={category.fields} values={values} />
-          </Card>
-        ))}
-      </div>
+      <Section title="AI Generation" description="Powers article generation, activity/calendar rankings, and social copy.">
+        <Card
+          title={category("ai").title}
+          description={category("ai").description}
+          action="/admin/settings/ai"
+          testAction="/admin/settings/ai/test"
+          connected={connectionStatus.ai}
+        >
+          <CategoryFormFields fields={category("ai").fields} values={values} />
+        </Card>
+      </Section>
+
+      <Section
+        title="Service Connections"
+        description="Every external source that feeds a generated edition, and every account editions get distributed to."
+      >
+        <Card
+          title={category("github").title}
+          description={category("github").description}
+          action="/admin/settings/github"
+          testAction="/admin/settings/github/test"
+          connected={connectionStatus.github}
+        >
+          <CategoryFormFields fields={category("github").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("blog").title}
+          description={category("blog").description}
+          action="/admin/settings/blog"
+          connected={connectionStatus.blog}
+        >
+          <CategoryFormFields fields={category("blog").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("spotify").title}
+          description={category("spotify").description}
+          action="/admin/settings/spotify"
+          connected={Boolean(spotifyToken)}
+          extra={
+            <OAuthAction
+              appConfigured={spotifyAppConfigured}
+              connected={Boolean(spotifyToken)}
+              connectHref="/admin/spotify/connect"
+              connectLabel="Connect Spotify"
+              disconnectAction="/admin/spotify/disconnect"
+              disconnectConfirm="Disconnect Spotify? You'll need to reconnect to keep including listening activity in new editions."
+            />
+          }
+        >
+          <CategoryFormFields fields={category("spotify").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("google").title}
+          description={category("google").description}
+          action="/admin/settings/google"
+          connected={Boolean(googleToken)}
+          extra={
+            <OAuthAction
+              appConfigured={googleAppConfigured}
+              connected={Boolean(googleToken)}
+              connectHref="/admin/calendar/connect"
+              connectLabel="Connect Google Calendar"
+              manageHref="/admin/calendar"
+            />
+          }
+        >
+          <CategoryFormFields fields={category("google").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("twitter").title}
+          description={category("twitter").description}
+          action="/admin/settings/twitter"
+          connected={Boolean(twitterAccount?.enabled)}
+          extra={
+            <OAuthAction
+              appConfigured={twitterAppConfigured}
+              connected={Boolean(twitterAccount?.enabled)}
+              connectHref="/admin/social/twitter/connect"
+              connectLabel="Connect X"
+              manageHref="/admin/social"
+            />
+          }
+        >
+          <CategoryFormFields fields={category("twitter").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("alexandria").title}
+          description={category("alexandria").description}
+          action="/admin/settings/alexandria"
+          connected={connectionStatus.alexandria}
+        >
+          <CategoryFormFields fields={category("alexandria").fields} values={values} />
+        </Card>
+      </Section>
+
+      <Section title="Newspaper Configuration" description="Branding, outbound email, publication cadence, and this admin account — nothing here feeds generation or an external connection.">
+        <Card title={category("branding").title} description={category("branding").description} action="/admin/settings/branding">
+          <CategoryFormFields fields={category("branding").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("email").title}
+          description={category("email").description}
+          action="/admin/settings/email"
+          testAction="/admin/settings/email/test"
+          connected={connectionStatus.email}
+        >
+          <CategoryFormFields fields={category("email").fields} values={values} />
+        </Card>
+
+        {/* Cadence — transplanted from the now-deleted /admin/cadence page. */}
+        <div className="border border-stone-200 bg-white p-6">
+          <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-4">
+            Generation Cadence
+          </h3>
+          <form method="POST" action="/admin/cadence/update" className="space-y-3" data-loading-submit>
+            <label className="flex items-center gap-3 border border-stone-200 p-3 has-[:checked]:border-ink cursor-pointer transition-colors">
+              <input
+                type="radio"
+                name="cadence"
+                value={CADENCE_MONTHLY}
+                defaultChecked={cadence === CADENCE_MONTHLY}
+                className="accent-ink"
+              />
+              <div>
+                <p className="text-xs font-sans font-bold">Monthly</p>
+                <p className="text-[10px] font-sans text-stone-500">One edition per calendar month.</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 border border-stone-200 p-3 has-[:checked]:border-ink cursor-pointer transition-colors">
+              <input
+                type="radio"
+                name="cadence"
+                value={CADENCE_WEEKLY}
+                defaultChecked={cadence === CADENCE_WEEKLY}
+                className="accent-ink"
+              />
+              <div>
+                <p className="text-xs font-sans font-bold">Weekly</p>
+                <p className="text-[10px] font-sans text-stone-500">One edition per ISO week (Monday–Sunday).</p>
+              </div>
+            </label>
+            <button
+              type="submit"
+              data-loading-text="Saving…"
+              className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors mt-2"
+            >
+              Save Cadence
+            </button>
+          </form>
+
+          <div className="mt-6 pt-4 border-t border-stone-100">
+            <h4 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-1">
+              Automatic Generation
+            </h4>
+            <p className="text-[10px] font-sans text-stone-500 mb-3">
+              Runs the same pipeline as &quot;Generate with AI&quot; on a schedule, with no admin interaction.
+            </p>
+            <form method="POST" action="/admin/cadence/schedule" className="space-y-3" data-loading-submit>
+              <label className="flex items-center gap-3 border border-stone-200 p-3 has-[:checked]:border-ink cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  value="true"
+                  defaultChecked={schedule.enabled}
+                  className="accent-ink w-4 h-4"
+                />
+                <div>
+                  <p className="text-xs font-sans font-bold">Enabled</p>
+                  <p className="text-[10px] font-sans text-stone-500">
+                    When off, the cron expression below is saved but no job runs.
+                  </p>
+                </div>
+              </label>
+              <div className="space-y-1">
+                <label htmlFor="cronExpr" className="block text-[10px] font-sans font-bold uppercase tracking-widest">
+                  Cron expression (UTC)
+                </label>
+                <input
+                  type="text"
+                  id="cronExpr"
+                  name="cronExpr"
+                  defaultValue={schedule.cronExpr ?? DEFAULT_SCHEDULE_CRON}
+                  placeholder={DEFAULT_SCHEDULE_CRON}
+                  className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-xs font-mono"
+                />
+                <p className="text-[10px] font-sans text-stone-500">
+                  5-field cron (minute hour day month weekday), e.g.{" "}
+                  <code className="font-mono">{DEFAULT_SCHEDULE_CRON}</code> = every Monday at 06:00 UTC.
+                </p>
+              </div>
+              {schedule.enabled && schedule.cronExpr && (
+                <p className="text-[10px] font-sans text-stone-500">
+                  {nextRun
+                    ? `Next scheduled run: ${nextRun.toUTCString()}`
+                    : "Schedule is enabled, but no upcoming run could be computed (check the cron expression)."}
+                </p>
+              )}
+              <button
+                type="submit"
+                data-loading-text="Saving…"
+                className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors mt-2"
+              >
+                Save Schedule
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* Account — transplanted from the now-deleted /admin/account page. */}
+        <div className="border border-stone-200 bg-white p-6">
+          <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-4">
+            Account
+          </h3>
+          <form method="POST" action="/admin/account/password" className="space-y-3" data-loading-submit>
+            <div>
+              <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
+                New Password
+              </label>
+              <input
+                type="password"
+                name="password"
+                required
+                minLength={8}
+                className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                name="confirm"
+                required
+                minLength={8}
+                className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
+              />
+            </div>
+            <p className="text-[10px] font-serif text-stone-500">
+              Other logged-in devices stay signed in — this does not rotate the session-signing secret.
+            </p>
+            <button
+              type="submit"
+              data-loading-text="Updating…"
+              className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
+            >
+              Update Password
+            </button>
+          </form>
+
+          <div className="mt-6 pt-4 border-t border-stone-100">
+            <h4 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-2">
+              JSON API Token
+            </h4>
+            <p className="text-[10px] font-serif text-stone-500 mb-3">
+              Bearer token required by <code>POST /api/articles</code>. Regenerating replaces the
+              current token — update any client using the old one.
+            </p>
+            <form
+              method="POST"
+              action="/admin/account/api-token"
+              data-confirm="Regenerate the API token? The current one stops working immediately — any client using it will need the new one."
+              data-loading-submit
+            >
+              <button
+                type="submit"
+                data-loading-text="Regenerating…"
+                className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+              >
+                Regenerate API Token
+              </button>
+            </form>
+          </div>
+        </div>
+      </Section>
     </>
   );
 }

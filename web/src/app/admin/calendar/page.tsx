@@ -12,6 +12,7 @@ import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken } from "@/lib/service-token";
+import { getSetting } from "@/lib/config/settings";
 import { readFlash } from "@/lib/flash";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +34,16 @@ export default async function CalendarAdminPage({
   const query = await searchParams;
   const messages = readFlash(query);
 
-  const [token, calendars] = await Promise.all([
+  const [token, calendars, clientId, clientSecret] = await Promise.all([
     getServiceToken("google"),
     prisma.calendarSource.findMany({ orderBy: { name: "asc" } }),
+    getSetting("integrations.google.clientId"),
+    getSetting("integrations.google.clientSecret", { encrypted: true }),
   ]);
+  // Same check `calendar/connect/route.ts` itself makes before it'll even
+  // attempt an OAuth redirect — mirrored here so the button reflects reality
+  // instead of looking clickable and then bouncing back with an error.
+  const appConfigured = Boolean(clientId && clientSecret);
 
   return (
     <NewspaperShell endpoint="admin.calendar">
@@ -93,13 +100,20 @@ export default async function CalendarAdminPage({
                   </button>
                 </form>
               </>
-            ) : (
+            ) : appConfigured ? (
               <a
                 href="/admin/calendar/connect"
                 className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
               >
                 Connect Google Calendar
               </a>
+            ) : (
+              <span
+                className="px-3 py-1.5 text-xs font-sans text-stone-400 italic"
+                title="Set the Google OAuth app's client ID and secret in Settings first."
+              >
+                Configure the Google OAuth app in Settings first
+              </span>
             )}
           </div>
         </div>

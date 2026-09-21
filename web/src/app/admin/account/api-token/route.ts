@@ -1,9 +1,9 @@
 /**
- * Regenerate-API-token action for `/admin/account`: writes a fresh random
- * value to the `auth.apiToken` DB setting (encrypted), the only value
+ * Regenerate-API-token action — now a card inside `/admin/settings`
+ * (`SettingsPanel.tsx`), not its own page. Writes a fresh random value to
+ * the `auth.apiToken` DB setting (encrypted), the only value
  * `src/lib/api-auth.ts`'s `requireApiToken()` checks. The new token is shown
- * once, in the flash message — there is nowhere else in this minimal page to
- * display it.
+ * once, in the flash message — there is nowhere else to display it.
  */
 
 import { randomBytes } from "node:crypto";
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const token = randomBytes(32).toString("base64url");
   await setSetting("auth.apiToken", token, { encrypted: true });
 
-  return flashRedirect(request, "/admin/account", [
+  return flashRedirect(request, "/admin/settings", [
     { type: "success", text: `New API token: ${token} (copy it now — it won't be shown again)` },
   ]);
 }
