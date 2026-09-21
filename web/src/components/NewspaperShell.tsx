@@ -92,6 +92,23 @@ export default function NewspaperShell({
               spinner.textContent = 'autorenew';
               spinner.setAttribute('aria-hidden', 'true');
               btn.prepend(spinner);
+
+              // Live elapsed-time counter — some of these (AI generation
+              // against a slow self-hosted model) run for minutes, and a
+              // static spinner with no change for that long reads as frozen.
+              // Appended last, after every above mutation, so it's never
+              // wiped by the data-loading-text replacement above it.
+              var timer = document.createElement('span');
+              timer.className = 'ml-1.5 font-normal opacity-80 tabular-nums';
+              timer.setAttribute('aria-live', 'polite');
+              btn.appendChild(timer);
+              var startedAt = Date.now();
+              var tick = function () {
+                var s = Math.round((Date.now() - startedAt) / 1000);
+                timer.textContent = '(' + (s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's') + ')';
+              };
+              tick();
+              setInterval(tick, 1000);
             });
           `,
         }}

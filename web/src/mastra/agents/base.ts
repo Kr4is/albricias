@@ -73,21 +73,31 @@ function isUnusable(result: AgentGenerateResult): boolean {
  * Run `agent` against `user` and return the raw response text.
  *
  * Equivalent to `_base.call_openai(system=<agent instructions>, user=...)`; the
- * system prompt lives on the agent definition rather than being passed in.
+ * system prompt lives on the agent instructions rather than being passed in.
  *
  * No `maxOutputTokens` is sent unless a caller explicitly asks for one — the
  * provider picks its own ceiling instead. This app used to impose a fixed
  * 800-token cap by default, which is fine for a plain chat model but breaks a
  * "thinking"/reasoning model (Qwen3 and similar, common behind a self-hosted
  * LiteLLM proxy): it can spend the *entire* budget on `reasoning_content` and
- * stop at `finishReason: "length"` with `text` completely empty, or just as
- * unusably, cut off a few words into the headline. Verified against a real
- * Qwen3 deployment: the exact same "Open Source" prompt that returned nothing
- * at 800 tokens, and cut off mid-headline again at 4096, completed cleanly
- * with no cap at all — `finishReason: "stop"`, ~2900 completion tokens
- * (~10k characters of reasoning ahead of the actual ~2.4k-character article).
- * A fixed retry budget just guesses at a number that's already wrong for the
- * next heavier prompt; not capping avoids the guess entirely.
+ * stop at `finishReason: "length"` with `text` completely empty.
+ *
+ * A brief detour once this app started asking for 700-1500 word articles
+ * (previously 200-500): a real deployment hit `finishReason: "length"` even
+ * uncapped, which looked like evidence the provider substitutes its own
+ * (too-small) ceiling when none is sent — so this function briefly sent an
+ * explicit generous one (16k tokens) instead. That theory didn't survive
+ * contact with a second real run: the explicit 16k cap reproduced the exact
+ * same failure, byte-for-byte, including the retry's `finishReason: "stop"`
+ * with equally empty text. A cap that's not the binding constraint can't be
+ * fixed by raising it — whatever this model is doing on a long, demanding
+ * creative-writing prompt (getting lost in reasoning and never emitting an
+ * answer, most likely, but not confirmed), it does it independently of the
+ * token ceiling. Reverted to sending none, on the original reasoning: an
+ * unbounded budget is still the only setting that's never itself the cause
+ * of a truncated response, even though it's now a known non-fix for *this*
+ * specific failure. The real fix, if one exists on this app's side at all,
+ * is a shorter or differently-shaped prompt — not a token budget.
  *
  * Still retries once on a truncated/empty response — see {@link isUnusable}
  * — for the cases a cap doesn't explain: a transient network hiccup, or a
@@ -100,19 +110,47 @@ function isUnusable(result: AgentGenerateResult): boolean {
  * failure visible instead of persisting a blank or truncated article"
  * behavior, not a new failure mode callers need to handle specially.
  */
+/**
+ * One streamed call. Uses `agent.stream()` rather than `agent.generate()` —
+ * same final text, but the underlying HTTP request to the provider asks for
+ * a streamed response (`stream: true`) instead of a single blocking one.
+ * That matters for exactly the failure this app hit against a real
+ * self-hosted proxy: a blocking call to a "thinking" model can legitimately
+ * take minutes, during which a reverse proxy in front of it (Cloudflare, in
+ * the observed case) sees zero bytes and kills the connection with a 524
+ * ("origin didn't respond in time") — indistinguishable from the provider
+ * being down. A streamed request starts receiving bytes as soon as the model
+ * emits its first token (reasoning tokens included, for a model that streams
+ * those), which keeps the connection visibly alive to everything in between.
+ * Still buffers the full response server-side before returning — nothing
+ * downstream of `runNewspaperAgent` consumes a live stream, only the
+ * finished article text — so every caller is unaffected by this change.
+ */
+async function runOnce(
+  agent: Agent,
+  user: string,
+  model: RunAgentOptions["aiModel"] | typeof MODEL_ID,
+  modelSettings: { temperature: number; maxOutputTokens?: number },
+): Promise<AgentGenerateResult> {
+  const stream = await agent.stream(user, { model, modelSettings });
+  const [text, finishReason] = await Promise.all([stream.text, stream.finishReason]);
+  return { text, finishReason };
+}
+
 export async function runNewspaperAgent(
   agent: Agent,
   { user, aiModel, temperature = DEFAULT_TEMPERATURE, maxTokens }: RunAgentOptions,
 ): Promise<string> {
   const modelSettings = { temperature, ...(maxTokens ? { maxOutputTokens: maxTokens } : {}) };
-  const result = await agent.generate(user, { model: aiModel ?? MODEL_ID, modelSettings });
+  const model = aiModel ?? MODEL_ID;
+  const result = await runOnce(agent, user, model, modelSettings);
   if (!isUnusable(result)) return result.text ?? "";
 
   console.warn(
     `[runNewspaperAgent] truncated/empty response (finishReason: ${result.finishReason}, ` +
       `maxTokens: ${maxTokens ?? "unset"}) — retrying once`,
   );
-  const retry = await agent.generate(user, { model: aiModel ?? MODEL_ID, modelSettings });
+  const retry = await runOnce(agent, user, model, modelSettings);
   if (!isUnusable(retry)) return retry.text ?? "";
 
   throw new Error(

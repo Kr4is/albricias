@@ -728,6 +728,131 @@ export async function computeMissingGenerationPieces(
 }
 
 // ---------------------------------------------------------------------------
+// Single-piece retry with durable, reload-proof progress — a section or
+// topic-candidate retry can legitimately run for minutes against a slow
+// self-hosted model, and a client-side "this button is disabled with a
+// spinner" state is lost the moment the page is reloaded or left and
+// returned to. Reuses `Edition.generationStatus`/`generationProgress` (and
+// therefore the existing `/live` SSE route + `GenerationWatcher`) exactly
+// the way `populateEditionDraft` does for the bulk pipeline, just seeded
+// with a single section — no new transport or UI needed, the admin sees the
+// same "Writing…" placeholder and it survives a reload the same way.
+// ---------------------------------------------------------------------------
+
+/**
+ * Flip the edition to `generationStatus: "running"` with a one-item
+ * `generationProgress.sections`, or refuse if a run (bulk or another single
+ * retry) is already in progress — two writers racing the same column would
+ * otherwise clobber each other. Call synchronously from the route, before
+ * `after()`, so the admin's very next page load already shows "writing".
+ */
+async function beginSinglePieceRetry(
+  editionId: number,
+  label: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const edition = await prisma.edition.findUnique({
+    where: { id: editionId },
+    select: { generationStatus: true },
+  });
+  if (!edition) return { ok: false, reason: "Edition not found." };
+  if (edition.generationStatus === "running") {
+    return {
+      ok: false,
+      reason: "Generation is already in progress for this edition — wait for it to finish, then retry.",
+    };
+  }
+  await prisma.edition.update({
+    where: { id: editionId },
+    data: {
+      generationStatus: "running",
+      generationProgress: JSON.stringify({
+        ...initialGenerationProgress(),
+        totalSections: 1,
+        sections: [{ category: label, status: "writing" }],
+      }),
+    },
+  });
+  return { ok: true };
+}
+
+/**
+ * Run `work`, then flip back to `generationStatus: "done"` — same "clear
+ * generationProgress unless there's something notable to say" rule
+ * `populateEditionDraft`'s `finally` block uses, except a single retry's own
+ * failure always counts as notable (there's no separate synchronous flash to
+ * carry it, unlike the bulk pipeline's immediate "Generating…" response).
+ * Call from the route's `after()`, after `beginSinglePieceRetry` succeeded.
+ */
+async function finishSinglePieceRetry(editionId: number, work: () => Promise<void>): Promise<void> {
+  const messages: FlashMessage[] = [];
+  try {
+    await work();
+  } catch (error) {
+    messages.push({ type: "error", text: `AI regeneration failed: ${describeError(error)}` });
+  }
+  await prisma.edition.update({
+    where: { id: editionId },
+    data: {
+      generationStatus: "done",
+      generationProgress:
+        messages.length > 0 ? JSON.stringify({ ...initialGenerationProgress(), messages }) : null,
+    },
+  });
+}
+
+/** Begin half of a chronicle-section retry — see {@link beginSinglePieceRetry}. */
+export async function beginChronicleSectionRetry(
+  editionId: number,
+  category: ChronicleCategory,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return beginSinglePieceRetry(editionId, category);
+}
+
+/** Finish half of a chronicle-section retry — call from the route's `after()`. */
+export async function finishChronicleSectionRetry(
+  editionId: number,
+  category: ChronicleCategory,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<void> {
+  await finishSinglePieceRetry(editionId, async () => {
+    await regenerateChronicleSection(editionId, category, aiModel);
+  });
+}
+
+/**
+ * Begin half of a topic-candidate retry — see {@link beginSinglePieceRetry}.
+ * Looks the candidate up first (for its title, used as the progress label,
+ * and to 404 early) rather than deferring that to the `after()` half, so a
+ * bad id fails the synchronous request instead of silently flipping the
+ * edition to "running" for nothing.
+ */
+export async function beginTopicCandidateRetry(
+  editionId: number,
+  candidateId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const edition = await prisma.edition.findUnique({
+    where: { id: editionId },
+    select: { topicCandidates: true },
+  });
+  const candidate = parseStoredTopicCandidates(edition?.topicCandidates).find((c) => c.id === candidateId);
+  if (!candidate) {
+    return { ok: false, reason: `Topic candidate "${candidateId}" not found.` };
+  }
+  return beginSinglePieceRetry(editionId, candidate.title);
+}
+
+/** Finish half of a topic-candidate retry — call from the route's `after()`. */
+export async function finishTopicCandidateRetry(
+  editionId: number,
+  candidateId: string,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<void> {
+  await finishSinglePieceRetry(editionId, async () => {
+    await regenerateTopicCandidateArticle(editionId, candidateId, aiModel);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Edition draft pipeline — `ai_writer.py:187-249`
 // ---------------------------------------------------------------------------
 
