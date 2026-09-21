@@ -30,11 +30,24 @@ export {
   buildReviewPrompt,
 } from "./assisted";
 
+export {
+  type ProfileWorkflowInput,
+  PROFILE_SECTION_CONCURRENCY,
+  buildProfileOutlinePrompt,
+  buildProfileSectionPrompt,
+  parseOutline,
+  profileWorkflow,
+  resolveSourceExcerpt,
+  splitSourceIntoChunks,
+} from "./profile";
+
 import { assistedGenerationWorkflow } from "./assisted";
 import { chronicleWorkflow } from "./chronicle";
+import { profileWorkflow } from "./profile";
 
 /** Registered on the Mastra instance in `src/mastra/index.ts`. */
 export const workflows = {
   chronicle: chronicleWorkflow,
   "assisted-generation": assistedGenerationWorkflow,
+  "profile-deep-dive": profileWorkflow,
 };

@@ -10,11 +10,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
+import GenerationTraceGraph from "@/components/admin/GenerationTraceGraph";
 import { prisma } from "@/lib/prisma";
 import { readFlash } from "@/lib/flash";
 import { mediaUrl } from "@/lib/media";
 import { toDateInputValue } from "@/lib/date-input";
 import { ARTICLE_CATEGORIES } from "@/lib/article-categories";
+import { generationTraceSchema } from "@/mastra/schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,20 @@ function readCalendarNotesSource(sourceData: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** Pull a profile article's `generationTrace` back out of `sourceData`, if present — see `@/mastra/workflows/profile`. */
+function readGenerationTrace(sourceData: string | null) {
+  if (!sourceData) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sourceData);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const result = generationTraceSchema.safeParse((parsed as { generationTrace?: unknown }).generationTrace);
+  return result.success ? result.data : null;
 }
 
 async function loadArticle(editionId: string, articleId: string) {
@@ -76,6 +92,7 @@ export default async function ArticleEditPage({
   const imageSrc = mediaUrl(article.image);
   const audioSrc = mediaUrl(article.audio);
   const calendarNotesSource = readCalendarNotesSource(article.sourceData);
+  const generationTrace = readGenerationTrace(article.sourceData);
 
   return (
     <NewspaperShell endpoint="admin.article_edit">
@@ -353,6 +370,12 @@ export default async function ArticleEditPage({
             </div>
           </form>
         </div>
+
+        {generationTrace && (
+          <div className="mt-6">
+            <GenerationTraceGraph editionId={edition.id} articleId={article.id} trace={generationTrace} />
+          </div>
+        )}
       </div>
     </NewspaperShell>
   );

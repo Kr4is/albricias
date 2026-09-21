@@ -105,6 +105,77 @@ export const PROFILE_SYSTEM =
   CHART_CLAUSE;
 
 /**
+ * No Python original — new with the outline→sections rework of profile
+ * generation (`@/mastra/workflows/profile`). Deliberately not
+ * `NEWSPAPER_PERSONA + DEPTH_CLAUSE`: this call's whole point is to be small
+ * and structured, not to write prose — asking it for the paper's voice on
+ * top of a planning task just gives a "thinking" model more to reason about
+ * before answering, which is the opposite of what this call exists to fix.
+ * The output-format instructions below are a plain-text convention (parsed
+ * by `parseOutline()` in `profile.ts`), not Mastra's tool-calling-backed
+ * `structuredOutput` — tool-calling is unproven surface area against the
+ * same flaky self-hosted backend this whole rework is trying to work around.
+ */
+export const PROFILE_OUTLINE_SYSTEM =
+  "You are the outline editor for ¡Albricias!'s Profiles & Features desk. " +
+  "You do not write prose — you plan a profile article that someone else " +
+  "will write, one section at a time, from the source material given to you. " +
+  "\n\n" +
+  "Read the material once, then reply with exactly this shape, nothing else:\n" +
+  "\n" +
+  "# <a compelling headline for the piece>\n" +
+  "\n" +
+  "PREMISE: <one paragraph — the throughline the piece will argue, the angle " +
+  "that ties every section together>\n" +
+  "\n" +
+  "## <first section heading>\n" +
+  "BRIEF: <one or two sentences on what this section covers>\n" +
+  "SOURCE: <a short phrase naming the part(s) of the material this section " +
+  "draws from — e.g. a heading from the material itself>\n" +
+  "\n" +
+  "## <second section heading>\n" +
+  "BRIEF: ...\n" +
+  "SOURCE: ...\n" +
+  "\n" +
+  "(and so on)\n" +
+  "\n" +
+  "Propose 3 to 6 sections. Keep sections non-overlapping — each fact or " +
+  "theme in the source material should belong to exactly one section's " +
+  "BRIEF, not be spread across several, since each section will be written " +
+  "independently by someone who only sees its own brief and its own slice " +
+  "of the material. Ground every section in what the material actually " +
+  "supports — do not plan a section around something the material doesn't " +
+  "cover.";
+
+/**
+ * No Python original — the per-section writer `@/mastra/workflows/profile`
+ * calls once per outline section. Carries the paper's actual voice (unlike
+ * the outline call above), but scoped hard to *one section's body* — no
+ * headline, no restating the premise, no conclusion, since `assemble-article`
+ * supplies all of that from the outline once every section is back. The
+ * narrower per-section word range (vs. `PROFILE_SYSTEM`'s 900–1500 for a
+ * whole piece) is the actual fix this rework is testing: a smaller, more
+ * bounded task per call, on the theory that this — not the token budget,
+ * already tried and ruled out — is what was sending a "thinking" model into
+ * reasoning it never returned from.
+ */
+export const PROFILE_SECTION_SYSTEM =
+  NEWSPAPER_PERSONA +
+  "\n\n" +
+  "You are writing one section of a longer Profiles & Features piece for " +
+  "¡Albricias! — long-form narrative journalism, warm but discerning, like a " +
+  "society-page profile from a distinguished broadsheet. You are given the " +
+  "piece's overall premise (for continuity — do not restate it), this " +
+  "section's own heading and brief, and the slice of source material it " +
+  "should draw from. " +
+  "Write only this section's body: no headline, no re-introduction of the " +
+  "subject, no summary or conclusion — those belong to other parts of the " +
+  "piece you are not writing. Ground it in the material given, with real " +
+  "detail (names, numbers, dates) rather than generalities. Aim for roughly " +
+  "150 to 300 words." +
+  CHART_CLAUSE;
+
+/**
  * No Python original — new with the `github-repo-article-generators` plan.
  * The persona's grandiloquence is kept, but deliberately fenced off from the
  * steps themselves: a reader following a tutorial needs the commands to be
@@ -209,6 +280,22 @@ export const profileAgent = new Agent({
   model: MODEL_ID,
 });
 
+export const profileOutlineAgent = new Agent({
+  id: "profile-outline",
+  name: "Albricias Profiles & Features Desk — Outline",
+  description: "Plans a profile article's sections from source material; writes no prose itself.",
+  instructions: PROFILE_OUTLINE_SYSTEM,
+  model: MODEL_ID,
+});
+
+export const profileSectionAgent = new Agent({
+  id: "profile-section",
+  name: "Albricias Profiles & Features Desk — Section Writer",
+  description: "Writes one section of a profile article from its own brief and source excerpt.",
+  instructions: PROFILE_SECTION_SYSTEM,
+  model: MODEL_ID,
+});
+
 export const tutorialAgent = new Agent({
   id: "tutorial",
   name: "Albricias Practical Instruction Desk",
@@ -248,6 +335,8 @@ export const agents = {
   interview: interviewAgent,
   review: reviewAgent,
   profile: profileAgent,
+  profileOutline: profileOutlineAgent,
+  profileSection: profileSectionAgent,
   tutorial: tutorialAgent,
   synthesis: synthesisAgent,
   social: socialCopyAgent,

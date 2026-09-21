@@ -62,6 +62,7 @@ import {
   MODEL_NAME,
   chronicleAgent,
   parseResponse,
+  profileSectionAgent,
   runNewspaperAgent,
   type ResolvedAiModel,
 } from "@/mastra/agents";
@@ -72,9 +73,11 @@ import {
   rebuildEditionSynthesisArticle,
 } from "@/lib/synthesis";
 import {
+  type GenerationTrace,
   type GeneratorResult,
   type GeneratorType,
   type ReviewSubjectType,
+  generationTraceSchema,
 } from "@/mastra/schemas";
 import {
   CHRONICLE_CONCURRENCY,
@@ -83,6 +86,7 @@ import {
   buildChroniclePrompt,
   chronicleWorkflow,
   groupActivities,
+  profileWorkflow,
   summariseGroup,
 } from "@/mastra/workflows";
 
@@ -329,6 +333,13 @@ export interface GenerateArticleFromSourceOptions {
    * topic-candidate pipeline ({@link generateTopicCandidateArticles}).
    */
   extraSourceData?: Record<string, unknown>;
+  /**
+   * When set, updates this existing `Article` row instead of creating a new
+   * one — how a topic-candidate retry avoids leaving duplicate rows behind
+   * (see {@link findArticleForTopicCandidate}) rather than accumulating one
+   * per retry.
+   */
+  updateArticleId?: number;
 }
 
 /**
@@ -357,6 +368,7 @@ export async function generateArticleFromSource({
   articleDate,
   author = DEFAULT_AUTHOR,
   extraSourceData = {},
+  updateArticleId,
 }: GenerateArticleFromSourceOptions): Promise<Article> {
   // 1. Process source → normalized text.
   let sourceResult: SourceResult;
@@ -409,25 +421,47 @@ export async function generateArticleFromSource({
   }
 
   // 2. Generate the article.
-  const run = await assistedGenerationWorkflow.createRun();
-  const outcome = await run.start({
-    inputData: {
-      text: sourceResult.text,
-      generatorType,
-      topicHint,
-      subjectName: resolvedSubjectName,
-      subjectType,
-      intervieweeName,
-      aiModel,
-    },
-  });
-  if (outcome.status !== "success") {
-    throw new Error(
-      `Assisted generation failed (${outcome.status})`,
-      outcome.status === "failed" ? { cause: outcome.error } : undefined,
-    );
+  //
+  // `profile` goes through its own outline-then-sections workflow instead of
+  // `assistedGenerationWorkflow`'s single-call branch — see
+  // `@/mastra/workflows/profile`'s doc comment for why. Called directly here
+  // rather than composed as a nested step inside `assistedGenerationWorkflow`'s
+  // `.branch()`, since nested-workflow-as-step support isn't something to bet
+  // this feature's whole plumbing on.
+  let result: GeneratorResult;
+  if (generatorType === "profile") {
+    const run = await profileWorkflow.createRun();
+    const outcome = await run.start({
+      inputData: { text: sourceResult.text, subjectName: resolvedSubjectName, topicHint, aiModel },
+    });
+    if (outcome.status !== "success") {
+      throw new Error(
+        `Profile generation failed (${outcome.status})`,
+        outcome.status === "failed" ? { cause: outcome.error } : undefined,
+      );
+    }
+    result = outcome.result;
+  } else {
+    const run = await assistedGenerationWorkflow.createRun();
+    const outcome = await run.start({
+      inputData: {
+        text: sourceResult.text,
+        generatorType,
+        topicHint,
+        subjectName: resolvedSubjectName,
+        subjectType,
+        intervieweeName,
+        aiModel,
+      },
+    });
+    if (outcome.status !== "success") {
+      throw new Error(
+        `Assisted generation failed (${outcome.status})`,
+        outcome.status === "failed" ? { cause: outcome.error } : undefined,
+      );
+    }
+    result = outcome.result;
   }
-  const result: GeneratorResult = outcome.result;
 
   // 3. Persist the Article.
   const edition = await prisma.edition.findUnique({ where: { id: editionId } });
@@ -448,6 +482,37 @@ export async function generateArticleFromSource({
         })
       : null);
 
+  const sourceData = JSON.stringify({
+    ...result.sourceData,
+    source_type: sourceType,
+    source_metadata: sourceResult.metadata,
+    transcription: sourceResult.text,
+    ...extraSourceData,
+  });
+
+  // Updating an existing row (a topic-candidate retry — see
+  // `findArticleForTopicCandidate`) instead of always creating a new one:
+  // this is what stops a retry from leaving duplicate articles behind for
+  // the same candidate, which is what actually happened, repeatedly, in
+  // testing before this was added. `order` is deliberately left alone here
+  // — a retried article keeps its position in the edition rather than
+  // jumping to the end.
+  if (updateArticleId) {
+    return prisma.article.update({
+      where: { id: updateArticleId },
+      data: {
+        title: result.title,
+        content: result.content,
+        category: result.category,
+        author,
+        deck: deckFor(result.content),
+        date,
+        image,
+        sourceData,
+      },
+    });
+  }
+
   return prisma.article.create({
     data: {
       editionId,
@@ -460,13 +525,7 @@ export async function generateArticleFromSource({
       date,
       image,
       sourceType: AI_SOURCE_TYPE,
-      sourceData: JSON.stringify({
-        ...result.sourceData,
-        source_type: sourceType,
-        source_metadata: sourceResult.metadata,
-        transcription: sourceResult.text,
-        ...extraSourceData,
-      }),
+      sourceData,
     },
   });
 }
@@ -558,11 +617,34 @@ export function qualifiesForAutoGeneration(candidate: TopicCandidate): boolean {
 }
 
 /**
+ * Find the existing article (if any) a topic candidate already produced —
+ * same JSON-parse-and-filter-by-`topicCandidateId` logic
+ * {@link computeMissingGenerationPieces} uses to detect a *missing* one,
+ * reused here to detect an *existing* one so a retry updates it in place
+ * instead of leaving a duplicate behind. Confirmed necessary, not
+ * theoretical: retrying the same candidate repeatedly (before this existed)
+ * produced literal duplicate articles in testing.
+ */
+async function findArticleForTopicCandidate(
+  editionId: number,
+  candidateId: string,
+): Promise<Article | null> {
+  const articles = await prisma.article.findMany({ where: { editionId, sourceType: AI_SOURCE_TYPE } });
+  return (
+    articles.find((article) => parseSourceData(article.sourceData).topicCandidateId === candidateId) ??
+    null
+  );
+}
+
+/**
  * Generate the one `Article` a single topic candidate is owed. Pulled out of
  * {@link generateTopicCandidateArticles}'s loop so a later single-candidate
  * retry (`regenerateTopicCandidateArticle`, for the edit page's per-item
  * "failed, retry" card) calls the exact same code the bulk auto-generation
- * pass does, instead of a second copy that could drift.
+ * pass does, instead of a second copy that could drift. Looks up an
+ * existing article for this candidate unconditionally — a no-op for the
+ * bulk pass (nothing exists yet), the fix for a retry (see
+ * {@link findArticleForTopicCandidate}).
  */
 async function generateOneTopicCandidateArticle(
   editionId: number,
@@ -575,6 +657,7 @@ async function generateOneTopicCandidateArticle(
       `Topic candidate "${candidate.title}" (${candidate.kind}) has no repo to write about.`,
     );
   }
+  const existing = await findArticleForTopicCandidate(editionId, candidate.id);
   return generateArticleFromSource({
     editionId,
     sourceType: "github_repo",
@@ -582,6 +665,7 @@ async function generateOneTopicCandidateArticle(
     githubRepo: repo,
     aiModel,
     extraSourceData: { topicCandidateId: candidate.id },
+    updateArticleId: existing?.id,
   });
 }
 
@@ -693,6 +777,102 @@ export async function regenerateChronicleSection(
       }),
     },
   });
+}
+
+/**
+ * Retry just one section of a profile article written by the outline→
+ * sections workflow (`@/mastra/workflows/profile`) — the backend half of
+ * the edit page's per-section "Retry this section" button in the
+ * generation-trace graph. Everything the retry needs is already sitting in
+ * the stored trace: the section's own already-built prompt (the outline
+ * brief and source excerpt baked in, same as the original run used) is
+ * replayed as-is rather than reconstructed, so this needs no access to the
+ * article's source material at all — only its own `sourceData`.
+ *
+ * Re-joins the article the same way `assemble-article` did, with this one
+ * section's new draft swapped in, and writes back an *updated* `Article`
+ * row (`prisma.article.update`, `regenerateArticle`'s pattern) — never a new
+ * one. Throws if the retried call fails again, but only after persisting
+ * the failure into the trace, so the graph reflects what just happened
+ * either way; `finishSinglePieceRetry` turns that throw into a flash
+ * message the same way every other single-piece retry's failure already
+ * does.
+ */
+export async function regenerateProfileSection(
+  articleId: number,
+  sectionIndex: number,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<Article> {
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article) {
+    throw new Error(`Article ${articleId} not found.`);
+  }
+
+  const source = parseSourceData(article.sourceData);
+  const parsedTrace = generationTraceSchema.safeParse(source.generationTrace);
+  if (!parsedTrace.success) {
+    throw new Error(`Article ${articleId} has no profile generation trace to retry a section of.`);
+  }
+  const trace = parsedTrace.data;
+  const sectionIdx = trace.sections.findIndex((section) => section.index === sectionIndex);
+  if (sectionIdx === -1) {
+    throw new Error(`Article ${articleId}'s trace has no section at index ${sectionIndex}.`);
+  }
+  const section = trace.sections[sectionIdx];
+
+  const startedAt = new Date().toISOString();
+  let newResponse: string | null = null;
+  let retryError: string | undefined;
+  try {
+    newResponse = (await runNewspaperAgent(profileSectionAgent, { user: section.prompt, aiModel })).trim();
+  } catch (error) {
+    retryError = error instanceof Error ? error.message : String(error);
+  }
+  const endedAt = new Date().toISOString();
+
+  const updatedSections: GenerationTrace["sections"] = trace.sections.map((s, i) =>
+    i === sectionIdx
+      ? {
+          ...s,
+          status: newResponse !== null ? "success" : "failed",
+          response: newResponse ?? undefined,
+          startedAt,
+          endedAt,
+          error: retryError,
+        }
+      : s,
+  );
+
+  const body = updatedSections
+    .map((s) =>
+      s.status === "success" && s.response
+        ? `## ${s.heading}\n\n${s.response}`
+        : `## ${s.heading}\n\n> _This section could not be generated and was skipped — see the generation trace._`,
+    )
+    .join("\n\n");
+  const content = `${trace.outline.premise}\n\n${body}`.trim();
+
+  const succeeded = updatedSections.filter((s) => s.status === "success").length;
+  const updatedTrace: GenerationTrace = {
+    ...trace,
+    endedAt,
+    status: succeeded === updatedSections.length ? "success" : succeeded > 0 ? "partial" : "failed",
+    sections: updatedSections,
+  };
+
+  const updated = await prisma.article.update({
+    where: { id: articleId },
+    data: {
+      content,
+      deck: deckFor(content),
+      sourceData: JSON.stringify({ ...source, generationTrace: updatedTrace }),
+    },
+  });
+
+  if (retryError) {
+    throw new Error(`Section "${section.heading}" failed again: ${retryError}`);
+  }
+  return updated;
 }
 
 /**
@@ -907,6 +1087,40 @@ export async function finishActivityRankingRetry(
     if (!article) {
       throw new Error("No GitHub activity recorded for this edition — nothing to rank.");
     }
+  });
+}
+
+/**
+ * Begin half of a profile-section retry — see {@link beginSinglePieceRetry}.
+ * Looks the article and section up first (for the progress label, and to
+ * 404 early) the same way {@link beginTopicCandidateRetry} does.
+ */
+export async function beginArticleSectionRetry(
+  editionId: number,
+  articleId: number,
+  sectionIndex: number,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article || article.editionId !== editionId) {
+    return { ok: false, reason: `Article ${articleId} not found on this edition.` };
+  }
+  const trace = generationTraceSchema.safeParse(parseSourceData(article.sourceData).generationTrace);
+  const section = trace.success ? trace.data.sections.find((s) => s.index === sectionIndex) : undefined;
+  if (!section) {
+    return { ok: false, reason: `No section ${sectionIndex} found in this article's generation trace.` };
+  }
+  return beginSinglePieceRetry(editionId, `${article.title} — ${section.heading}`);
+}
+
+/** Finish half of a profile-section retry — call from the route's `after()`. */
+export async function finishArticleSectionRetry(
+  editionId: number,
+  articleId: number,
+  sectionIndex: number,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<void> {
+  await finishSinglePieceRetry(editionId, async () => {
+    await regenerateProfileSection(articleId, sectionIndex, aiModel);
   });
 }
 

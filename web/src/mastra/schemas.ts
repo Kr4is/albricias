@@ -89,6 +89,44 @@ export const GENERATOR_CATEGORIES: Record<GeneratorType, string> = {
   tutorial: "How-To",
 };
 
+/**
+ * One profile article's generation trace — an outline call plus one call per
+ * section, each with its own prompt/response/timing/status. Built by
+ * `@/mastra/workflows/profile`'s `assemble-article` step, stored at
+ * `Article.sourceData.generationTrace` (see `@/lib/generation`'s
+ * `generateArticleFromSource`), and read back by the admin edit page's trace
+ * graph and by `regenerateProfileSection` (single-section retry).
+ */
+export const generationTraceStepSchema = z.object({
+  index: z.number().int(),
+  heading: z.string(),
+  brief: z.string(),
+  status: z.enum(["success", "failed"]),
+  prompt: z.string(),
+  response: z.string().optional(),
+  startedAt: z.string(),
+  endedAt: z.string(),
+  error: z.string().optional(),
+});
+export type GenerationTraceStep = z.infer<typeof generationTraceStepSchema>;
+
+export const generationTraceSchema = z.object({
+  workflowId: z.literal("profile-deep-dive"),
+  startedAt: z.string(),
+  endedAt: z.string(),
+  status: z.enum(["success", "partial", "failed"]),
+  outline: z.object({
+    prompt: z.string(),
+    response: z.string(),
+    title: z.string(),
+    premise: z.string(),
+    startedAt: z.string(),
+    endedAt: z.string(),
+  }),
+  sections: z.array(generationTraceStepSchema),
+});
+export type GenerationTrace = z.infer<typeof generationTraceSchema>;
+
 /** Ported from `_SUBJECT_LABELS` in `app/services/generators/review.py`. */
 export const reviewSubjectTypeSchema = z.enum([
   "book",
