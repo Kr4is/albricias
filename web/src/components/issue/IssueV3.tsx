@@ -1,12 +1,15 @@
-/* eslint-disable @next/next/no-img-element */
 /**
  * V3 — hero layout: full-width lead over a three-column stream.
- * Ported from `app/templates/issue_v3.html`, markup and classes unchanged.
+ * Ported from `app/templates/issue_v3.html`. The hero's image column was
+ * originally `issue.coverImage` treated as the lead story's own photo; that
+ * field is now the edition's own cover art (see `IssueCoverBanner`, rendered
+ * once for every layout), so the hero here is text-only — the cover banner
+ * above already carries the issue's imagery.
  */
 
 import IssueNav from "@/components/issue/IssueNav";
+import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
-import { mediaUrl } from "@/lib/media";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -29,42 +32,26 @@ export default function IssueV3({
         nextIssue={nextIssue}
         isCurrentIssue={isCurrentIssue}
       />
+      <IssueCoverBanner issue={issue} />
 
       {/* V3: HERO LAYOUT */}
       <div className="flex flex-col gap-8">
         {/* HERO SECTION (Full Width) */}
         {main && (
           <div className="relative border-b-2 border-black pb-8">
-            <div className="grid grid-cols-12 gap-6">
-              {issue.coverImage && (
-                <div className="col-span-12 lg:col-span-8">
-                  <a href={articleHref(issue.id, main.id, isPreview)}>
-                    <figure className="grayscale hover:grayscale-0 transition-all duration-700">
-                      <img
-                        src={mediaUrl(issue.coverImage)}
-                        alt=""
-                        className="w-full h-96 object-cover border border-black p-1"
-                      />
-                    </figure>
-                  </a>
-                </div>
-              )}
-              <div className={`col-span-12 flex flex-col justify-center ${issue.coverImage ? "lg:col-span-4" : ""}`}>
-                <div className="mb-2">
-                  <span className="font-sans text-xs font-bold uppercase tracking-[0.2em] bg-black text-white px-2 py-1">
-                    {main.category}
-                  </span>
-                </div>
-                <a href={articleHref(issue.id, main.id, isPreview)}>
-                  <h1 className="font-headline text-5xl lg:text-6xl font-black uppercase leading-none mb-4 hover:opacity-70 transition-opacity">
-                    {main.title}
-                  </h1>
-                </a>
-                <p className="font-body text-sm leading-relaxed border-l-4 border-stone-300 pl-4 italic">
-                  {excerpt(main.content, 200)}
-                </p>
-              </div>
+            <div className="mb-2">
+              <span className="font-sans text-xs font-bold uppercase tracking-[0.2em] bg-black text-white px-2 py-1">
+                {main.category}
+              </span>
             </div>
+            <a href={articleHref(issue.id, main.id, isPreview)}>
+              <h1 className="font-headline text-5xl lg:text-6xl font-black uppercase leading-none mb-4 hover:opacity-70 transition-opacity">
+                {main.title}
+              </h1>
+            </a>
+            <p className="font-body text-base leading-relaxed border-l-4 border-stone-300 pl-4 italic max-w-3xl">
+              {excerpt(main.content, 320)}
+            </p>
           </div>
         )}
 

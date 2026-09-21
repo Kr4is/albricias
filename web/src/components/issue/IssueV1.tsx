@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 /**
  * V1 — three-column front page with a centred lead story.
  * Ported from `app/templates/issue_v1.html`, markup and classes unchanged.
@@ -13,8 +12,8 @@
 
 import { Fragment } from "react";
 import IssueNav from "@/components/issue/IssueNav";
+import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
-import { mediaUrl } from "@/lib/media";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
@@ -46,6 +45,7 @@ export default function IssueV1({
         nextIssue={nextIssue}
         isCurrentIssue={isCurrentIssue}
       />
+      <IssueCoverBanner issue={issue} />
 
       {/* Main Grid Layout */}
       <div className="grid grid-cols-12 gap-6 lg:gap-8 relative">
@@ -103,16 +103,6 @@ export default function IssueV1({
                   {issue.dateLabel}
                 </h4>
               </div>
-
-              {issue.coverImage && (
-                <figure className="mb-6 grayscale hover:grayscale-0 transition-all duration-700 cursor-pointer">
-                  <img
-                    src={mediaUrl(issue.coverImage)}
-                    alt={mainArticle.title}
-                    className="w-full h-auto object-cover border border-stone-300 p-1 bg-white"
-                  />
-                </figure>
-              )}
 
               <div className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap">
                 <p>{excerpt(mainArticle.content, 500)}</p>

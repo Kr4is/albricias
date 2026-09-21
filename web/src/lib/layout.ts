@@ -1,5 +1,5 @@
 /**
- * Front-page layout selection (`issue_v1` … `issue_v5`).
+ * Front-page layout selection (`issue_v1` … `issue_v6`).
  *
  * Originally a deterministic rotation ported from `layout_index` in
  * `app/helpers.py:19-21` (`(edition.month % 5) + 1`) — every edition from the
@@ -11,13 +11,19 @@
  *
  * The old month-based formula lives on as {@link layoutIndex}'s fallback for
  * editions created before `layoutVariant` existed, so an already-published
- * archive doesn't change its look retroactively.
+ * archive doesn't change its look retroactively — pinned to
+ * {@link LEGACY_LAYOUT_COUNT} (5) rather than the live {@link LAYOUT_COUNT}
+ * specifically so adding V6 didn't reshuffle which layout every pre-existing
+ * edition falls back to.
  */
 
-/** Number of broadsheet layout variants (`issue_v1` … `issue_v5`). */
-export const LAYOUT_COUNT = 5;
+/** Number of broadsheet layout variants (`issue_v1` … `issue_v6`). */
+export const LAYOUT_COUNT = 6;
 
-export type LayoutIndex = 1 | 2 | 3 | 4 | 5;
+/** The variant count the month-based fallback formula was defined against — never change this. */
+const LEGACY_LAYOUT_COUNT = 5;
+
+export type LayoutIndex = 1 | 2 | 3 | 4 | 5 | 6;
 
 /** Minimal shape needed to pick a layout — any Edition row satisfies it. */
 export interface EditionLayoutInput {
@@ -30,12 +36,12 @@ export function randomLayoutIndex(): LayoutIndex {
   return (Math.floor(Math.random() * LAYOUT_COUNT) + 1) as LayoutIndex;
 }
 
-/** Return the layout variant (1–5) an edition renders with. */
+/** Return the layout variant (1–6) an edition renders with. */
 export function layoutIndex(edition: EditionLayoutInput): LayoutIndex {
   const stored = edition.layoutVariant;
   if (stored && stored >= 1 && stored <= LAYOUT_COUNT) {
     return stored as LayoutIndex;
   }
   const month = edition.periodStart.getUTCMonth() + 1; // 1-12
-  return ((month % LAYOUT_COUNT) + 1) as LayoutIndex;
+  return ((month % LEGACY_LAYOUT_COUNT) + 1) as LayoutIndex;
 }

@@ -1,9 +1,13 @@
 /**
  * V5 — editorial grid: two half-page leads over a four-column brief bar.
- * Ported from `app/templates/issue_v5.html`, markup and classes unchanged.
+ * Ported from `app/templates/issue_v5.html`, markup and classes unchanged —
+ * still the one variant with no per-story imagery, a deliberate contrast
+ * with the other four now that `IssueCoverBanner` gives every layout the
+ * edition's own cover art up top.
  */
 
 import IssueNav from "@/components/issue/IssueNav";
+import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
@@ -27,6 +31,7 @@ export default function IssueV5({
         nextIssue={nextIssue}
         isCurrentIssue={isCurrentIssue}
       />
+      <IssueCoverBanner issue={issue} />
 
       {/* V5: EDITORIAL GRID */}
       <div className="flex flex-col gap-10">

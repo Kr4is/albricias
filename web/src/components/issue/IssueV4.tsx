@@ -1,17 +1,19 @@
-/* eslint-disable @next/next/no-img-element */
 /**
  * V4 — asymmetric: an 8-column feature beside a 4-column "In Brief" rail.
- * Ported from `app/templates/issue_v4.html`. One deviation from the original:
- * the sidebar used the class `active-text`, a typo for `justified-text` that
- * no stylesheet ever defined, so its excerpts rendered ragged while every
- * other column on the front page was justified — fixed here rather than kept
- * for pixel parity, since this pass is specifically about the front page
- * reading as a properly finished vintage layout.
+ * Ported from `app/templates/issue_v4.html`. Two deviations from the
+ * original: the sidebar used the class `active-text`, a typo for
+ * `justified-text` that no stylesheet ever defined, so its excerpts rendered
+ * ragged while every other column on the front page was justified — fixed
+ * since this pass is specifically about the front page reading as a properly
+ * finished vintage layout. And the feature's own image slot (originally
+ * `issue.coverImage` treated as this one story's photo) is gone — that field
+ * is now the edition's own cover art, rendered once for every layout by
+ * `IssueCoverBanner` above, not any single story's.
  */
 
 import IssueNav from "@/components/issue/IssueNav";
+import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import PreviewToolbar from "@/components/issue/PreviewToolbar";
-import { mediaUrl } from "@/lib/media";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -34,6 +36,7 @@ export default function IssueV4({
         nextIssue={nextIssue}
         isCurrentIssue={isCurrentIssue}
       />
+      <IssueCoverBanner issue={issue} />
 
       {/* V4: ASYMMETRIC LAYOUT */}
       <div className="grid grid-cols-12 gap-8 relative">
@@ -55,16 +58,6 @@ export default function IssueV4({
                   {main.title}
                 </h1>
               </a>
-
-              {issue.coverImage && (
-                <figure className="mb-6 grayscale hover:grayscale-0 transition-all">
-                  <img
-                    src={mediaUrl(issue.coverImage)}
-                    alt=""
-                    className="w-full h-auto object-cover border border-stone-300"
-                  />
-                </figure>
-              )}
 
               <div className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text drop-cap">
                 <p>{excerpt(main.content, 600)}</p>

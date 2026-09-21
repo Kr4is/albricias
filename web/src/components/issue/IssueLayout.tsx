@@ -13,6 +13,7 @@ import IssueV2 from "@/components/issue/IssueV2";
 import IssueV3 from "@/components/issue/IssueV3";
 import IssueV4 from "@/components/issue/IssueV4";
 import IssueV5 from "@/components/issue/IssueV5";
+import IssueV6 from "@/components/issue/IssueV6";
 import type { LayoutIndex } from "@/lib/layout";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -22,6 +23,7 @@ const LAYOUTS = {
   3: IssueV3,
   4: IssueV4,
   5: IssueV5,
+  6: IssueV6,
 } as const satisfies Record<
   LayoutIndex,
   (props: IssueLayoutProps) => React.ReactElement

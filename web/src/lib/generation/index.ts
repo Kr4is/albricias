@@ -33,7 +33,8 @@ import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
 import { computeGithubStats } from "@/lib/github-stats";
-import { generateHeroImage } from "@/lib/ai/hero-image";
+import { generateHeroImage, generateEditionCoverImage } from "@/lib/ai/hero-image";
+import { ARTICLE_ORDER } from "@/lib/editions";
 import { editionMediaPrefix } from "@/lib/media-upload";
 import {
   computeStarCandidates,
@@ -1617,6 +1618,32 @@ export async function populateEditionDraft(
       if (synthesisArticle) generatedCount += 1;
     } catch (error) {
       messages.push({ type: "warning", text: `Edition synthesis warning: ${describeError(error)}` });
+    }
+  }
+
+  // --- Edition cover image ---
+  // Themed on the month's own articles, so it has to run last, after
+  // everything above has actually written some. `generateEditionCoverImage`
+  // degrades to `null` the same way `generateHeroImage` does (no OpenAI key,
+  // a failed request) — this is enrichment, never a reason to fail the run.
+  if (generatedCount > 0) {
+    try {
+      const articles = await prisma.article.findMany({
+        where: { editionId: edition.id },
+        select: { title: true },
+        orderBy: [...ARTICLE_ORDER],
+        take: 6,
+      });
+      const coverImage = await generateEditionCoverImage({
+        editionTitle: edition.title,
+        articleTitles: articles.map((article) => article.title),
+        editionPrefix: editionMediaPrefix(edition),
+      });
+      if (coverImage) {
+        await prisma.edition.update({ where: { id: edition.id }, data: { coverImage } });
+      }
+    } catch (error) {
+      messages.push({ type: "warning", text: `Edition cover image warning: ${describeError(error)}` });
     }
   }
 
