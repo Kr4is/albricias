@@ -32,6 +32,8 @@ import { describeError, type FlashMessage } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { getServiceToken, isServiceTokenExpired, upsertServiceToken } from "@/lib/service-token";
 import { computeGithubStats } from "@/lib/github-stats";
+import { generateHeroImage } from "@/lib/ai/hero-image";
+import { editionMediaPrefix } from "@/lib/media-upload";
 import {
   computeStarCandidates,
   computeTopicCandidates,
@@ -429,6 +431,21 @@ export async function generateArticleFromSource({
   const edition = await prisma.edition.findUnique({ where: { id: editionId } });
   const date = articleDate ?? edition?.periodStart ?? new Date();
 
+  // Hero image: prefer whatever real, attributable image the source turned
+  // up (a project's own og:image/README logo/GitHub social card — see
+  // `SourceResult.imageUrl`); only generate one with AI when nothing real
+  // was available at all, matching the "real first, AI as a last resort"
+  // call for this feature.
+  const image =
+    sourceResult.imageUrl ??
+    (edition
+      ? await generateHeroImage({
+          title: result.title,
+          subject: resolvedSubjectName,
+          editionPrefix: editionMediaPrefix(edition),
+        })
+      : null);
+
   return prisma.article.create({
     data: {
       editionId,
@@ -439,6 +456,7 @@ export async function generateArticleFromSource({
       deck: deckFor(result.content),
       order: await nextArticleOrder(editionId),
       date,
+      image,
       sourceType: AI_SOURCE_TYPE,
       sourceData: JSON.stringify({
         ...result.sourceData,

@@ -102,4 +102,13 @@ export interface SourceResult {
   text: string;
   sourceType: SourceType;
   metadata: Record<string, unknown>;
+  /**
+   * A real, attributable hero image for the article this source feeds —
+   * currently only `github_repo` ever sets this (its project's own og:image,
+   * README logo, or GitHub's social preview card; see
+   * `@/lib/sources/github-repo.ts`). `undefined`/`null` means "no real image
+   * found," which is what lets `generateArticleFromSource` decide whether to
+   * fall back to AI generation.
+   */
+  imageUrl?: string | null;
 }
