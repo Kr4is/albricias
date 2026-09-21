@@ -65,6 +65,21 @@ export function isoWeekPeriodBounds(year: number, week: number): PeriodBounds {
   return { periodStart, periodEnd };
 }
 
+/**
+ * Bounds of the single UTC calendar day containing `date` —
+ * `[00:00 UTC that day, 00:00 UTC the next day)`. Used by
+ * `@/lib/generation/daily`'s per-day processing loop, where narrow,
+ * non-overlapping one-day ranges are what makes fetching each day's
+ * activity safe to re-run without a dedup mechanism (disjoint ranges can't
+ * produce duplicate rows from the source APIs).
+ */
+export function dayBounds(date: Date): PeriodBounds {
+  const periodStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const periodEnd = new Date(periodStart);
+  periodEnd.setUTCDate(periodStart.getUTCDate() + 1);
+  return { periodStart, periodEnd };
+}
+
 /** Bounds of the period containing `date`, under `cadence`. */
 export function periodBoundsForDate(cadence: Cadence, date: Date): PeriodBounds {
   if (cadence === CADENCE_WEEKLY) {

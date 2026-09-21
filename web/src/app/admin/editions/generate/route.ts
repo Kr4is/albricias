@@ -3,27 +3,27 @@
  * (`app/routes/admin.py:99-235`), generalised from a fixed month/year to the
  * active cadence's period, and extended with the blog RSS source (Phase 2).
  *
- * The actual generation pipeline (fetch GitHub+blog+Spotify activity, create
- * the `Edition`, run AI generation) now lives in `@/lib/generation`'s
- * `createDraftEdition` + `populateEditionDraft` (split out of the single
- * `runEditionGeneration` the cron scheduler still uses). This route creates
- * the draft edition synchronously (fast — one INSERT) and redirects to it
- * immediately, then runs the slow half via `after()` so the admin lands on
- * the edition page and watches activity/articles appear as they're
- * generated, instead of staring at a blocked tab for however long the
- * configured AI provider takes (which can be minutes with a local Ollama
- * model) — see `/admin/editions/[editionId]/edit/page.tsx`'s polling banner.
+ * Under the daily-incremental model (`@/lib/generation/daily`), this button
+ * no longer runs one whole-period batch — it creates the draft edition if
+ * needed (`createDraftEdition`, fast — one INSERT) and redirects to it
+ * immediately, then catches it up day by day via `after()`
+ * (`processMissedDays`, the same function the daily cron itself calls), all
+ * the way to today or the period's end. That's what makes "Generate
+ * edition" a legitimate on-demand/backfill action even though daily
+ * processing is normally automatic: it's "catch this edition up right now"
+ * rather than a separate code path. The admin lands on the edition page and
+ * watches dispatches/articles appear as each day finishes, instead of
+ * staring at a blocked tab for however long the configured AI provider
+ * takes (which can be minutes per call with a local Ollama model) — see
+ * `/admin/editions/[editionId]/edit/page.tsx`'s polling banner.
  */
 
 import { after, type NextRequest } from "next/server";
 import { getCadence, resolvePeriodFromForm } from "@/lib/cadence";
 import { periodLabel } from "@/lib/edition-helpers";
 import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
-import {
-  appendGenerationMessages,
-  createDraftEdition,
-  populateEditionDraft,
-} from "@/lib/generation";
+import { createDraftEdition } from "@/lib/generation";
+import { processMissedDays } from "@/lib/generation/daily";
 import { describeError, flashRedirect } from "@/lib/flash";
 
 export async function POST(request: NextRequest) {
@@ -64,15 +64,17 @@ export async function POST(request: NextRequest) {
   const edition = created.edition;
   after(async () => {
     try {
-      await populateEditionDraft(edition, period.periodStart, period.periodEnd);
+      await processMissedDays(edition, aiModel);
     } catch (error) {
-      console.error(`[admin] Background generation failed for edition ${edition.id}:`, error);
-      // The admin is on the edition page by now, not on this response — a
-      // server-console line is invisible to them, so the failure also goes on
-      // the row the edit page reads.
-      await appendGenerationMessages(edition.id, [
-        { type: "error", text: `Generation failed: ${describeError(error)}` },
-      ]);
+      // processMissedDays already catches and records its own per-day
+      // warnings internally — reaching here means something outside that
+      // (a bug, not a generation failure) threw. The admin is on the
+      // edition page by now, not on this response, so a server-console
+      // line alone would be invisible to them; there is no
+      // `appendGenerationMessages` equivalent to fall back on here since
+      // `processMissedDays` owns `generationProgress` for the whole run,
+      // so this is logged for the operator rather than surfaced in the UI.
+      console.error(`[admin] Background daily processing failed for edition ${edition.id}:`, error);
     }
   });
 

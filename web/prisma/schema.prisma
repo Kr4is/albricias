@@ -43,6 +43,15 @@ model Edition {
   /// for editions created before this column existed; `layoutIndex()` falls
   /// back to the old month-based rotation for those.
   layoutVariant Int? @map("layout_variant")
+  /// UTC midnight of the last calendar day this edition's daily generation
+  /// job (`processMissedDays` in src/lib/generation/daily.ts) fully
+  /// processed — fetched that day's activity, wrote its dispatch, surfaced
+  /// any new topic candidates. `null` means no day has been processed yet
+  /// (a fresh draft). Advanced only after a day's whole pipeline succeeds,
+  /// so a crash mid-day is simply re-processed next run rather than
+  /// silently skipped — same "state lives on the row, not in process
+  /// memory" convention as generationStatus/generationProgress below.
+  lastProcessedDay DateTime? @map("last_processed_day")
   /// "running" | "done" — tracks the async "Generate with AI" pipeline
   /// (see runEditionGeneration in src/lib/generation/index.ts) so
   /// /admin/editions/[id]/edit can show a live view while it's in progress.

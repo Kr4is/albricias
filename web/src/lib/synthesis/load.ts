@@ -72,7 +72,14 @@ export interface DigestInputs {
   periodLabel: string;
   /** The compendium's dateline, matching every other generated article. */
   periodStart: Date;
-  /** One dispatch per activity category, from `chronicleWorkflow`. */
+  /**
+   * The edition's day-by-day narrative material: `"daily-dispatch"`
+   * articles from `@/lib/generation/daily` (one per processed day — the
+   * current, active source of this bucket) plus any `"chronicle"` articles
+   * a pre-daily-incremental edition still carries (the old one-per-category-
+   * per-month shape, kept recognized here so an edition that straddles the
+   * two models still synthesises correctly).
+   */
   chronicleArticles: DigestArticle[];
   /** Activity / calendar / generic / best-of ranking articles. */
   rankingArticles: DigestArticle[];
@@ -157,7 +164,7 @@ export async function loadDigestInputs(editionId: number): Promise<DigestInputs>
     };
     const generator = sourceData.generator;
 
-    if (generator === "chronicle") {
+    if (generator === "chronicle" || generator === "daily-dispatch") {
       chronicleArticles.push(article);
     } else if (typeof generator === "string" && RANKING_GENERATORS.includes(generator)) {
       rankingArticles.push(article);

@@ -39,6 +39,7 @@ import { editionMediaPrefix } from "@/lib/media-upload";
 import {
   computeStarCandidates,
   computeTopicCandidates,
+  mergeTopicCandidates,
   type CuratedArticleKind,
   type TopicCandidate,
 } from "@/lib/topic-candidates";
@@ -644,9 +645,13 @@ async function findArticleForTopicCandidate(
  * pass does, instead of a second copy that could drift. Looks up an
  * existing article for this candidate unconditionally — a no-op for the
  * bulk pass (nothing exists yet), the fix for a retry (see
- * {@link findArticleForTopicCandidate}).
+ * {@link findArticleForTopicCandidate}). Exported (rather than kept
+ * module-private like most of this file's helpers) specifically so
+ * `@/lib/generation/daily`'s per-day job can call it directly for whichever
+ * candidate ids its topic-candidate diff finds newly surfaced that day,
+ * without a second implementation.
  */
-async function generateOneTopicCandidateArticle(
+export async function generateOneTopicCandidateArticle(
   editionId: number,
   candidate: TopicCandidate,
   aiModel: ResolvedAiModel | undefined,
@@ -1472,13 +1477,19 @@ export type EditionGenerationOutcome = EditionGenerationExists | EditionGenerati
  * new row is created — the existing one is returned as-is so callers can
  * no-op instead of crashing or duplicating.
  *
- * The returned edition's `generationStatus` is `"running"`; call
- * {@link populateEditionDraft} to fetch sources, run AI generation, and flip
- * it to `"done"`. Split out of the old single `runEditionGeneration` so the
- * manual "Generate edition" route can redirect to the edition page
- * immediately (see `web/src/app/admin/editions/generate/route.ts`) instead
- * of blocking on the whole — potentially multi-minute, with a local AI
- * provider — pipeline before the admin sees anything.
+ * The returned edition's `generationStatus` is `"done"` — an empty draft
+ * with nothing in progress, not `"running"`. This used to be `"running"`,
+ * on the assumption the caller would immediately call
+ * {@link populateEditionDraft} in the same request; under the daily-
+ * incremental model that's no longer guaranteed (the period-creation
+ * cron, `@/lib/scheduler`, creates the draft and stops — the *daily* cron
+ * is what populates it, possibly hours later), and leaving the row
+ * `"running"` with nothing actually running would make the edit page's
+ * live-progress view lie. `@/lib/generation/daily`'s `processMissedDays`
+ * (called either by the daily cron or, for the manual "Generate edition"
+ * button, right after this — see
+ * `web/src/app/admin/editions/generate/route.ts`) flips it to `"running"`
+ * itself once real work actually starts.
  */
 export async function createDraftEdition(
   cadence: Cadence,
@@ -1501,7 +1512,7 @@ export async function createDraftEdition(
       title: defaultEditionTitle(period),
       vol: defaultEditionVol(period),
       status: EDITION_STATUS_DRAFT,
-      generationStatus: "running",
+      generationStatus: "done",
       layoutVariant: randomLayoutIndex(),
     },
   });
@@ -1616,8 +1627,13 @@ export async function populateEditionDraft(
       computeTopicCandidates(edition.id),
       computeStarCandidates(edition.id),
     ]);
-    const merged = [...(topicCandidates ?? []), ...starCandidates];
-    if (merged.length > 0) {
+    const fresh = [...(topicCandidates ?? []), ...starCandidates];
+    if (fresh.length > 0) {
+      const current = await prisma.edition.findUnique({
+        where: { id: edition.id },
+        select: { topicCandidates: true },
+      });
+      const merged = mergeTopicCandidates(parseStoredTopicCandidates(current?.topicCandidates), fresh);
       await prisma.edition.update({
         where: { id: edition.id },
         data: { topicCandidates: JSON.stringify(merged) },

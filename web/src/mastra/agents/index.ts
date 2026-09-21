@@ -236,6 +236,33 @@ export const SYNTHESIS_SYSTEM =
   CHART_CLAUSE;
 
 /**
+ * No Python original — new with the daily-incremental generation rework.
+ * Replaces the old chronicle desk's per-category, whole-month dispatches
+ * with one short piece per calendar day, covering whatever activity that
+ * day actually had regardless of category. Deliberately terse: a day's
+ * activity is inherently small (this is the same "smaller, more tightly-
+ * scoped call" lesson the outline→sections rework of profile generation
+ * already proved fixes the self-hosted model's reasons-forever failure —
+ * see `@/mastra/workflows/profile`'s doc comment — so this prompt doesn't
+ * ask for length or depth the way `PROFILE_SYSTEM`/chronicle's own
+ * `DEPTH_INSTRUCTION` do; a few honest paragraphs about one day is the
+ * point, not a padded column).
+ */
+export const DAILY_DISPATCH_SYSTEM =
+  NEWSPAPER_PERSONA +
+  "\n\n" +
+  "You are writing the daily dispatch — one short piece covering everything " +
+  "that happened today, across whatever kinds of activity the day actually " +
+  "had (code, writing, listening, reading). Weave it into one coherent " +
+  "piece rather than a list of separate bulletins, even when the day " +
+  "touched several different things. A day's activity is small by nature: " +
+  "keep the piece brief — a few paragraphs is enough — and never pad to " +
+  "reach a length the day's own material doesn't support. Give it a " +
+  "compelling headline (Markdown H1), then the body. Do not include a " +
+  "byline or date — those are added separately." +
+  CHART_CLAUSE;
+
+/**
  * The chronicle desk turns raw service activity into section dispatches.
  * `chronicle.py` used the bare persona as its system prompt.
  */
@@ -245,6 +272,14 @@ export const chronicleAgent = new Agent({
   description:
     "Turns GitHub / blog / Spotify activity into vintage newspaper dispatches, one per section.",
   instructions: NEWSPAPER_PERSONA + "\n\n" + CHART_CLAUSE.trim(),
+  model: MODEL_ID,
+});
+
+export const dailyDispatchAgent = new Agent({
+  id: "daily-dispatch",
+  name: "Albricias Daily Dispatch Desk",
+  description: "Writes one short piece covering a single day's activity, replacing the old monthly chronicle sections.",
+  instructions: DAILY_DISPATCH_SYSTEM,
   model: MODEL_ID,
 });
 
@@ -331,6 +366,7 @@ export const connectionTestAgent = new Agent({
 /** Registered on the Mastra instance in `src/mastra/index.ts`. */
 export const agents = {
   chronicle: chronicleAgent,
+  dailyDispatch: dailyDispatchAgent,
   reflection: reflectionAgent,
   interview: interviewAgent,
   review: reviewAgent,

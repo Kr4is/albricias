@@ -50,7 +50,14 @@ import { getSocialAccount } from "@/lib/social/store";
 import { resolveAiModelFor, type AiProviderId } from "@/lib/ai/provider";
 import { getCadence } from "@/lib/cadence";
 import { CADENCE_MONTHLY, CADENCE_WEEKLY } from "@/lib/edition-helpers";
-import { DEFAULT_SCHEDULE_CRON, getScheduleSettings, nextScheduledRun } from "@/lib/scheduler";
+import {
+  DEFAULT_DAILY_SCHEDULE_CRON,
+  DEFAULT_SCHEDULE_CRON,
+  getDailyScheduleSettings,
+  getScheduleSettings,
+  nextDailyScheduledRun,
+  nextScheduledRun,
+} from "@/lib/scheduler";
 import { settingDisplay } from "./setting-display";
 import { SETTINGS_CATEGORIES, AI_FIELDS, findCategory } from "./field-specs";
 import { CategoryFormFields, resolveFieldValues } from "./fields";
@@ -322,6 +329,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     fromAddress,
     cadence,
     schedule,
+    dailySchedule,
   ] = await Promise.all([
     resolveFieldValues(allFields, settingDisplay),
     getSetting("integrations.github.token", { encrypted: true }),
@@ -349,6 +357,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     getSetting("email.fromAddress"),
     getCadence(),
     getScheduleSettings(),
+    getDailyScheduleSettings(),
   ]);
 
   // Same presence checks `populateEditionDraft` (`@/lib/generation/index.ts`)
@@ -376,6 +385,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     { id: "gemini", configured: Boolean(geminiResolved) },
   ];
   const nextRun = schedule.enabled ? nextScheduledRun() : null;
+  const nextDailyRun = dailySchedule.enabled ? nextDailyScheduledRun() : null;
   const activeProviderId = (activeProvider ?? "litellm") as AiProviderId;
 
   return (
@@ -615,6 +625,71 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
               </button>
             </form>
           </div>
+        </div>
+
+        {/* Daily Processing — the day-by-day generation job, separate from
+            the Cadence card above: Cadence decides how long a period is
+            (weekly/monthly) and when a new draft is created; this decides
+            how often the currently-open draft is walked forward a day at a
+            time (fetch that day's activity, write its dispatch, surface
+            anything newly interesting). See `@/lib/generation/daily`. */}
+        <div className="border border-stone-200 bg-white p-6">
+          <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-1">
+            Daily Processing
+          </h3>
+          <p className="text-[10px] font-sans text-stone-500 mb-4">
+            Once a day, catches the currently-open edition up: fetches that day&apos;s
+            activity, writes its dispatch, and surfaces anything newly interesting.
+            On the period&apos;s last day, also writes the ranking and front-page compendium.
+          </p>
+          <form method="POST" action="/admin/daily-schedule" className="space-y-3" data-loading-submit>
+            <label className="flex items-center gap-3 border border-stone-200 p-3 has-[:checked]:border-ink cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                name="enabled"
+                value="true"
+                defaultChecked={dailySchedule.enabled}
+                className="accent-ink w-4 h-4"
+              />
+              <div>
+                <p className="text-xs font-sans font-bold">Enabled</p>
+                <p className="text-[10px] font-sans text-stone-500">
+                  When off, the cron expression below is saved but no job runs.
+                </p>
+              </div>
+            </label>
+            <div className="space-y-1">
+              <label htmlFor="dailyCronExpr" className="block text-[10px] font-sans font-bold uppercase tracking-widest">
+                Cron expression (UTC)
+              </label>
+              <input
+                type="text"
+                id="dailyCronExpr"
+                name="cronExpr"
+                defaultValue={dailySchedule.cronExpr ?? DEFAULT_DAILY_SCHEDULE_CRON}
+                placeholder={DEFAULT_DAILY_SCHEDULE_CRON}
+                className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-xs font-mono"
+              />
+              <p className="text-[10px] font-sans text-stone-500">
+                5-field cron (minute hour day month weekday), e.g.{" "}
+                <code className="font-mono">{DEFAULT_DAILY_SCHEDULE_CRON}</code> = every day at 04:00 UTC.
+              </p>
+            </div>
+            {dailySchedule.enabled && dailySchedule.cronExpr && (
+              <p className="text-[10px] font-sans text-stone-500">
+                {nextDailyRun
+                  ? `Next scheduled run: ${nextDailyRun.toUTCString()}`
+                  : "Schedule is enabled, but no upcoming run could be computed (check the cron expression)."}
+              </p>
+            )}
+            <button
+              type="submit"
+              data-loading-text="Saving…"
+              className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors mt-2"
+            >
+              Save Schedule
+            </button>
+          </form>
         </div>
 
         {/* Account — transplanted from the now-deleted /admin/account page. */}

@@ -204,6 +204,18 @@ export interface SpotifyFetchOptions {
    * Omit it to reproduce the Python behaviour of keeping every item.
    */
   period?: Period;
+  /**
+   * Fetch top tracks/artists (`spotify_track`/`spotify_artist`) as well as
+   * recently-played. Defaults to `true` (the original whole-period
+   * behaviour). `@/lib/generation/daily`'s per-day job passes `false`: top
+   * tracks/artists have no timestamp and are always Spotify's own trailing
+   * ~4-week snapshot regardless of what's asked for, so fetching them once
+   * per day would insert the same near-identical snapshot into
+   * `ServiceActivity` on every run instead of once — unlike
+   * `spotify_played`, which genuinely has a `played_at` timestamp and
+   * filters correctly to a single day via `period` above.
+   */
+  includeTopItems?: boolean;
 }
 
 /**
@@ -229,59 +241,62 @@ export interface SpotifyFetchOptions {
 export async function fetchSpotifyActivity({
   accessToken,
   period,
+  includeTopItems = true,
 }: SpotifyFetchOptions): Promise<ActivityItem[]> {
   const activities: ActivityItem[] = [];
 
-  // ---------------------------------------------------------------------
-  // Top tracks (last ~4 weeks)
-  // ---------------------------------------------------------------------
-  try {
-    const data = await getJson<{ items?: SpotifyTrack[] }>(
-      `${SPOTIFY_API_URL}/me/top/tracks`,
-      accessToken,
-      { time_range: "short_term", limit: "20" },
-    );
-    (data.items ?? []).forEach((track, index) => {
-      const artistNames = (track.artists ?? []).map((a) => a.name).join(", ");
-      activities.push({
-        source: "spotify",
-        eventType: "spotify_track",
-        repo: null,
-        title: `#${index + 1} ${track.name} — ${artistNames}`.slice(0, TITLE_MAX),
-        url: track.external_urls?.spotify || "",
-        timestamp: null,
-        raw: track,
+  if (includeTopItems) {
+    // ---------------------------------------------------------------------
+    // Top tracks (last ~4 weeks)
+    // ---------------------------------------------------------------------
+    try {
+      const data = await getJson<{ items?: SpotifyTrack[] }>(
+        `${SPOTIFY_API_URL}/me/top/tracks`,
+        accessToken,
+        { time_range: "short_term", limit: "20" },
+      );
+      (data.items ?? []).forEach((track, index) => {
+        const artistNames = (track.artists ?? []).map((a) => a.name).join(", ");
+        activities.push({
+          source: "spotify",
+          eventType: "spotify_track",
+          repo: null,
+          title: `#${index + 1} ${track.name} — ${artistNames}`.slice(0, TITLE_MAX),
+          url: track.external_urls?.spotify || "",
+          timestamp: null,
+          raw: track,
+        });
       });
-    });
-  } catch (error) {
-    console.error(`[spotify] Top tracks fetch failed: ${describe(error)}`);
-  }
+    } catch (error) {
+      console.error(`[spotify] Top tracks fetch failed: ${describe(error)}`);
+    }
 
-  // ---------------------------------------------------------------------
-  // Top artists (last ~4 weeks)
-  // ---------------------------------------------------------------------
-  try {
-    const data = await getJson<{ items?: SpotifyArtist[] }>(
-      `${SPOTIFY_API_URL}/me/top/artists`,
-      accessToken,
-      { time_range: "short_term", limit: "10" },
-    );
-    (data.items ?? []).forEach((artist, index) => {
-      const genres = (artist.genres ?? []).slice(0, 3).join(", ");
-      let title = `#${index + 1} ${artist.name}`;
-      if (genres) title += ` (${genres})`;
-      activities.push({
-        source: "spotify",
-        eventType: "spotify_artist",
-        repo: null,
-        title: title.slice(0, TITLE_MAX),
-        url: artist.external_urls?.spotify || "",
-        timestamp: null,
-        raw: artist,
+    // ---------------------------------------------------------------------
+    // Top artists (last ~4 weeks)
+    // ---------------------------------------------------------------------
+    try {
+      const data = await getJson<{ items?: SpotifyArtist[] }>(
+        `${SPOTIFY_API_URL}/me/top/artists`,
+        accessToken,
+        { time_range: "short_term", limit: "10" },
+      );
+      (data.items ?? []).forEach((artist, index) => {
+        const genres = (artist.genres ?? []).slice(0, 3).join(", ");
+        let title = `#${index + 1} ${artist.name}`;
+        if (genres) title += ` (${genres})`;
+        activities.push({
+          source: "spotify",
+          eventType: "spotify_artist",
+          repo: null,
+          title: title.slice(0, TITLE_MAX),
+          url: artist.external_urls?.spotify || "",
+          timestamp: null,
+          raw: artist,
+        });
       });
-    });
-  } catch (error) {
-    console.error(`[spotify] Top artists fetch failed: ${describe(error)}`);
+    } catch (error) {
+      console.error(`[spotify] Top artists fetch failed: ${describe(error)}`);
+    }
   }
 
   // ---------------------------------------------------------------------

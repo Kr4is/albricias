@@ -84,10 +84,18 @@ export async function computeTopicCandidates(editionId: number): Promise<TopicCa
  * `computeTopicCandidates`'s "never let a bug here break the rest of
  * generation" contract — the caller in `populateEditionDraft` merges this
  * into the same `Edition.topicCandidates` array.
+ *
+ * `since`, when given, narrows the query to stars at or after that instant —
+ * how `@/lib/generation/daily`'s per-day job asks "which stars are new
+ * today" without re-surfacing a star from an earlier day the merge in
+ * `mergeTopicCandidates` already recorded.
  */
-export async function computeStarCandidates(editionId: number): Promise<TopicCandidate[]> {
+export async function computeStarCandidates(
+  editionId: number,
+  { since }: { since?: Date } = {},
+): Promise<TopicCandidate[]> {
   const stars = await prisma.serviceActivity.findMany({
-    where: { editionId, eventType: "star" },
+    where: { editionId, eventType: "star", ...(since ? { timestamp: { gte: since } } : {}) },
   });
 
   return stars
@@ -145,15 +153,27 @@ export function collectCandidates(stats: GithubStats, priors: GithubStats[]): Ra
 export function rankCandidates(candidates: RawCandidate[], priors: GithubStats[]): TopicCandidate[] {
   const scored: TopicCandidate[] = [];
 
-  candidates.forEach((candidate, index) => {
+  candidates.forEach((candidate) => {
     try {
       const { score, scoreBreakdown } = scoreCandidate(candidate, priors);
       scored.push({
-        // `kind` alone can repeat (different repos, same kind), so `index` —
-        // this candidate's position in the pre-sort `candidates` array, which
-        // follows `CANDIDATE_KINDS` order — is what makes the id unique. See
-        // the doc comment on `TopicCandidate.id`.
-        id: `${candidate.kind}-${index}`,
+        // Content-derived, not positional — the daily-incremental generation
+        // pipeline (`@/lib/generation/daily`) re-runs this over a growing,
+        // still-open period every day, and a positional `${kind}-${index}`
+        // id (the original scheme) would silently reassign itself whenever a
+        // later day's detectors fired in a different order, breaking curator
+        // marks and `findArticleForTopicCandidate`'s lookup (see that
+        // function's doc comment for the duplicate-article bug this exact
+        // instability caused elsewhere before it was id-stabilized). Repo-
+        // scoped kinds reuse `computeStarCandidates`'s own
+        // `star-${repo}`-with-slashes-sanitized convention (the id is a
+        // Next.js dynamic route segment); `curiosity`, the one kind with no
+        // repo, is a fixed singleton — see `mergeTopicCandidates` for the
+        // other half of why this matters (merge, never overwrite).
+        id:
+          candidate.repos.length > 0
+            ? `${candidate.kind}-${candidate.repos[0].replace(/\//g, "__")}`
+            : candidate.kind,
         kind: candidate.kind,
         title: candidate.title,
         repos: candidate.repos,
@@ -181,6 +201,36 @@ export function rankCandidates(candidates: RawCandidate[], priors: GithubStats[]
  */
 function kindOrder(kind: CuratedArticleKind): number {
   return CANDIDATE_KINDS.indexOf(kind as TopicCandidateKind);
+}
+
+/**
+ * Merge a fresh computation into the candidates already stored on the
+ * edition — additive, never a wholesale overwrite. A candidate whose id is
+ * already in `existing` is replaced in place (its content can genuinely
+ * improve day to day — a `streak` running longer, say); a new id is
+ * appended; critically, an id in `existing` that this run's detectors
+ * didn't reproduce is **never dropped**, because an article may already
+ * point at it (`Article.sourceData.topicCandidateId`,
+ * `findArticleForTopicCandidate` in `@/lib/generation`) and losing the
+ * candidate would orphan that lookup. `MAX_CANDIDATES` capping happens per
+ * run inside {@link rankCandidates}, before candidates ever reach here —
+ * that's a ranking/display concern; this function's job is never to lose
+ * data once it's been surfaced.
+ */
+export function mergeTopicCandidates(
+  existing: TopicCandidate[],
+  fresh: TopicCandidate[],
+): TopicCandidate[] {
+  const merged = [...existing];
+  for (const candidate of fresh) {
+    const index = merged.findIndex((c) => c.id === candidate.id);
+    if (index === -1) {
+      merged.push(candidate);
+    } else {
+      merged[index] = candidate;
+    }
+  }
+  return merged;
 }
 
 /**
