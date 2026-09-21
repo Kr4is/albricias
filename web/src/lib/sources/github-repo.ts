@@ -69,12 +69,27 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Clip `text` to `maxChars`, preferring the last line break before the budget. */
+/**
+ * Clip `text` to `maxChars`, preferring the last markdown heading (`\n## `)
+ * before the budget, then the last line break, over a raw character cut.
+ *
+ * Found via a real failure: `floci-io/floci`'s README carries a 210-row
+ * "Supported Services" table (every emulated AWS service, comma-separated)
+ * that starts just before the old plain-character cap and used to get cut
+ * off mid-row — dumping a mangled, unterminated enumeration table as the
+ * last thing the model saw. That shape (long, repetitive, truncated
+ * mid-structure) is a plausible trigger for the "reasons forever, returns
+ * empty text" failure this repo hit repeatedly while normal-prose READMEs
+ * didn't. Preferring a heading boundary drops a trailing reference table
+ * wholesale instead of truncating it into noise.
+ */
 function capText(text: string, maxChars: number, truncatedNote: string): string {
   if (text.length <= maxChars) return text;
   const clipped = text.slice(0, maxChars);
+  const lastHeading = clipped.lastIndexOf("\n## ");
   const lastBreak = clipped.lastIndexOf("\n");
-  const body = lastBreak > maxChars / 2 ? clipped.slice(0, lastBreak) : clipped;
+  const cut = lastHeading > maxChars / 2 ? lastHeading : lastBreak > maxChars / 2 ? lastBreak : maxChars;
+  const body = clipped.slice(0, cut);
   return `${body.trimEnd()}\n\n${truncatedNote}`;
 }
 
