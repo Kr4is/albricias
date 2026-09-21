@@ -688,10 +688,12 @@ export async function regenerateChronicleSection(
  * never-generated edition has no activity to diff against and would just
  * report everything as "missing", which is not what a blank draft means).
  */
-export async function computeMissingGenerationPieces(
-  editionId: number,
-): Promise<{ missingSections: ChronicleCategory[]; missingCandidates: TopicCandidate[] }> {
-  const [activities, articles, edition] = await Promise.all([
+export async function computeMissingGenerationPieces(editionId: number): Promise<{
+  missingSections: ChronicleCategory[];
+  missingCandidates: TopicCandidate[];
+  missingActivityRanking: boolean;
+}> {
+  const [activities, articles, edition, githubActivityCount] = await Promise.all([
     prisma.serviceActivity.findMany({
       where: { editionId, eventType: { not: "star" } },
       select: { eventType: true, repo: true, title: true, url: true, timestamp: true },
@@ -701,6 +703,11 @@ export async function computeMissingGenerationPieces(
       select: { category: true, sourceData: true },
     }),
     prisma.edition.findUnique({ where: { id: editionId }, select: { topicCandidates: true } }),
+    // Same gate `createActivityRankingArticle` itself uses (source: "github",
+    // not just any activity) — an edition with no GitHub rows was never
+    // going to get a ranking article, automatic pass or not, so it isn't
+    // "missing" one.
+    prisma.serviceActivity.count({ where: { editionId, source: "github" } }),
   ]);
 
   const expectedCategories = groupActivities(activities).keys();
@@ -709,22 +716,29 @@ export async function computeMissingGenerationPieces(
     (category) => !writtenCategories.has(category),
   );
 
+  const sourceDatas = articles
+    .map((a) => {
+      try {
+        return a.sourceData ? (JSON.parse(a.sourceData) as { topicCandidateId?: string; generator?: string }) : undefined;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((data): data is { topicCandidateId?: string; generator?: string } => Boolean(data));
+
   const generatedCandidateIds = new Set(
-    articles
-      .map((a) => {
-        try {
-          return a.sourceData ? (JSON.parse(a.sourceData) as { topicCandidateId?: string }).topicCandidateId : undefined;
-        } catch {
-          return undefined;
-        }
-      })
+    sourceDatas
+      .map((data) => data.topicCandidateId)
       .filter((id): id is string => Boolean(id)),
   );
   const missingCandidates = parseStoredTopicCandidates(edition?.topicCandidates).filter(
     (candidate) => qualifiesForAutoGeneration(candidate) && !generatedCandidateIds.has(candidate.id),
   );
 
-  return { missingSections, missingCandidates };
+  const hasActivityRanking = sourceDatas.some((data) => data.generator === "activity-ranking");
+  const missingActivityRanking = githubActivityCount > 0 && !hasActivityRanking;
+
+  return { missingSections, missingCandidates, missingActivityRanking };
 }
 
 // ---------------------------------------------------------------------------
@@ -849,6 +863,30 @@ export async function finishTopicCandidateRetry(
 ): Promise<void> {
   await finishSinglePieceRetry(editionId, async () => {
     await regenerateTopicCandidateArticle(editionId, candidateId, aiModel);
+  });
+}
+
+/**
+ * Begin half of an Activity Ranking retry — see {@link beginSinglePieceRetry}.
+ * Unlike a chronicle section or a topic candidate, there's at most one of
+ * these per edition, so the label is fixed rather than derived from an id.
+ */
+export async function beginActivityRankingRetry(
+  editionId: number,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return beginSinglePieceRetry(editionId, "Activity Ranking");
+}
+
+/** Finish half of an Activity Ranking retry — call from the route's `after()`. */
+export async function finishActivityRankingRetry(
+  editionId: number,
+  aiModel: ResolvedAiModel | undefined,
+): Promise<void> {
+  await finishSinglePieceRetry(editionId, async () => {
+    const article = await createActivityRankingArticle(editionId, aiModel);
+    if (!article) {
+      throw new Error("No GitHub activity recorded for this edition — nothing to rank.");
+    }
   });
 }
 

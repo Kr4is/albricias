@@ -2,10 +2,13 @@
  * Edit edition metadata + manage its articles — ported from `admin.edition_edit`
  * (`app/routes/admin.py:243-270`) and `app/templates/admin/edition_edit.html`.
  *
- * The metadata form and the inline "add article" form each POST to their own
- * sibling route (`.../update`, `.../articles/add`) rather than back to this
- * page's own URL — see the Phase 3 notes for why (Next can't colocate a
- * `page.tsx` and a `route.ts` on the same path).
+ * The metadata form POSTs to its own sibling route (`.../update`) rather
+ * than back to this page's own URL — see the Phase 3 notes for why (Next
+ * can't colocate a `page.tsx` and a `route.ts` on the same path). The
+ * inline "add article" form this comment used to also mention is gone —
+ * deleted, along with every other manual-authoring path, as part of the
+ * app's AI-first admin simplification (generate with AI, review, that's
+ * the whole workflow now).
  */
 
 import type { Metadata } from "next";
@@ -19,8 +22,6 @@ import { ARTICLE_ORDER } from "@/lib/editions";
 import { EDITION_STATUS_DRAFT } from "@/lib/edition-helpers";
 import { readFlash, type FlashMessage, type FlashType } from "@/lib/flash";
 import { mediaUrl } from "@/lib/media";
-import { toDateInputValue } from "@/lib/date-input";
-import { ARTICLE_CATEGORIES } from "@/lib/article-categories";
 import type { GithubStats } from "@/lib/github-stats";
 import {
   isTopicCandidateMarked,
@@ -559,7 +560,6 @@ export default async function EditionEditPage({
     }),
   ]);
 
-  const defaultArticleDate = toDateInputValue(edition.periodStart);
   const coverSrc = mediaUrl(edition.coverImage);
   const generationProgress = readGenerationProgress(edition);
   const curatorMarks = parseStoredCuratorMarks(edition.curatorMarks);
@@ -568,10 +568,10 @@ export default async function EditionEditPage({
   // Durable "what's missing" diff — only meaningful once a run has actually
   // happened; a never-generated edition has no activity to diff against (see
   // `computeMissingGenerationPieces`'s doc comment).
-  const { missingSections, missingCandidates } =
+  const { missingSections, missingCandidates, missingActivityRanking } =
     edition.generationStatus === "done"
       ? await computeMissingGenerationPieces(edition.id)
-      : { missingSections: [], missingCandidates: [] };
+      : { missingSections: [], missingCandidates: [], missingActivityRanking: false };
   const missingCandidateIds = new Set(missingCandidates.map((c) => c.id));
   const { rows: sectionRows, remaining: remainingArticles } = generationProgress
     ? mergeSectionsWithArticles(generationProgress.sections, articles)
@@ -579,7 +579,8 @@ export default async function EditionEditPage({
   const hasAnythingToShow =
     remainingArticles.length > 0 ||
     sectionRows.some((row) => row.articles.length > 0 || row.placeholder !== null) ||
-    missingSections.length > 0;
+    missingSections.length > 0 ||
+    missingActivityRanking;
 
   return (
     <NewspaperShell endpoint="admin.edition_edit">
@@ -796,7 +797,7 @@ export default async function EditionEditPage({
             )}
           </div>
 
-          {/* Right: Articles list + add form */}
+          {/* Right: Articles list */}
           <div className="lg:col-span-2">
             <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
               <h3 className="font-headline text-lg font-bold border-b border-ink pb-2 flex-1 min-w-0">
@@ -809,143 +810,7 @@ export default async function EditionEditPage({
                 >
                   <span className="material-icons text-sm">auto_awesome</span> Generate
                 </a>
-                <a
-                  href={`/admin/editions/${edition.id}/articles/rank`}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-                >
-                  <span className="material-icons text-sm">leaderboard</span> Rankings
-                </a>
-                <button
-                  type="button"
-                  data-toggle="add-article-section"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold font-sans uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-                >
-                  <span className="material-icons text-sm">add</span> Add Article
-                </button>
               </div>
-            </div>
-
-            {/* Add article inline form (hidden by default) */}
-            <div
-              id="add-article-section"
-              className="hidden mb-8 border-2 border-dashed border-stone-300 p-6 bg-stone-50"
-            >
-              <h4 className="font-headline font-bold text-base mb-4">Add New Article</h4>
-              <form
-                method="POST"
-                action={`/admin/editions/${edition.id}/articles/add`}
-                encType="multipart/form-data"
-                className="space-y-4"
-              >
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Title *
-                    </label>
-                    <input
-                      type="text"
-                      name="title"
-                      required
-                      className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-serif"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Category
-                    </label>
-                    <select
-                      name="category"
-                      defaultValue="General"
-                      className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
-                    >
-                      {ARTICLE_CATEGORIES.map((cat) => (
-                        <option key={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Author
-                    </label>
-                    <input
-                      type="text"
-                      name="author"
-                      defaultValue="Staff Writer"
-                      className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Date
-                    </label>
-                    <input
-                      type="date"
-                      name="date"
-                      defaultValue={defaultArticleDate}
-                      className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Video URL
-                    </label>
-                    <input
-                      type="url"
-                      name="video_url"
-                      placeholder="https://youtube.com/..."
-                      className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-sans"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Image
-                    </label>
-                    <input
-                      type="file"
-                      name="image"
-                      accept="image/*"
-                      className="w-full text-xs font-sans file:mr-2 file:py-1 file:px-2 file:border-0 file:text-xs file:bg-stone-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Audio
-                    </label>
-                    <input
-                      type="file"
-                      name="audio"
-                      accept="audio/*"
-                      className="w-full text-xs font-sans file:mr-2 file:py-1 file:px-2 file:border-0 file:text-xs file:bg-stone-200"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-sans font-bold uppercase tracking-widest mb-1">
-                      Content * (Markdown)
-                    </label>
-                    <textarea
-                      name="content"
-                      rows={6}
-                      required
-                      className="w-full bg-white border border-stone-300 focus:border-ink px-3 py-2 text-sm font-serif leading-relaxed"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    data-toggle="add-article-section"
-                    className="px-4 py-2 text-xs font-bold font-sans uppercase tracking-widest border border-stone-300 hover:bg-stone-100"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-xs font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light"
-                  >
-                    Save Article
-                  </button>
-                </div>
-              </form>
             </div>
 
             {/* Articles list — merged with generationProgress.sections (see
@@ -1025,11 +890,35 @@ export default async function EditionEditPage({
                     </form>
                   </div>
                 ))}
+                {missingActivityRanking && (
+                  <div className="border border-red-200 bg-red-50 p-4 flex items-center gap-3">
+                    <span className="material-icons text-red-500 text-lg">error_outline</span>
+                    <p className="text-xs font-sans text-red-700 flex-1">
+                      No se pudo generar el <span className="font-bold">Activity Ranking</span>.
+                    </p>
+                    <form
+                      method="POST"
+                      action={`/admin/editions/${edition.id}/activity-ranking/regenerate`}
+                      data-loading-submit
+                    >
+                      <button
+                        type="submit"
+                        data-loading-text="Regenerando…"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-sans uppercase tracking-widest border border-red-400 text-red-700 hover:bg-red-100 transition-colors"
+                      >
+                        <span className="material-icons text-xs">refresh</span>
+                        Reintentar
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-10 border-2 border-dashed border-stone-200">
                 <span className="material-icons text-4xl text-stone-300 block mb-2">article</span>
-                <p className="font-serif italic text-stone-500">No articles yet. Add one above.</p>
+                <p className="font-serif italic text-stone-500">
+                  No articles yet — use &quot;Generate&quot; above.
+                </p>
               </div>
             )}
           </div>
@@ -1116,24 +1005,13 @@ export default async function EditionEditPage({
         )}
       </div>
 
-      {/* The `data-confirm` window.confirm() intercept used to live here too,
-          but it's now delegated in the shared script in NewspaperShell.tsx
-          (see the plan's Implementation Step 5) — keeping both would show two
-          confirm() dialogs per delete. The setInterval-based full-page reload
-          that used to live here is gone too: GenerationWatcher (above) now
-          drives updates via SSE + router.refresh() instead. */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            document.querySelectorAll('[data-toggle]').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                var target = document.getElementById(btn.getAttribute('data-toggle'));
-                if (target) target.classList.toggle('hidden');
-              });
-            });
-          `,
-        }}
-      />
+      {/* The `data-confirm` window.confirm() intercept and the setInterval-based
+          full-page reload both used to live here — the former is now delegated
+          in the shared script in NewspaperShell.tsx (keeping both would show
+          two confirm() dialogs per delete), the latter replaced by
+          GenerationWatcher's SSE + router.refresh() above. The `[data-toggle]`
+          show/hide script that used to live here too was only ever for the
+          "Add Article" inline form, removed along with it. */}
     </NewspaperShell>
   );
 }

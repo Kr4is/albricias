@@ -9,6 +9,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import PeriodPickerFields from "@/components/admin/PeriodPickerFields";
@@ -81,24 +82,9 @@ export default async function EditionsDashboardPage({
                 <span className="material-icons text-sm">tune</span> Cadence:{" "}
                 {cadence}
               </a>
-              <a
-                href="/admin/compose"
-                className="inline-flex items-center gap-2 px-5 py-2.5 border-2 border-ink text-xs font-bold uppercase tracking-widest hover:bg-stone-100 transition-colors"
-              >
-                <span className="material-icons text-sm">edit_note</span> Editor&apos;s
-                Desk
-              </a>
-              <a
-                href="/admin/editions/new"
-                title="Creates an empty issue with no articles — you write everything by hand."
-                className="inline-flex items-center gap-2 px-5 py-2.5 border-2 border-ink text-xs font-bold uppercase tracking-widest hover:bg-stone-100 transition-colors"
-              >
-                <span className="material-icons text-sm">add</span> Blank Draft
-              </a>
               <button
                 type="button"
                 data-open-generate-modal
-                title="Fetches your GitHub/blog/Spotify activity and writes the articles with AI."
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-ink text-paper text-xs font-bold uppercase tracking-widest hover:bg-ink-light transition-colors"
               >
                 <span className="material-icons text-sm">auto_awesome</span> Generate
@@ -106,11 +92,6 @@ export default async function EditionsDashboardPage({
               </button>
             </div>
           </div>
-          <p className="mt-3 text-[11px] font-sans text-stone-400">
-            <strong className="text-stone-500">Blank Draft</strong> starts an empty issue you fill in
-            by hand — <strong className="text-stone-500">Generate with AI</strong> fetches your
-            activity for the period and writes it for you.
-          </p>
         </div>
 
         <FlashBanner messages={messages} />
@@ -131,94 +112,6 @@ export default async function EditionsDashboardPage({
           </div>
         )}
 
-        {/* Spotify status */}
-        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-            <span className="material-icons text-sm text-green-600">
-              {spotifyToken ? "check_circle" : "radio_button_unchecked"}
-            </span>
-            Spotify:{" "}
-            <strong>{spotifyToken ? "Connected" : "Not connected"}</strong>
-          </div>
-          {spotifyToken ? (
-            <form
-              method="POST"
-              action="/admin/spotify/disconnect"
-              data-confirm="Disconnect Spotify? You'll need to reconnect to keep including listening activity in new editions."
-            >
-              <button
-                type="submit"
-                className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
-              >
-                Disconnect
-              </button>
-            </form>
-          ) : (
-            <a
-              href="/admin/spotify/connect"
-              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-            >
-              Connect Spotify
-            </a>
-          )}
-        </div>
-
-        {/* Social accounts entry point (Phase D) */}
-        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-            <span className="material-icons text-sm">share</span>
-            Social auto-post accounts (X, Bluesky, Mastodon)
-          </div>
-          <a
-            href="/admin/social"
-            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-          >
-            Manage
-          </a>
-        </div>
-
-        {/* Google Calendar entry point (Phase F) */}
-        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-            <span className="material-icons text-sm">event</span>
-            Google Calendar (stats ranking + meeting-notes articles)
-          </div>
-          <a
-            href="/admin/calendar"
-            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-          >
-            Manage
-          </a>
-        </div>
-
-        {/* Settings entry point (Phase H3) */}
-        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-            <span className="material-icons text-sm">settings</span>
-            Branding, AI, GitHub, email, and OAuth app credentials
-          </div>
-          <a
-            href="/admin/settings"
-            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-          >
-            Manage
-          </a>
-        </div>
-
-        {/* Account entry point */}
-        <div className="mb-10 flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
-          <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
-            <span className="material-icons text-sm">account_circle</span>
-            Account: change password, manage API token
-          </div>
-          <a
-            href="/admin/account"
-            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-          >
-            Manage
-          </a>
-        </div>
-
         {/* Drafts Section */}
         <section className="mb-14">
           <h3 className="font-headline text-2xl font-bold border-b-2 border-ink pb-2 mb-6 flex items-center gap-2">
@@ -236,7 +129,10 @@ export default async function EditionsDashboardPage({
                   key={edition.id}
                   className="border-2 border-stone-300 hover:border-ink transition-colors bg-white p-6 flex flex-col"
                 >
-                  <div className="flex items-start justify-between mb-3">
+                  <a
+                    href={`/admin/editions/${edition.id}/edit`}
+                    className="flex items-start justify-between mb-3"
+                  >
                     <div>
                       <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-amber-600 mb-1">
                         Draft
@@ -251,7 +147,7 @@ export default async function EditionsDashboardPage({
                     <span className="text-2xl font-masthead text-stone-300">
                       {periodLabelShort(edition)}
                     </span>
-                  </div>
+                  </a>
 
                   <div className="flex items-center gap-2 text-xs font-sans text-stone-500 mb-4">
                     <span className="material-icons text-sm">article</span>
@@ -265,12 +161,6 @@ export default async function EditionsDashboardPage({
                   </div>
 
                   <div className="mt-auto flex flex-wrap gap-2">
-                    <a
-                      href={`/admin/editions/${edition.id}/edit`}
-                      className="flex-1 text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-                    >
-                      Edit
-                    </a>
                     <a
                       href={`/admin/editions/${edition.id}/preview`}
                       className="flex-1 text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
@@ -311,7 +201,7 @@ export default async function EditionsDashboardPage({
             </div>
           ) : (
             <p className="text-stone-500 italic font-serif">
-              No draft editions. Create one above.
+              No draft editions. Click &quot;Generate with AI&quot; above to start one.
             </p>
           )}
         </section>
@@ -399,6 +289,101 @@ export default async function EditionsDashboardPage({
             <p className="text-stone-500 italic font-serif">No published editions yet.</p>
           )}
         </section>
+
+        {/* Connections & account — secondary to Drafts/Published, which are
+            what this dashboard is actually for. */}
+        <div className="mt-14 pt-8 border-t border-stone-200 space-y-3">
+          {/* Spotify status */}
+          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+              <span className="material-icons text-sm text-green-600">
+                {spotifyToken ? "check_circle" : "radio_button_unchecked"}
+              </span>
+              Spotify:{" "}
+              <strong>{spotifyToken ? "Connected" : "Not connected"}</strong>
+            </div>
+            {spotifyToken ? (
+              <form
+                method="POST"
+                action="/admin/spotify/disconnect"
+                data-confirm="Disconnect Spotify? You'll need to reconnect to keep including listening activity in new editions."
+              >
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
+                >
+                  Disconnect
+                </button>
+              </form>
+            ) : (
+              <a
+                href="/admin/spotify/connect"
+                className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+              >
+                Connect Spotify
+              </a>
+            )}
+          </div>
+
+          {/* Social accounts entry point (Phase D) */}
+          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+              <span className="material-icons text-sm">share</span>
+              Social auto-post accounts (X, Bluesky, Mastodon)
+            </div>
+            <a
+              href="/admin/social"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+            >
+              Manage
+            </a>
+          </div>
+
+          {/* Google Calendar entry point (Phase F) */}
+          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+              <span className="material-icons text-sm">event</span>
+              Google Calendar (stats ranking + meeting-notes articles)
+            </div>
+            <a
+              href="/admin/calendar"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+            >
+              Manage
+            </a>
+          </div>
+
+          {/* Settings entry point (Phase H3) — a Next <Link>, not a plain <a>:
+              interception (the settings-as-modal route in admin/@modal) only
+              fires on client-side navigation. */}
+          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+              <span className="material-icons text-sm">settings</span>
+              Branding, AI, GitHub, email, and OAuth app credentials
+            </div>
+            <Link
+              href="/admin/settings"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+            >
+              Manage
+            </Link>
+          </div>
+
+          {/* Account entry point */}
+          <div className="flex items-center justify-between gap-4 flex-wrap border border-stone-200 bg-white px-5 py-3">
+            <div className="flex items-center gap-2 text-xs font-sans text-stone-600">
+              <span className="material-icons text-sm">account_circle</span>
+              Account: change password, manage API token
+            </div>
+            <a
+              href="/admin/account"
+              className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+            >
+              Manage
+            </a>
+          </div>
+
+        </div>
       </div>
 
       {/* Generate Edition Modal */}

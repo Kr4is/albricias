@@ -1,6 +1,8 @@
 /**
- * Shared plumbing for the ranking article generators (activity, best-of,
- * generic — Phase C of the agent-editions plan).
+ * Shared plumbing for the ranking article generators (activity, calendar —
+ * Phase C of the agent-editions plan; the admin-triggered-only best-of/
+ * generic kinds were deleted along with their manual UI, see
+ * `./index.ts`'s doc comment).
  *
  * Each ranking type follows the same shape: a pure-TypeScript computation
  * over already-stored rows, one Mastra LLM call in the `NEWSPAPER_PERSONA`

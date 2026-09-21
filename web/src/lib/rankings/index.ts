@@ -1,25 +1,31 @@
 /**
  * Ranking article generators — Phase C of the agent-editions plan.
  *
- * Barrel for `web/src/lib/rankings/*` — three ranking kinds, each a pure-TS
- * computation over already-stored rows plus one `NEWSPAPER_PERSONA`-voiced
- * LLM call:
+ * Barrel for `web/src/lib/rankings/*`. Down to two kinds now — the
+ * admin-triggered-only Best-Of Digest and generic "top N of `<field>`"
+ * builder (formerly `./best-of.ts`/`./generic.ts`) were deleted along with
+ * their manual-only UI (`articles/rank/page.tsx`) as part of the app's
+ * AI-first admin simplification: neither had an automatic equivalent, so
+ * removing the manual trigger removed the capability entirely — a
+ * deliberate choice, not an oversight. (Old published editions may still
+ * reference a `"best-of-digest"` article created before this change; see
+ * `@/lib/synthesis/load.ts`'s generator-kind list, left as-is since it only
+ * *reads* whatever already exists.)
+ *
+ * The two kinds left, each a pure-TS computation over already-stored rows
+ * plus one `NEWSPAPER_PERSONA`-voiced LLM call, both wired into the
+ * automatic edition-generation pipeline (`populateEditionDraft` in
+ * `@/lib/generation`) and retriable from the edit page if they fail (see
+ * `computeMissingGenerationPieces`/`beginActivityRankingRetry` in the same
+ * file):
  *
  *   1. {@link createActivityRankingArticle} — GitHub activity/productivity
  *      ranking (busiest days, event-type breakdown, most-used languages).
- *      Wired into the automatic edition-generation pipeline
- *      (`runEditionGeneration` in `@/lib/generation`) *and* available as an
- *      admin action.
- *   2. {@link createBestOfDigestArticle} — "best of last period" digest,
- *      admin-triggered only (needs a prior published edition).
- *   3. {@link createGenericRankingArticle} — the generic "top N of `<field>`"
- *      builder, admin-triggered only (inherently a manual/configurable
- *      action).
- *   4. {@link createCalendarRankingArticle} — Google Calendar stats ranking
+ *   2. {@link createCalendarRankingArticle} — Google Calendar stats ranking
  *      (event count, hours, busiest day, day-of-week distribution), Phase F
- *      of the google-calendar-alexandria-sources plan. Wired into the
- *      automatic pipeline like #1, structurally excludes event
- *      titles/descriptions (see `./calendar.ts`'s doc comment).
+ *      of the google-calendar-alexandria-sources plan. Structurally
+ *      excludes event titles/descriptions (see `./calendar.ts`'s doc
+ *      comment).
  */
 
 export { RANKING_CATEGORY } from "./shared";
@@ -37,25 +43,6 @@ export {
   fetchRepoLanguages,
   narrateActivityRanking,
 } from "./activity";
-
-export {
-  type BestOfInput,
-  createBestOfDigestArticle,
-  narrateBestOf,
-} from "./best-of";
-
-export {
-  type GenericRankingNarrationInput,
-  type GenericRankingOptions,
-  type GenericRankingRow,
-  type RankableField,
-  type RankableModel,
-  RANKABLE_FIELDS,
-  computeGenericRanking,
-  createGenericRankingArticle,
-  findRankableField,
-  narrateGenericRanking,
-} from "./generic";
 
 export {
   type CalendarDayCount,

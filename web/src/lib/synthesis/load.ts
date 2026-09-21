@@ -32,10 +32,14 @@ import type { GithubStats } from "@/lib/github-stats";
 /**
  * Which `sourceData.generator` values are machine-authored rankings.
  *
- * The first two come from the automatic pipeline; `generic-ranking` and
- * `best-of-digest` are admin-triggered from `articles/rank/page.tsx`. All four
- * are AI-written and therefore equally fair synthesis material — the exclusion
- * rule below is about *manual* articles, not about who pressed the button.
+ * The first two come from the automatic pipeline. `generic-ranking` and
+ * `best-of-digest` were admin-triggered from a manual Rankings page deleted
+ * as part of the app's AI-first admin simplification — no code path creates
+ * either anymore, but an edition published before that change may still
+ * have one, and it's just as much AI-written synthesis material as the
+ * other two, so both stay recognized here. All four are AI-written and
+ * therefore equally fair synthesis material — the exclusion rule below is
+ * about *manual* articles, not about who pressed the button.
  */
 const RANKING_GENERATORS = [
   "activity-ranking",
