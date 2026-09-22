@@ -101,6 +101,15 @@ export const generationTraceStepSchema = z.object({
   index: z.number().int(),
   heading: z.string(),
   brief: z.string(),
+  /**
+   * Which writer produced this section — `standard` prose, the `tutorial`
+   * walkthrough (the outline's `KIND: tutorial` section), or the code-built
+   * `data` section. Optional because traces persisted before this existed
+   * don't carry it; absent reads as `standard`. `regenerateProfileSection`
+   * uses it to retry a section with the same agent that wrote it, instead of
+   * quietly rewriting the tutorial in narrative voice.
+   */
+  kind: z.enum(["standard", "tutorial", "data"]).optional(),
   status: z.enum(["success", "failed"]),
   prompt: z.string(),
   response: z.string().optional(),
@@ -115,6 +124,24 @@ export const generationTraceSchema = z.object({
   startedAt: z.string(),
   endedAt: z.string(),
   status: z.enum(["success", "partial", "failed"]),
+  /**
+   * What the non-LLM `research-repo` step turned up (see
+   * `@/mastra/workflows/profile`) — counts and URLs, not the fetched text,
+   * which is already inside `outline.prompt`. Optional: traces written before
+   * the research step existed have no such record, and a profile generated
+   * from a non-GitHub source has nothing to record.
+   */
+  research: z
+    .object({
+      repo: z.string(),
+      startedAt: z.string(),
+      endedAt: z.string(),
+      factsFound: z.boolean(),
+      docsChars: z.number().int(),
+      comparisonChars: z.number().int(),
+      sourceUrls: z.array(z.string()),
+    })
+    .optional(),
   outline: z.object({
     prompt: z.string(),
     response: z.string(),

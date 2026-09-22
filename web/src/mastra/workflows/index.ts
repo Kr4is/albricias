@@ -31,12 +31,18 @@ export {
 } from "./assisted";
 
 export {
+  type AssembledSection,
   type ProfileWorkflowInput,
+  DATA_SECTION_HEADING,
   PROFILE_SECTION_CONCURRENCY,
+  PROFILE_TOC_MIN_SECTIONS,
+  assembleProfileContent,
+  buildDataSectionPrompt,
   buildProfileOutlinePrompt,
   buildProfileSectionPrompt,
   parseOutline,
   profileWorkflow,
+  renderRepoFactsText,
   resolveSourceExcerpt,
   splitSourceIntoChunks,
 } from "./profile";

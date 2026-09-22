@@ -191,3 +191,25 @@ export function parseResponse(
   const content = bodyLines.join("\n").trim() || raw.trim();
   return { title, content };
 }
+
+/**
+ * Strip a leading Markdown heading line (any level, any text) plus one
+ * following blank line, if present. No-op otherwise.
+ *
+ * Guards against the same quirk `parseResponse` strips for single-call
+ * generators — a model echoing a heading it was told not to write — but for
+ * callers (e.g. per-section generation) that don't parse a title out of the
+ * response and just need the raw heading noise gone.
+ */
+export function stripLeadingHeadingLine(markdown: string): string {
+  const trimmed = markdown.trim();
+  const lines = trimmed.split("\n");
+  const first = lines[0]?.trim() ?? "";
+
+  if (!/^#{1,6}\s+\S/.test(first)) return trimmed;
+
+  let rest = lines.slice(1);
+  if (rest[0]?.trim() === "") rest = rest.slice(1);
+
+  return rest.join("\n").trim();
+}

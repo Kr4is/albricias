@@ -1,17 +1,30 @@
 /**
  * POST half of the assisted generation form at `.../articles/generate`
  * (`admin.article_generate` in `app/routes/admin.py:545-614`).
+ *
+ * Async like `.../topic-candidates/[candidateId]/regenerate/route.ts`: the
+ * response comes back as soon as the edition flips to
+ * `generationStatus: "running"`, and the generation itself runs in `after()`.
+ * It used to be awaited inline here, which held the admin's browser open for
+ * the entire run — for a `profile` piece that is a five-step workflow and
+ * minutes of model time, with no progress shown and nothing surviving a
+ * reload. Now it feeds the same `/live` SSE banner (step-aware for the profile
+ * workflow) every other long-running piece uses.
  */
 
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateArticleFromSource, DEFAULT_AUTHOR } from "@/lib/generation";
+import {
+  beginManualArticleGeneration,
+  finishManualArticleGeneration,
+  DEFAULT_AUTHOR,
+} from "@/lib/generation";
 import type { SourceType } from "@/lib/sources";
 import type { GeneratorType, ReviewSubjectType } from "@/mastra/schemas";
 import { parseDateInputValue } from "@/lib/date-input";
 import { getSetting } from "@/lib/config/settings";
 import { AI_PROVIDER_NOT_CONFIGURED_MESSAGE, resolveAiModel } from "@/lib/ai/provider";
-import { describeError, flashRedirect } from "@/lib/flash";
+import { flashRedirect } from "@/lib/flash";
 
 /** Pull `source_metadata.notesSource` back out of a persisted article's `sourceData` JSON, if present. */
 function readNotesSource(sourceData: string | null): string | null {
@@ -117,46 +130,67 @@ export async function POST(
   const author = form.get("author")?.toString().trim() || DEFAULT_AUTHOR;
   const articleDate = parseDateInputValue(form.get("date")?.toString()) ?? edition.periodStart;
 
-  try {
-    const article = await generateArticleFromSource({
-      editionId: id,
-      sourceType: sourceType as SourceType,
-      generatorType: generatorType as GeneratorType,
-      aiModel,
-      audioApiKey,
-      audioFile,
-      audioFilename,
-      textInput,
-      calendarId,
-      googleEventId,
-      githubRepo,
-      topicHint,
-      subjectName,
-      subjectType,
-      intervieweeName,
-      articleDate,
-      author,
-    });
+  // Read the upload's bytes now, while the request is still alive: the `File`
+  // handle belongs to this request and the `after()` callback below outlives it.
+  const audioBytes = audioFile ? new Uint8Array(await audioFile.arrayBuffer()) : undefined;
 
-    let successText = "Article generated successfully. Review and save your changes below.";
-    if (sourceType === "calendar_event") {
-      // Per the plan's acceptance criteria, the admin should be able to tell
-      // which path was used — surface it right in the success flash, in
-      // addition to the indicator on the article edit page.
-      const notesSource = readNotesSource(article.sourceData);
-      if (notesSource === "gemini_notes_doc") {
-        successText += " Used Gemini meeting notes as the source.";
-      } else if (notesSource === "title_description_fallback") {
-        successText += " No meeting notes found — used the event's title, description, and attendees.";
-      }
-    }
+  const editPath = `/admin/editions/${id}/edit`;
+  const progressLabel = subjectName || githubRepo || `New ${generatorType} article`;
 
-    return flashRedirect(request, `/admin/editions/${id}/articles/${article.id}/edit`, [
-      { type: "success", text: successText },
-    ]);
-  } catch (error) {
+  const begun = await beginManualArticleGeneration(id, progressLabel);
+  if (!begun.ok) {
     return flashRedirect(request, `/admin/editions/${id}/articles/generate`, [
-      { type: "error", text: `Generation failed: ${describeError(error)}` },
+      { type: "warning", text: begun.reason },
     ]);
   }
+
+  after(async () => {
+    await finishManualArticleGeneration(
+      {
+        editionId: id,
+        sourceType: sourceType as SourceType,
+        generatorType: generatorType as GeneratorType,
+        aiModel,
+        audioApiKey,
+        audioFile: audioBytes,
+        audioFilename,
+        textInput,
+        calendarId,
+        googleEventId,
+        githubRepo,
+        topicHint,
+        subjectName,
+        subjectType,
+        intervieweeName,
+        articleDate,
+        author,
+      },
+      // Per the plan's acceptance criteria, the admin should be able to tell
+      // which path a calendar source used. That used to ride on this route's
+      // success flash, which is now sent before the article exists — so it is
+      // persisted as a generation message on the edition instead, which is
+      // where the edit page already renders everything a finished background
+      // run has to say.
+      (article) => {
+        if (sourceType !== "calendar_event") return [];
+        const notesSource = readNotesSource(article.sourceData);
+        if (notesSource === "gemini_notes_doc") {
+          return [{ type: "info", text: "Used Gemini meeting notes as the source." }];
+        }
+        if (notesSource === "title_description_fallback") {
+          return [
+            {
+              type: "info",
+              text: "No meeting notes found — used the event's title, description, and attendees.",
+            },
+          ];
+        }
+        return [];
+      },
+    );
+  });
+
+  return flashRedirect(request, editPath, [
+    { type: "info", text: "Generating the article — this page will update automatically." },
+  ]);
 }

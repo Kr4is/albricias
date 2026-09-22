@@ -65,8 +65,10 @@ import {
   parseResponse,
   profileSectionAgent,
   runNewspaperAgent,
+  tutorialSectionAgent,
   type ResolvedAiModel,
 } from "@/mastra/agents";
+import { stripLeadingHeadingLine } from "@/mastra/agents/base";
 import { createActivityRankingArticle, createCalendarRankingArticle } from "@/lib/rankings";
 import {
   SYNTHESIS_GENERATOR,
@@ -83,6 +85,7 @@ import {
 import {
   CHRONICLE_CONCURRENCY,
   type ChronicleCategory,
+  assembleProfileContent,
   assistedGenerationWorkflow,
   buildChroniclePrompt,
   chronicleWorkflow,
@@ -148,9 +151,38 @@ interface SourceProgress {
 
 type SectionStatus = "pending" | "writing" | "done" | "failed" | "aborted";
 
+/**
+ * Which step of a multi-step workflow the in-flight section is on right now.
+ *
+ * Only the profile workflow populates this (see {@link applyProfileStepProgress}):
+ * it is the one pipeline deep enough — five steps, minutes end to end — that a
+ * single "writing…" banner reads as a hang. `label` is resolved server-side and
+ * stored verbatim so the client component just prints it; `index`/`total`
+ * describe the step's position in the pipeline for a progress indicator.
+ */
+interface SectionStepProgress {
+  id: string;
+  label: string;
+  index: number;
+  total: number;
+}
+
+/** Iteration progress *inside* one step — the section `foreach`'s "3 of 8". */
+interface SectionSubProgress {
+  current: number;
+  total: number;
+}
+
 interface SectionProgress {
   category: string;
   status: SectionStatus;
+  /**
+   * Optional: absent on every writer except the profile-workflow streaming
+   * path, and absent from every row written before these fields existed, so
+   * readers must treat "no step detail" as the normal case.
+   */
+  step?: SectionStepProgress | null;
+  subProgress?: SectionSubProgress | null;
 }
 
 export interface GenerationProgress {
@@ -215,6 +247,111 @@ function settleSection(
     completedSections: sections.filter(
       (section) => section.status !== "pending" && section.status !== "writing",
     ).length,
+  };
+}
+
+/**
+ * The profile workflow's steps, in the order `profileWorkflow` chains them
+ * (`@/mastra/workflows/profile`: `.then(research).then(outline)
+ * .foreach(writeSection).then(writeDataSection).then(assembleArticle)`).
+ * These strings are the `createStep({ id })` values Mastra puts on every
+ * `workflow-step-*` chunk's `payload.id`, so this list is both the id→position
+ * lookup and the guard that keeps an unrecognised step id from being labelled.
+ */
+const PROFILE_STEP_IDS = [
+  "research-repo",
+  "build-outline",
+  "write-section",
+  "write-data-section",
+  "assemble-article",
+] as const;
+
+type ProfileStepId = (typeof PROFILE_STEP_IDS)[number];
+
+/**
+ * Step id → the banner text an admin reads while it runs.
+ *
+ * English to match the rest of the admin UI (`GenerationWatcher`'s existing
+ * "Writing… N of M sections ready.", the generate form, every flash message).
+ * A function rather than a string so `write-section` can fold its `foreach`
+ * iteration count in, and still say something sensible before the first
+ * iteration has reported one.
+ */
+const PROFILE_STEP_LABELS: Record<ProfileStepId, (sub: SectionSubProgress | null) => string> = {
+  "research-repo": () => "Researching the repository…",
+  "build-outline": () => "Planning the outline…",
+  "write-section": (sub) =>
+    sub ? `Writing section ${sub.current} of ${sub.total}…` : "Writing the sections…",
+  "write-data-section": () => "Generating the data section…",
+  "assemble-article": () => "Assembling the article…",
+};
+
+/**
+ * Index of the *one* section currently being written, or `-1` when that is
+ * ambiguous.
+ *
+ * Step detail describes a single piece of work, so it only makes sense to stamp
+ * it on a lone in-flight section — which is exactly the shape
+ * {@link beginSinglePieceRetry} seeds (`sections: [{ status: "writing" }]`) and
+ * the only shape the profile workflow ever runs under. Deliberately returns
+ * `-1` for every other shape, which makes {@link applyProfileStepProgress} a
+ * no-op for the two cases where blindly writing `sections[0]` would be wrong:
+ * a chronicle run (several sections `"writing"` at once under
+ * `CHRONICLE_CONCURRENCY`) and the bulk topic-candidate pass inside
+ * `populateEditionDraft` (where `sections` still holds the chronicle's own,
+ * already-settled, entries).
+ */
+function soleInFlightSectionIndex(progress: GenerationProgress): number {
+  let found = -1;
+  for (let i = 0; i < progress.sections.length; i += 1) {
+    if (progress.sections[i]?.status !== "writing") continue;
+    if (found !== -1) return -1;
+    found = i;
+  }
+  return found;
+}
+
+/**
+ * Record that the profile workflow has moved onto `stepId`, on whichever single
+ * section is in flight. Pure, so the streaming loop's fixture test can drive it
+ * directly without a database.
+ *
+ * `subProgress` is carried over when the step id is unchanged: a `foreach`'s
+ * `workflow-step-start` fires per iteration, and clearing the count on each one
+ * would flicker the banner between "Writing section 2 of 3…" and the
+ * countless "Writing the sections…" fallback. A *different* step id clears it,
+ * since a count from the previous step means nothing in the new one.
+ */
+export function applyProfileStepProgress(
+  progress: GenerationProgress,
+  stepId: string,
+  subProgress: SectionSubProgress | null = null,
+): GenerationProgress {
+  const index = PROFILE_STEP_IDS.indexOf(stepId as ProfileStepId);
+  if (index === -1) return progress;
+  const target = soleInFlightSectionIndex(progress);
+  if (target === -1) return progress;
+
+  const section = progress.sections[target];
+  const carried = section.step?.id === stepId ? (section.subProgress ?? null) : null;
+  const sub = subProgress ?? carried;
+
+  return {
+    ...progress,
+    sections: progress.sections.map((entry, i) =>
+      i === target
+        ? {
+            ...entry,
+            step: {
+              id: stepId,
+              label: PROFILE_STEP_LABELS[stepId as ProfileStepId](sub),
+              index: index + 1,
+              total: PROFILE_STEP_IDS.length,
+            },
+            subProgress: sub,
+          }
+        : entry,
+    ),
   };
 }
 
@@ -379,6 +516,13 @@ export async function generateArticleFromSource({
    * through.
    */
   let resolvedSubjectName = subjectName;
+  /**
+   * Set only on the `github_repo` branch, and only used by the `profile`
+   * workflow's non-LLM `research-repo` step — it re-queries GitHub for the
+   * facts bundle its data charts are built from, so it needs the same token
+   * `fetchGithubRepoSource` used rather than a second lookup of the setting.
+   */
+  let githubSourceToken = "";
   if (sourceType === "audio_monologue" || sourceType === "audio_conversation") {
     if (!audioFile) {
       throw new Error(`audioFile is required for sourceType "${sourceType}".`);
@@ -410,6 +554,7 @@ export async function generateArticleFromSource({
     if (!token) {
       throw new Error("GitHub token is not configured. Set it at /admin/settings.");
     }
+    githubSourceToken = token;
     sourceResult = await fetchGithubRepoSource({ token, repo: githubRepo });
     // The repo picker already told the form which repo this is, so the admin
     // should not have to retype it as the review/profile subject. `owner/` is
@@ -432,9 +577,59 @@ export async function generateArticleFromSource({
   let result: GeneratorResult;
   if (generatorType === "profile") {
     const run = await profileWorkflow.createRun();
-    const outcome = await run.start({
-      inputData: { text: sourceResult.text, subjectName: resolvedSubjectName, topicHint, aiModel },
+    // `run.stream()` rather than `run.start()` purely to read the workflow's
+    // own step events as they happen — same pattern (and same `stream.result`
+    // for the final outcome) `generateEditionDraft` uses for the chronicle
+    // workflow. The inputs, the result, and the error handling below are
+    // identical to what `run.start()` did; only the progress column is new.
+    // The workflow's header comment called this "no live view to feed", which
+    // stopped being true once it grew from one call into five steps.
+    const stream = run.stream({
+      inputData: {
+        text: sourceResult.text,
+        subjectName: resolvedSubjectName,
+        topicHint,
+        aiModel,
+        // Only the `github_repo` branch fills these in; everywhere else the
+        // research step finds nothing to fetch and the pipeline runs on the
+        // supplied text alone, exactly as it did before.
+        githubRepo: sourceType === "github_repo" ? (githubRepo ?? "") : "",
+        githubToken: githubSourceToken,
+        homepage:
+          typeof sourceResult.metadata.homepage === "string" ? sourceResult.metadata.homepage : null,
+      },
     });
+
+    for await (const chunk of stream.fullStream) {
+      if (chunk.type === "workflow-step-start") {
+        await updateGenerationProgress(editionId, (progress) =>
+          applyProfileStepProgress(progress, chunk.payload.id),
+        );
+      } else if (
+        chunk.type === "workflow-step-progress" &&
+        chunk.payload.id === "write-section"
+      ) {
+        // The section `foreach`'s per-iteration report. `currentIndex` names
+        // the iteration that just *finished* (Mastra's own doc comment on the
+        // chunk type), so the section actually being written now is
+        // `completedCount + 1` — clamped, because the last iteration's event
+        // arrives when nothing is left to write and `assemble-article`'s
+        // `workflow-step-start` has not replaced this label yet.
+        const { completedCount, totalCount } = chunk.payload;
+        await updateGenerationProgress(editionId, (progress) =>
+          applyProfileStepProgress(progress, "write-section", {
+            current: Math.min(completedCount + 1, totalCount),
+            total: totalCount,
+          }),
+        );
+      }
+      // `workflow-step-result` is deliberately ignored: the next step's
+      // `workflow-step-start` already supersedes the finished step's label, and
+      // the terminal state of the column belongs to whoever seeded it (see
+      // `finishSinglePieceRetry`), not to this loop.
+    }
+
+    const outcome = await stream.result;
     if (outcome.status !== "success") {
       throw new Error(
         `Profile generation failed (${outcome.status})`,
@@ -829,7 +1024,21 @@ export async function regenerateProfileSection(
   let newResponse: string | null = null;
   let retryError: string | undefined;
   try {
-    newResponse = (await runNewspaperAgent(profileSectionAgent, { user: section.prompt, aiModel })).trim();
+    // Retry with the writer that produced this section, not always the
+    // narrative one — otherwise retrying the tutorial section silently
+    // replaces its runnable steps with prose.
+    const agent = section.kind === "tutorial" ? tutorialSectionAgent : profileSectionAgent;
+    const raw = (await runNewspaperAgent(agent, { user: section.prompt, aiModel })).trim();
+    newResponse = stripLeadingHeadingLine(raw);
+    // The data section's stored response is narration *plus* code-generated
+    // ` ```chart ` blocks (see `write-data-section`), and only the narration
+    // gets regenerated here — the charts came from a facts bundle this
+    // replay-only path deliberately has no access to. Carry the old blocks
+    // over verbatim rather than dropping real-data charts on a text retry.
+    if (section.kind === "data") {
+      const charts = (section.response ?? "").match(/```chart\n[\s\S]*?\n```/g) ?? [];
+      if (charts.length > 0) newResponse = [newResponse, ...charts].filter(Boolean).join("\n\n");
+    }
   } catch (error) {
     retryError = error instanceof Error ? error.message : String(error);
   }
@@ -840,7 +1049,16 @@ export async function regenerateProfileSection(
       ? {
           ...s,
           status: newResponse !== null ? "success" : "failed",
-          response: newResponse ?? undefined,
+          // A failed retry normally clears the section's stored response — it
+          // no longer describes anything. The data section is the exception:
+          // its response is the *only* surviving copy of the ` ```chart `
+          // blocks built in code from the repo's real facts bundle, which this
+          // replay-only path cannot rebuild (see the `section.kind === "data"`
+          // branch above). Clearing it on a failed model call would destroy
+          // real fetched data over a transient proxy error, unrecoverable short
+          // of regenerating the whole article. Every other kind keeps the
+          // pre-existing wipe-on-failure behaviour.
+          response: newResponse ?? (s.kind === "data" ? s.response : undefined),
           startedAt,
           endedAt,
           error: retryError,
@@ -848,14 +1066,22 @@ export async function regenerateProfileSection(
       : s,
   );
 
-  const body = updatedSections
-    .map((s) =>
-      s.status === "success" && s.response
-        ? `## ${s.heading}\n\n${s.response}`
-        : `## ${s.heading}\n\n> _This section could not be generated and was skipped — see the generation trace._`,
-    )
-    .join("\n\n");
-  const content = `${trace.outline.premise}\n\n${body}`.trim();
+  // Rebuilt through the workflow's own assembler rather than a local re-join,
+  // so a single-section retry can't quietly drop the article's table of
+  // contents (which only `assembleProfileContent` knows how to build, with
+  // anchors that have to match `renderMarkdown`'s heading ids).
+  const content = assembleProfileContent(
+    trace.outline.premise,
+    updatedSections.map((s) => ({
+      heading: s.heading,
+      // A failed section contributes a placeholder, not a body — except the
+      // data section, whose preserved response still holds real-data charts
+      // even when its narration retry failed. Behaviour is unchanged for every
+      // other kind: a failed one has no response to fall back to anyway.
+      markdown:
+        s.status === "success" || s.kind === "data" ? (s.response ?? null) : null,
+    })),
+  );
 
   const succeeded = updatedSections.filter((s) => s.status === "success").length;
   const updatedTrace: GenerationTrace = {
@@ -1001,11 +1227,20 @@ async function beginSinglePieceRetry(
  * failure always counts as notable (there's no separate synchronous flash to
  * carry it, unlike the bulk pipeline's immediate "Generating…" response).
  * Call from the route's `after()`, after `beginSinglePieceRetry` succeeded.
+ *
+ * `work` may return extra messages to persist alongside any failure — how a
+ * caller whose synchronous response was sent long ago still gets a note in
+ * front of the admin (see {@link finishManualArticleGeneration}). Existing
+ * callers return nothing and are unaffected.
  */
-async function finishSinglePieceRetry(editionId: number, work: () => Promise<void>): Promise<void> {
+async function finishSinglePieceRetry(
+  editionId: number,
+  work: () => Promise<FlashMessage[] | void>,
+): Promise<void> {
   const messages: FlashMessage[] = [];
   try {
-    await work();
+    const extra = await work();
+    if (extra) messages.push(...extra);
   } catch (error) {
     messages.push({ type: "error", text: `AI regeneration failed: ${describeError(error)}` });
   }
@@ -1126,6 +1361,38 @@ export async function finishArticleSectionRetry(
 ): Promise<void> {
   await finishSinglePieceRetry(editionId, async () => {
     await regenerateProfileSection(articleId, sectionIndex, aiModel);
+  });
+}
+
+/**
+ * Begin half of a manual "Generate article" run — see
+ * {@link beginSinglePieceRetry}.
+ *
+ * The manual form used to call {@link generateArticleFromSource} inline in its
+ * POST handler and hold the admin's browser open for the whole run, which for a
+ * `profile` piece is five workflow steps and minutes of model time with no
+ * feedback whatsoever. Seeding the column here instead puts it on the same
+ * durable, reload-proof `/live` SSE rail as every other long-running piece.
+ */
+export async function beginManualArticleGeneration(
+  editionId: number,
+  label: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return beginSinglePieceRetry(editionId, label);
+}
+
+/**
+ * Finish half of a manual "Generate article" run — call from the route's
+ * `after()`. `extraMessages` carries anything the route could no longer say in
+ * a redirect flash now that it responds before the work runs.
+ */
+export async function finishManualArticleGeneration(
+  options: GenerateArticleFromSourceOptions,
+  extraMessages: (article: Article) => FlashMessage[] = () => [],
+): Promise<void> {
+  await finishSinglePieceRetry(options.editionId, async () => {
+    const article = await generateArticleFromSource(options);
+    return extraMessages(article);
   });
 }
 
@@ -1485,7 +1752,7 @@ export type EditionGenerationOutcome = EditionGenerationExists | EditionGenerati
  * cron, `@/lib/scheduler`, creates the draft and stops — the *daily* cron
  * is what populates it, possibly hours later), and leaving the row
  * `"running"` with nothing actually running would make the edit page's
- * live-progress view lie. `@/lib/generation/daily`'s `processMissedDays`
+ * live-progress view lie. `@/lib/generation/daily`'s `processYesterdayIfNeeded`
  * (called either by the daily cron or, for the manual "Generate edition"
  * button, right after this — see
  * `web/src/app/admin/editions/generate/route.ts`) flips it to `"running"`

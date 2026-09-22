@@ -29,9 +29,24 @@ export type GenerationSectionStatus =
   | "failed"
   | "aborted";
 
+/**
+ * Which step of a multi-step workflow this section is on. Written only by the
+ * profile workflow's streaming path (`@/lib/generation`'s
+ * `applyProfileStepProgress`) — every other writer, and every row persisted
+ * before the field existed, leaves it out, so it is always optional here.
+ */
+export interface GenerationStep {
+  id: string;
+  label: string;
+  index: number;
+  total: number;
+}
+
 export interface GenerationSection {
   category: string;
   status: GenerationSectionStatus;
+  step?: GenerationStep | null;
+  subProgress?: { current: number; total: number } | null;
 }
 
 /** Parsed shape of `Edition.generationProgress` — see `prisma/schema.prisma`. */
@@ -166,6 +181,15 @@ export default function GenerationWatcher({
   const total = progress?.totalSections ?? 0;
   const completed = progress?.completedSections ?? 0;
 
+  // Step detail, when the writer supplied any. Only a section still being
+  // written can be on a step, and only one ever carries step detail at a time
+  // (see `soleInFlightSectionIndex`) — so the first match is the one to show.
+  // `step.label` is composed server-side and printed verbatim; nothing here
+  // reconstructs it, so a step id this build has never heard of still renders.
+  const activeStep = progress?.sections?.find(
+    (section) => section.status === "writing" && Boolean(section.step?.label),
+  )?.step;
+
   // A per-section failure surfaces where it actually happened — the article
   // list below shows each "writing…"/"failed" placeholder in place while
   // running, and any piece still missing once the run ends gets a durable
@@ -178,7 +202,14 @@ export default function GenerationWatcher({
     >
       <span className="material-icons text-purple-600 animate-spin">autorenew</span>
       <p className="flex-1">
-        {total > 0 ? (
+        {activeStep ? (
+          <>
+            <span className="font-bold">
+              Step {activeStep.index} of {activeStep.total}: {activeStep.label}
+            </span>{" "}
+            Activity and articles will appear below as they&apos;re created.
+          </>
+        ) : total > 0 ? (
           <>
             Writing… {completed} of {total} sections ready. Activity and
             articles will appear below as they&apos;re created.

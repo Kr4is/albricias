@@ -72,22 +72,42 @@ export interface GithubFetchOptions extends Period {
   username: string;
   /** Personal access token (`GITHUB_TOKEN`). */
   token: string;
+  /**
+   * Called once per event-type section that failed, with a human-readable
+   * reason (e.g. `"Starred repos fetch failed: Bad credentials"`).
+   *
+   * Every section's failure is non-fatal by design (see this function's doc
+   * comment), which used to mean a failing section was only ever a server
+   * console line: a day whose star fetch failed came back as an empty — but
+   * indistinguishable-from-genuinely-empty — result. Callers that surface
+   * warnings to a human (`@/lib/generation/daily`'s per-day `messages`) pass
+   * this so "the fetch was incomplete" is visible rather than silent.
+   * Optional; failures are logged either way.
+   */
+  onWarning?: (message: string) => void;
 }
 
 /**
  * Fetch all relevant GitHub activity for `username` inside `[periodStart,
  * periodEnd)`.
  *
- * Never throws for individual endpoint failures — they are logged and skipped,
- * matching the Python original.
+ * Never throws for individual endpoint failures — they are logged, reported
+ * through `onWarning` when given, and skipped, matching the Python original.
  */
 export async function fetchGithubActivity({
   username,
   token,
   periodStart,
   periodEnd,
+  onWarning,
 }: GithubFetchOptions): Promise<ActivityItem[]> {
   const period: Period = { periodStart, periodEnd };
+  /** One section failed: log it (as always) and tell the caller, if it asked. */
+  const sectionFailed = (what: string, error: unknown): void => {
+    const message = `${what} fetch failed: ${describe(error)}`;
+    console.error(`[github] ${message}`);
+    onWarning?.(message);
+  };
   const startDate = isoDate(periodStart);
   // periodEnd is exclusive; GitHub's `a..b` search range is inclusive.
   const endDate = isoDate(new Date(periodEnd.getTime() - 86_400_000));
@@ -116,7 +136,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] Commits fetch failed: ${describe(error)}`);
+    sectionFailed("Commits", error);
   }
 
   // ---------------------------------------------------------------------
@@ -140,7 +160,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] PRs fetch failed: ${describe(error)}`);
+    sectionFailed("PRs", error);
   }
 
   // ---------------------------------------------------------------------
@@ -164,7 +184,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] PR reviews fetch failed: ${describe(error)}`);
+    sectionFailed("PR reviews", error);
   }
 
   // ---------------------------------------------------------------------
@@ -188,7 +208,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] Issues fetch failed: ${describe(error)}`);
+    sectionFailed("Issues", error);
   }
 
   // ---------------------------------------------------------------------
@@ -224,7 +244,7 @@ export async function fetchGithubActivity({
       }
     }
   } catch (error) {
-    console.error(`[github] Releases fetch failed: ${describe(error)}`);
+    sectionFailed("Releases", error);
   }
 
   // ---------------------------------------------------------------------
@@ -256,7 +276,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] Repos-created fetch failed: ${describe(error)}`);
+    sectionFailed("Repos-created", error);
   }
 
   // ---------------------------------------------------------------------
@@ -288,7 +308,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] Starred repos fetch failed: ${describe(error)}`);
+    sectionFailed("Starred repos", error);
   }
 
   // ---------------------------------------------------------------------
@@ -315,7 +335,7 @@ export async function fetchGithubActivity({
       });
     }
   } catch (error) {
-    console.error(`[github] Gists fetch failed: ${describe(error)}`);
+    sectionFailed("Gists", error);
   }
 
   return activities;

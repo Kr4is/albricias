@@ -254,7 +254,10 @@ export interface FetchGithubRepoSourceOptions {
  * `metadata.hasReadme`/`metadata.hasHomepage` record which sources actually
  * contributed, so the admin UI can tell an article grounded in real
  * documentation (and the maintainers' own site) apart from one written off a
- * one-line description. Never throws for a missing README or homepage — only
+ * one-line description. `metadata.homepage` carries the raw declared URL
+ * alongside them — the deep profile pipeline seeds its docs-URL heuristics
+ * from it (`@/lib/sources/external-context`), which needs the address itself,
+ * not just whether one fetched. Never throws for a missing README or homepage — only
  * for a malformed `repo` argument or a repository that cannot be reached at
  * all (mirroring `fetchCalendarEventSource`, where the optional notes doc is
  * swallowed but the event itself is required).
@@ -318,7 +321,7 @@ export async function fetchGithubRepoSource({
       return {
         text: [capReadme(readme.trim()), topicsLine, websiteSection].filter(Boolean).join("\n\n"),
         sourceType: "github_repo",
-        metadata: { repo, hasReadme: true, hasHomepage: websiteText !== null, topics },
+        metadata: { repo, hasReadme: true, hasHomepage: websiteText !== null, homepage, topics },
         imageUrl,
       };
     }
@@ -331,7 +334,7 @@ export async function fetchGithubRepoSource({
   return {
     text: [repo, description, topicsLine, websiteSection].filter(Boolean).join("\n\n"),
     sourceType: "github_repo",
-    metadata: { repo, hasReadme: false, hasHomepage: websiteText !== null, topics },
+    metadata: { repo, hasReadme: false, hasHomepage: websiteText !== null, homepage, topics },
     imageUrl: ogImage ?? socialCard,
   };
 }

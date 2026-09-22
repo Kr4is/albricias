@@ -44,13 +44,17 @@ model Edition {
   /// back to the old month-based rotation for those.
   layoutVariant Int? @map("layout_variant")
   /// UTC midnight of the last calendar day this edition's daily generation
-  /// job (`processMissedDays` in src/lib/generation/daily.ts) fully
-  /// processed — fetched that day's activity, wrote its dispatch, surfaced
-  /// any new topic candidates. `null` means no day has been processed yet
-  /// (a fresh draft). Advanced only after a day's whole pipeline succeeds,
-  /// so a crash mid-day is simply re-processed next run rather than
-  /// silently skipped — same "state lives on the row, not in process
-  /// memory" convention as generationStatus/generationProgress below.
+  /// job (`processYesterdayIfNeeded` in src/lib/generation/daily.ts) fully
+  /// processed — fetched that day's GitHub activity, persisted it, and
+  /// surfaced any new star/topic candidates (stars-only, zero AI calls in
+  /// the current phase; see that file's header). `null` means no day has
+  /// been processed yet (a fresh draft). Advanced only after a day's whole
+  /// pipeline succeeds, so a crash mid-day is simply re-processed next run
+  /// rather than silently skipped — same "state lives on the row, not in
+  /// process memory" convention as generationStatus/generationProgress
+  /// below. Deliberately never backfilled past a single day: a gap jumps
+  /// this straight to yesterday rather than walking through every missed
+  /// day.
   lastProcessedDay DateTime? @map("last_processed_day")
   /// "running" | "done" — tracks the async "Generate with AI" pipeline
   /// (see runEditionGeneration in src/lib/generation/index.ts) so

@@ -9,11 +9,12 @@
  * this only creates the empty draft.
  *
  * **Daily processing** (`dailyScheduleCron`/`dailyScheduleEnabled`, new):
- * on a fire, finds whichever edition covers the current period and walks
- * it forward day by day (`processMissedDays`, `@/lib/generation/daily`) —
- * fetching that day's activity, writing its dispatch, surfacing anything
- * newly interesting, and — on the period's last day — the ranking and
- * front-page compendium. Defaults to once daily at 04:00 UTC, deliberately
+ * on a fire, finds whichever edition's period contains *yesterday* (not
+ * today — see `runScheduledDailyProcessing`) and processes that day if it
+ * hasn't been already
+ * (`processYesterdayIfNeeded`, `@/lib/generation/daily`) — fetching that
+ * day's GitHub activity and surfacing any new star/topic candidates.
+ * Defaults to once daily at 04:00 UTC, deliberately
  * after most calendar days have already turned over everywhere, so a
  * day's activity is more likely complete before it's processed and the
  * result is ready to review first thing the next morning.
@@ -33,8 +34,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { currentPeriodBounds, getCadence } from "@/lib/cadence";
 import { createDraftEdition } from "@/lib/generation";
-import { processMissedDays } from "@/lib/generation/daily";
-import { resolveAiModel } from "@/lib/ai/provider";
+import { findEditionForDay, processYesterdayIfNeeded, yesterdayUtc } from "@/lib/generation/daily";
 import { prisma } from "@/lib/prisma";
 
 const SCHEDULE_CRON_KEY = "scheduleCron";
@@ -142,29 +142,37 @@ async function runScheduledGeneration(): Promise<void> {
   }
 }
 
-/** One fire of the daily-processing job: catch the currently-open edition up to today (or its period's end). */
+/**
+ * One fire of the daily-processing job: process yesterday for whichever
+ * edition's period actually contains yesterday.
+ *
+ * That lookup (`findEditionForDay`) rather than "the edition for the period
+ * containing today" is the whole subtlety here. On the first day of a period
+ * the two differ: at 04:00 UTC on Apr 1, yesterday is Mar 31, which belongs to
+ * the *March* edition. Asking April's edition to process yesterday correctly
+ * no-ops (Mar 31 is before its `periodStart`, and that clamp is deliberate —
+ * an edition must never ingest the previous period's activity), so under the
+ * old lookup Mar 31 was simply never processed by anything. Routing the day to
+ * its own edition fixes that without touching the clamp.
+ */
 async function runScheduledDailyProcessing(): Promise<void> {
   try {
-    const cadence = await getCadence();
-    const period = currentPeriodBounds(cadence);
-    const edition = await prisma.edition.findUnique({
-      where: { cadence_periodStart: { cadence, periodStart: period.periodStart } },
-    });
+    const yesterday = yesterdayUtc();
+    const edition = await findEditionForDay(yesterday);
     if (!edition) {
       console.log(
-        `[scheduler] No edition exists yet for the current ${cadence} period — nothing to process. It's created by the period-creation schedule.`,
+        `[scheduler] No edition covers ${yesterday.toISOString().slice(0, 10)} — nothing to process. Editions are created by the period-creation schedule.`,
       );
       return;
     }
 
-    const aiModel = await resolveAiModel();
-    const { processedDays, messages } = await processMissedDays(edition, aiModel ?? undefined);
-    if (processedDays.length === 0) {
-      console.log(`[scheduler] Edition ${edition.id}: no unprocessed days — already caught up.`);
+    const { processed, day, messages } = await processYesterdayIfNeeded(edition);
+    if (!processed || !day) {
+      console.log(`[scheduler] Edition ${edition.id}: nothing to process — already caught up.`);
       return;
     }
     console.log(
-      `[scheduler] Edition ${edition.id}: processed ${processedDays.length} day(s) (${processedDays.join(", ")})` +
+      `[scheduler] Edition ${edition.id}: processed day ${day.toISOString().slice(0, 10)}` +
         (messages.length > 0 ? ` with ${messages.length} warning(s).` : "."),
     );
   } catch (error) {

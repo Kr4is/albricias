@@ -307,6 +307,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     githubToken,
     githubUsername,
     blogRssUrl,
+    tavilyApiKey,
     alexandriaApiUrl,
     spotifyToken,
     spotifyClientId,
@@ -335,6 +336,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
     getSetting("integrations.github.token", { encrypted: true }),
     getSetting("integrations.github.username"),
     getSetting("integrations.blog.rssUrl"),
+    getSetting("integrations.tavily.apiKey", { encrypted: true }),
     getSetting("integrations.alexandria.apiUrl"),
     getServiceToken("spotify"),
     getSetting("integrations.spotify.clientId"),
@@ -366,6 +368,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
   const connectionStatus: Record<string, boolean> = {
     github: Boolean(githubToken && githubUsername),
     blog: Boolean(blogRssUrl),
+    tavily: Boolean(tavilyApiKey),
     spotify: Boolean(spotifyToken),
     alexandria: Boolean(alexandriaApiUrl),
     email: Boolean(smtpHost && smtpPort && smtpUser && smtpPass && fromAddress),
@@ -446,6 +449,15 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
           connected={connectionStatus.blog}
         >
           <CategoryFormFields fields={category("blog").fields} values={values} />
+        </Card>
+
+        <Card
+          title={category("tavily").title}
+          description={category("tavily").description}
+          action="/admin/settings/tavily"
+          connected={connectionStatus.tavily}
+        >
+          <CategoryFormFields fields={category("tavily").fields} values={values} />
         </Card>
 
         <Card

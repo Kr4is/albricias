@@ -248,6 +248,16 @@ const GOOGLE_FIELDS: SettingFieldSpec[] = [
   },
 ];
 
+const TAVILY_FIELDS: SettingFieldSpec[] = [
+  {
+    formKey: "apiKey",
+    settingKey: "integrations.tavily.apiKey",
+    label: "Tavily API Key",
+    secret: true,
+    encrypted: true,
+  },
+];
+
 const ALEXANDRIA_FIELDS: SettingFieldSpec[] = [
   {
     formKey: "apiUrl",
@@ -286,6 +296,15 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     fields: GITHUB_FIELDS,
   },
   { id: "blog", title: "Blog", description: "RSS feed used as an activity source.", fields: BLOG_FIELDS },
+  {
+    id: "tavily",
+    title: "Tavily",
+    description:
+      "Optional web search used to find documentation and comparison pages for star-repo profile " +
+      "articles. Unset, that step is skipped gracefully and profiles still generate from GitHub data " +
+      "plus URL-pattern heuristics only. Get a key at https://tavily.com.",
+    fields: TAVILY_FIELDS,
+  },
   {
     id: "email",
     title: "Email / Newsletter",
