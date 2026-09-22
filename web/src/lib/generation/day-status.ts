@@ -11,6 +11,7 @@
  */
 
 import { dayBounds } from "@/lib/cadence";
+import { prisma } from "@/lib/prisma";
 
 /**
  * - `processed` — this day really was processed (evidence, see below).
@@ -86,4 +87,68 @@ export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
  */
 export function canProcessDay(dayStart: Date, today: Date): boolean {
   return dayStart.getTime() < today.getTime();
+}
+
+/**
+ * One square's/entry's colour by {@link DayStatus} — shared by the `edit`
+ * page's `DayStrip` and the admin dashboard's day list so the two can never
+ * disagree about what a status looks like.
+ */
+export const DAY_STRIP_STYLES: Record<DayStatus, string> = {
+  processed: "bg-green-600",
+  skipped: "bg-stone-200 border border-stone-400",
+  today: "bg-blue-600",
+  pending: "bg-stone-300",
+};
+
+/**
+ * Every day of `edition`'s period-to-date (from the period's start through
+ * today, or the period's end, whichever is sooner) with its {@link DayStatus}
+ * — the data `DayStrip` (`.../edit/page.tsx`) renders as small squares, also
+ * consumed by the admin dashboard's day list. Moved here verbatim from
+ * `DayStrip` so both call sites share one query/loop instead of drifting.
+ */
+export async function getEditionDayStatuses(edition: {
+  id: number;
+  periodStart: Date;
+  periodEnd: Date;
+  lastProcessedDay: Date | null;
+}): Promise<{ date: Date; dateStr: string; status: DayStatus }[]> {
+  const periodFirstDay = dayBounds(edition.periodStart).periodStart;
+  const periodLastDay = dayBounds(new Date(edition.periodEnd.getTime() - 1)).periodStart;
+  const today = dayBounds(new Date()).periodStart;
+  const lastDay = today.getTime() < periodLastDay.getTime() ? today : periodLastDay;
+  if (periodFirstDay.getTime() > lastDay.getTime()) return [];
+
+  const days: Date[] = [];
+  for (
+    let cursor = periodFirstDay;
+    cursor.getTime() <= lastDay.getTime();
+    cursor = new Date(cursor.getTime() + 86_400_000)
+  ) {
+    days.push(cursor);
+  }
+
+  // Which days actually hold data — the evidence `computeDayStatus` needs.
+  // One query for the whole period, timestamps only, bucketed in memory: the
+  // alternative is a count per square, and SQLite has no date-truncating
+  // `groupBy` Prisma can drive.
+  const timestamps = await prisma.serviceActivity.findMany({
+    where: { editionId: edition.id, timestamp: { gte: periodFirstDay, lt: edition.periodEnd } },
+    select: { timestamp: true },
+  });
+  const daysWithActivity = new Set(
+    timestamps.map((row) => row.timestamp?.toISOString().slice(0, 10)).filter(Boolean),
+  );
+
+  return days.map((day) => {
+    const dateStr = day.toISOString().slice(0, 10);
+    const status = computeDayStatus({
+      dayStart: day,
+      lastProcessedDay: edition.lastProcessedDay,
+      hasActivity: daysWithActivity.has(dateStr),
+      today,
+    });
+    return { date: day, dateStr, status };
+  });
 }

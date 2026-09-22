@@ -18,8 +18,7 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import Disclosure from "@/components/admin/Disclosure";
 import { prisma } from "@/lib/prisma";
 import { computeMissingGenerationPieces } from "@/lib/generation";
-import { DAY_STATUS_LABELS, type DayStatus, computeDayStatus } from "@/lib/generation/day-status";
-import { dayBounds } from "@/lib/cadence";
+import { DAY_STATUS_LABELS, DAY_STRIP_STYLES, getEditionDayStatuses } from "@/lib/generation/day-status";
 import { ARTICLE_ORDER } from "@/lib/editions";
 import { EDITION_STATUS_DRAFT } from "@/lib/edition-helpers";
 import { readFlash, type FlashMessage, type FlashType } from "@/lib/flash";
@@ -104,19 +103,6 @@ function readTopicCandidates(edition: LoadedEdition): TopicCandidate[] | null {
 }
 
 /**
- * One square's colour in {@link DayStrip}. The status itself comes from
- * `computeDayStatus` (`@/lib/generation/day-status`) — the same function the
- * day view this strip links to uses, deliberately shared so the two can never
- * disagree about whether a day was processed.
- */
-const DAY_STRIP_STYLES: Record<DayStatus, string> = {
-  processed: "bg-green-600",
-  skipped: "bg-stone-200 border border-stone-400",
-  today: "bg-blue-600",
-  pending: "bg-stone-300",
-};
-
-/**
  * Compact navigation aid into the new admin day view (plan
  * `daily-stars-only-bootstrap.md` §4) — one small square per day from the
  * period's start through today (or the period's end, whichever is sooner),
@@ -124,55 +110,22 @@ const DAY_STRIP_STYLES: Record<DayStatus, string> = {
  * just a link and a hover title.
  */
 async function DayStrip({ edition }: { edition: LoadedEdition }) {
-  const periodFirstDay = dayBounds(edition.periodStart).periodStart;
-  const periodLastDay = dayBounds(new Date(edition.periodEnd.getTime() - 1)).periodStart;
-  const today = dayBounds(new Date()).periodStart;
-  const lastDay = today.getTime() < periodLastDay.getTime() ? today : periodLastDay;
-  if (periodFirstDay.getTime() > lastDay.getTime()) return null;
-
-  const days: Date[] = [];
-  for (
-    let cursor = periodFirstDay;
-    cursor.getTime() <= lastDay.getTime();
-    cursor = new Date(cursor.getTime() + 86_400_000)
-  ) {
-    days.push(cursor);
-  }
-
-  // Which days actually hold data — the evidence `computeDayStatus` needs.
-  // One query for the whole period, timestamps only, bucketed in memory: the
-  // alternative is a count per square, and SQLite has no date-truncating
-  // `groupBy` Prisma can drive.
-  const timestamps = await prisma.serviceActivity.findMany({
-    where: { editionId: edition.id, timestamp: { gte: periodFirstDay, lt: edition.periodEnd } },
-    select: { timestamp: true },
-  });
-  const daysWithActivity = new Set(
-    timestamps.map((row) => row.timestamp?.toISOString().slice(0, 10)).filter(Boolean),
-  );
+  const days = await getEditionDayStatuses(edition);
+  if (days.length === 0) return null;
 
   return (
     <div className="mt-3 flex items-center gap-1.5 flex-wrap no-print">
       <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mr-1">
         Days
       </span>
-      {days.map((day) => {
-        const label = day.toISOString().slice(0, 10);
-        const status = computeDayStatus({
-          dayStart: day,
-          lastProcessedDay: edition.lastProcessedDay,
-          hasActivity: daysWithActivity.has(label),
-          today,
-        });
-        return (
-          <a
-            key={label}
-            href={`/admin/editions/${edition.id}/day/${label}`}
-            title={`${label} — ${DAY_STATUS_LABELS[status]}`}
-            className={`w-2.5 h-2.5 shrink-0 ${DAY_STRIP_STYLES[status]} hover:ring-2 hover:ring-offset-1 hover:ring-ink transition-all`}
-          />
-        );
-      })}
+      {days.map(({ dateStr, status }) => (
+        <a
+          key={dateStr}
+          href={`/admin/editions/${edition.id}/day/${dateStr}`}
+          title={`${dateStr} — ${DAY_STATUS_LABELS[status]}`}
+          className={`w-2.5 h-2.5 shrink-0 ${DAY_STRIP_STYLES[status]} hover:ring-2 hover:ring-offset-1 hover:ring-ink transition-all`}
+        />
+      ))}
     </div>
   );
 }

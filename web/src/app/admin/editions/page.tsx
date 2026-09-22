@@ -14,21 +14,28 @@ import Link from "next/link";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import PeriodPickerFields from "@/components/admin/PeriodPickerFields";
+import Disclosure from "@/components/admin/Disclosure";
 import { prisma } from "@/lib/prisma";
 import { getCadence } from "@/lib/cadence";
 import { EDITION_STATUS_DRAFT, EDITION_STATUS_PUBLISHED, periodLabelShort } from "@/lib/edition-helpers";
 import { readFlash } from "@/lib/flash";
 import { getOnboardingStep, isOnboardingCompleted } from "@/app/setup/onboarding";
+import { DAY_STATUS_LABELS, DAY_STRIP_STYLES, getEditionDayStatuses } from "@/lib/generation/day-status";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Editions Dashboard - Admin" };
+
+// DAY_STRIP_STYLES's dark statuses (processed/today) need light text; the
+// light statuses (skipped/pending) need the page's normal dark "ink" text.
+const DAY_BADGE_LIGHT_TEXT: Record<string, boolean> = { processed: true, today: true };
 
 const editionSelect = {
   id: true,
   cadence: true,
   periodStart: true,
   periodEnd: true,
+  lastProcessedDay: true,
   title: true,
   status: true,
   vol: true,
@@ -60,6 +67,14 @@ export default async function EditionsDashboardPage({
   ]);
 
   const now = new Date();
+  const isCurrentPeriod = (e: { periodStart: Date; periodEnd: Date }) =>
+    now.getTime() >= e.periodStart.getTime() && now.getTime() < e.periodEnd.getTime();
+
+  const dayInfoByEdition = new Map(
+    await Promise.all(
+      [...drafts, ...published].map(async (e) => [e.id, await getEditionDayStatuses(e)] as const),
+    ),
+  );
 
   return (
     <NewspaperShell endpoint="admin.editions">
@@ -121,81 +136,97 @@ export default async function EditionsDashboardPage({
           </h3>
 
           {drafts.length > 0 ? (
-            <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {drafts.map((edition) => (
-                <div
-                  key={edition.id}
-                  className="border-2 border-stone-300 hover:border-ink transition-colors bg-white p-6 flex flex-col"
-                >
-                  <a
-                    href={`/admin/editions/${edition.id}/edit`}
-                    className="flex items-start justify-between mb-3"
+            <div className="space-y-3">
+              {drafts.map((edition) => {
+                const dayInfos = dayInfoByEdition.get(edition.id) ?? [];
+                const current = isCurrentPeriod(edition);
+                return (
+                  <Disclosure
+                    key={edition.id}
+                    defaultOpen={current}
+                    summary={
+                      <span className="flex-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 normal-case tracking-normal min-w-0">
+                        <span className="flex items-center gap-3 min-w-0">
+                          <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-amber-600 shrink-0">
+                            {current ? "Draft · Current" : "Draft"}
+                          </span>
+                          <span className="font-headline text-base font-bold text-ink truncate">
+                            {edition.title}
+                          </span>
+                          <span className="font-normal text-stone-400 shrink-0">{edition.vol}</span>
+                        </span>
+                        <span className="font-normal text-stone-400 shrink-0">
+                          {periodLabelShort(edition)} · {edition._count.articles} articles
+                        </span>
+                      </span>
+                    }
                   >
-                    <div>
-                      <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-amber-600 mb-1">
-                        Draft
-                      </p>
-                      <h4 className="font-headline text-xl font-bold leading-tight">
-                        {edition.title}
-                      </h4>
-                      <p className="text-xs font-sans text-stone-500 mt-1">
-                        {edition.vol}
-                      </p>
-                    </div>
-                    <span className="text-2xl font-masthead text-stone-300">
-                      {periodLabelShort(edition)}
-                    </span>
-                  </a>
-
-                  <div className="flex items-center gap-2 text-xs font-sans text-stone-500 mb-4">
-                    <span className="material-icons text-sm">article</span>
-                    {edition._count.articles} articles
-                    {edition._count.serviceActivities > 0 && (
-                      <>
-                        <span className="ml-2 material-icons text-sm">code</span>
-                        {edition._count.serviceActivities} activity events
-                      </>
-                    )}
-                  </div>
-
-                  <div className="mt-auto flex flex-wrap gap-2">
-                    <a
-                      href={`/admin/editions/${edition.id}/preview`}
-                      className="flex-1 text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
-                    >
-                      Preview
-                    </a>
-                    <form
-                      method="POST"
-                      action={`/admin/editions/${edition.id}/publish`}
-                      className="flex-1"
-                      data-loading-submit
-                    >
-                      <button
-                        type="submit"
-                        data-loading-text="Publishing…"
-                        className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <a
+                        href={`/admin/editions/${edition.id}/edit`}
+                        className="flex-1 text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
                       >
-                        Publish
-                      </button>
-                    </form>
-                    {edition.generationStatus !== "running" && (
+                        Edit
+                      </a>
+                      <a
+                        href={`/admin/editions/${edition.id}/preview`}
+                        className="flex-1 text-center px-3 py-2 text-xs font-bold uppercase tracking-widest border border-ink hover:bg-stone-100 transition-colors"
+                      >
+                        Preview
+                      </a>
                       <form
                         method="POST"
-                        action={`/admin/editions/${edition.id}/delete`}
-                        data-confirm="Permanently delete this edition and all its articles?"
+                        action={`/admin/editions/${edition.id}/publish`}
+                        className="flex-1"
+                        data-loading-submit
                       >
                         <button
                           type="submit"
-                          className="px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                          data-loading-text="Publishing…"
+                          className="w-full px-3 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
                         >
-                          Delete
+                          Publish
                         </button>
                       </form>
+                      {edition.generationStatus !== "running" && (
+                        <form
+                          method="POST"
+                          action={`/admin/editions/${edition.id}/delete`}
+                          data-confirm="Permanently delete this edition and all its articles?"
+                        >
+                          <button
+                            type="submit"
+                            className="px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </form>
+                      )}
+                    </div>
+
+                    {dayInfos.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-stone-100">
+                        <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mb-2">
+                          Days ({dayInfos.length})
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                          {dayInfos.map((d) => (
+                            <a
+                              key={d.dateStr}
+                              href={`/admin/editions/${edition.id}/day/${d.dateStr}`}
+                              className={`px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest text-center border border-stone-300 hover:border-ink transition-colors ${DAY_STRIP_STYLES[d.status]} ${DAY_BADGE_LIGHT_TEXT[d.status] ? "text-white" : "text-ink"}`}
+                            >
+                              {d.dateStr}
+                              <br />
+                              {DAY_STATUS_LABELS[d.status]}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                  </div>
-                </div>
-              ))}
+                  </Disclosure>
+                );
+              })}
             </div>
           ) : (
             <p className="text-stone-500 italic font-serif">
@@ -215,73 +246,96 @@ export default async function EditionsDashboardPage({
           </h3>
 
           {published.length > 0 ? (
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {published.map((edition) => (
-                <div
-                  key={edition.id}
-                  className="border border-stone-200 hover:border-ink transition-colors bg-white p-5 flex flex-col"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-green-700 mb-0.5">
-                        Published
-                      </p>
-                      <h4 className="font-headline text-lg font-bold">{edition.title}</h4>
-                      <p className="text-[10px] font-sans text-stone-400 mt-0.5">
-                        {edition.vol}
-                      </p>
-                    </div>
-                  </div>
-                  {edition.publishedAt && (
-                    <p className="text-[10px] font-sans text-stone-400 mb-3">
-                      Published{" "}
-                      {edition.publishedAt.toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "2-digit",
-                        year: "numeric",
-                        timeZone: "UTC",
-                      })}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-1 text-xs font-sans text-stone-500 mb-4">
-                    {edition._count.articles} articles
-                  </div>
-                  <div className="mt-auto flex flex-wrap gap-2">
-                    <a
-                      href={`/edition/${edition.id}`}
-                      className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
-                    >
-                      View
-                    </a>
-                    <a
-                      href={`/admin/editions/${edition.id}/edit`}
-                      className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
-                    >
-                      Edit
-                    </a>
-                    <a
-                      href={`/admin/editions/${edition.id}/distribute`}
-                      className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
-                    >
-                      Distribute
-                    </a>
-                    <form
-                      method="POST"
-                      action={`/admin/editions/${edition.id}/unpublish`}
-                      data-confirm="Unpublish this edition? It stops being visible to readers until you publish it again."
-                      data-loading-submit
-                    >
-                      <button
-                        type="submit"
-                        data-loading-text="Unpublishing…"
-                        className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
+            <div className="space-y-3">
+              {published.map((edition) => {
+                const dayInfos = dayInfoByEdition.get(edition.id) ?? [];
+                const current = isCurrentPeriod(edition);
+                return (
+                  <Disclosure
+                    key={edition.id}
+                    defaultOpen={current}
+                    summary={
+                      <span className="flex-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 normal-case tracking-normal min-w-0">
+                        <span className="flex items-center gap-3 min-w-0">
+                          <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-green-700 shrink-0">
+                            {current ? "Published · Current" : "Published"}
+                          </span>
+                          <span className="font-headline text-base font-bold text-ink truncate">
+                            {edition.title}
+                          </span>
+                          <span className="font-normal text-stone-400 shrink-0">{edition.vol}</span>
+                        </span>
+                        <span className="font-normal text-stone-400 shrink-0">
+                          {edition.publishedAt &&
+                            `Published ${edition.publishedAt.toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "2-digit",
+                              year: "numeric",
+                              timeZone: "UTC",
+                            })} · `}
+                          {edition._count.articles} articles
+                        </span>
+                      </span>
+                    }
+                  >
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <a
+                        href={`/edition/${edition.id}`}
+                        className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
                       >
-                        Unpublish
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ))}
+                        View
+                      </a>
+                      <a
+                        href={`/admin/editions/${edition.id}/edit`}
+                        className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
+                      >
+                        Edit
+                      </a>
+                      <a
+                        href={`/admin/editions/${edition.id}/distribute`}
+                        className="flex-1 text-center px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 hover:border-ink hover:bg-stone-50 transition-colors"
+                      >
+                        Distribute
+                      </a>
+                      <form
+                        method="POST"
+                        action={`/admin/editions/${edition.id}/unpublish`}
+                        data-confirm="Unpublish this edition? It stops being visible to readers until you publish it again."
+                        data-loading-submit
+                      >
+                        <button
+                          type="submit"
+                          data-loading-text="Unpublishing…"
+                          className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest border border-stone-300 text-stone-500 hover:border-red-400 hover:text-red-700 transition-colors"
+                        >
+                          Unpublish
+                        </button>
+                      </form>
+                    </div>
+
+                    {dayInfos.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-stone-100">
+                        <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mb-2">
+                          Days ({dayInfos.length})
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                          {dayInfos.map((d) => (
+                            <a
+                              key={d.dateStr}
+                              href={`/admin/editions/${edition.id}/day/${d.dateStr}`}
+                              className={`px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest text-center border border-stone-300 hover:border-ink transition-colors ${DAY_STRIP_STYLES[d.status]} ${DAY_BADGE_LIGHT_TEXT[d.status] ? "text-white" : "text-ink"}`}
+                            >
+                              {d.dateStr}
+                              <br />
+                              {DAY_STATUS_LABELS[d.status]}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Disclosure>
+                );
+              })}
             </div>
           ) : (
             <p className="text-stone-500 italic font-serif">No published editions yet.</p>
