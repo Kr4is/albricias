@@ -245,6 +245,44 @@ model DayProcessingRun {
   @@map("day_processing_runs")
 }
 
+/// Persisted GitHub facts for one repository, refreshed whenever a day that
+/// starred it is (re)processed — `enrichStarredRepos`
+/// (`src/lib/generation/daily.ts`).
+///
+/// Deliberately keyed by `fullName` ("owner/name") with **no** foreign key to
+/// `ServiceActivity`: the day page matches `ServiceActivity.repo` against this
+/// table by string equality at query time, which avoids touching/backfilling
+/// that (unkeyed, delete-and-reinsert) table at all. The JSON-string columns
+/// mirror the rest of this schema's blob convention (`Edition.githubStats`,
+/// `ServiceActivity.rawJson`) — SQLite has no array/JSON column type here.
+model Repo {
+  id       Int    @id @default(autoincrement())
+  /// "owner/name" — matches `ServiceActivity.repo`.
+  fullName String @unique @map("full_name")
+
+  description      String?
+  stargazersCount  Int? @map("stargazers_count")
+  forksCount       Int? @map("forks_count")
+  openIssuesCount  Int? @map("open_issues_count")
+  subscribersCount Int? @map("subscribers_count")
+  /// SPDX id, or the license's name when it has no SPDX id.
+  license          String?
+  /// JSON `string[]`.
+  topics           String?
+  /// JSON `Array<{ name, bytes, pct }>` — `fetchRepoFacts`' shape, not GitHub's raw byte map.
+  languages        String?
+  /// JSON `{ count, latestTag, latestDate, cadenceDays }`.
+  latestRelease    String? @map("latest_release")
+  /// JSON `number[]` — up to 52 weekly commit counts; absent while GitHub is still computing them (202).
+  weeklyCommits    String? @map("weekly_commits")
+
+  lastEnrichedAt DateTime? @map("last_enriched_at")
+  /// Last enrichment failure, if any — surfaced instead of silently stale figures.
+  enrichError    String?   @map("enrich_error")
+
+  @@map("repos")
+}
+
 /// Persisted OAuth token for an external service (one row per service).
 /// Ported from `app/models/service_token.py`.
 model ServiceToken {

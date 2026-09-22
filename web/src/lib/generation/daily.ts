@@ -48,12 +48,15 @@
  * not through `./index.ts`.
  */
 
+import { Octokit } from "octokit";
+
 import type { Article, Edition } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/config/settings";
 import { dayBounds } from "@/lib/cadence";
 import { describeError, type FlashMessage } from "@/lib/flash";
 import { fetchGithubActivity, type ActivityItem } from "@/lib/sources";
+import { fetchRepoFacts } from "@/lib/sources/github-repo-facts";
 import { computeGithubStats } from "@/lib/github-stats";
 import {
   computeStarCandidates,
@@ -293,6 +296,128 @@ async function fetchDayGithubActivity(
 }
 
 // ---------------------------------------------------------------------------
+// Starred-repo enrichment — persisted GitHub facts for every repo this day
+// starred, refreshed on every (re)process rather than written once.
+// ---------------------------------------------------------------------------
+
+/**
+ * Reserved rate-limit budget. Enrichment stops once GitHub's remaining call
+ * count drops below this, leaving headroom for the thing that actually matters
+ * — the *next* day's activity fetch (8 endpoints, `fetchGithubActivity`).
+ */
+const RATE_LIMIT_FLOOR = 100;
+
+/** `x-ratelimit-remaining` off any Octokit response, or `null` when absent/unparseable. */
+function remainingFrom(headers: Record<string, unknown>): number | null {
+  const value = Number(headers["x-ratelimit-remaining"]);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Fetch and persist GitHub facts for every distinct repo starred in
+ * `[dayStart, dayEnd)`, one `Repo` row per `fullName`.
+ *
+ * Refreshes on every call by design (the plan's explicit tradeoff: more API
+ * calls, more current numbers), so re-processing a day updates figures and
+ * `lastEnrichedAt` rather than inserting a duplicate — `Repo.fullName` is
+ * unique and this upserts on it.
+ *
+ * Failure handling mirrors `fetchGithubActivity`'s degrade-to-warning shape,
+ * per repo: a repo that 404s, is private, or rate-limits records
+ * `enrichError` on its own row (created bare if it didn't exist, so the day
+ * page can say "enrichment failed" rather than "never tried") and pushes a
+ * warning — it never throws, and never stops the repos after it.
+ *
+ * `fetchRepoFacts` swallows *its* sub-fetch failures and returns zeros, which
+ * is why `metadataOk` is checked explicitly: writing "0 stars, 0 forks" as a
+ * fetched fact is exactly the fabrication that flag exists to prevent.
+ */
+export async function enrichStarredRepos(
+  editionId: number,
+  dayStart: Date,
+  dayEnd: Date,
+  messages: FlashMessage[],
+): Promise<void> {
+  const stars = await prisma.serviceActivity.findMany({
+    where: { editionId, eventType: "star", timestamp: { gte: dayStart, lt: dayEnd }, repo: { not: null } },
+    select: { repo: true, rawJson: true },
+    distinct: ["repo"],
+  });
+  // No stars that day means no enrichment targets — return before touching
+  // settings or GitHub at all.
+  if (stars.length === 0) return;
+
+  const token = await getSetting("integrations.github.token", { encrypted: true });
+  if (!token) {
+    messages.push({
+      type: "warning",
+      text: `Repo enrichment skipped for ${dayLabelOf(dayStart)} — no GitHub token configured.`,
+    });
+    return;
+  }
+
+  const octokit = new Octokit({ auth: token });
+  // Seeded from each response's headers rather than a `rateLimit.get()` call —
+  // same information, one fewer request. `null` until the first response
+  // arrives, which is why the floor check below can't run on the first repo.
+  let remaining: number | null = null;
+
+  for (const [index, star] of stars.entries()) {
+    const fullName = star.repo ?? "";
+    if (remaining !== null && remaining < RATE_LIMIT_FLOOR) {
+      messages.push({
+        type: "warning",
+        text: `GitHub rate limit low (${remaining} calls left) — stopped enriching repos for ${dayLabelOf(dayStart)}, ${stars.length - index} repo(s) skipped this run.`,
+      });
+      return;
+    }
+
+    const [owner, name] = fullName.split("/");
+    if (!owner || !name) continue;
+
+    try {
+      const topicsResponse = await octokit.rest.repos.getAllTopics({ owner, repo: name });
+      remaining = remainingFrom(topicsResponse.headers) ?? remaining;
+
+      const facts = await fetchRepoFacts(owner, name, { token });
+      if (!facts.metadataOk) throw new Error("GitHub returned no repository metadata");
+
+      // The star row's `rawJson` already holds the repo object GitHub returned
+      // when it was starred — the description is free from it, so no extra
+      // `repos.get` just for one string.
+      const description =
+        (JSON.parse(star.rawJson ?? "{}") as { description?: string | null }).description ?? null;
+
+      const data = {
+        description,
+        stargazersCount: facts.stars,
+        forksCount: facts.forks,
+        openIssuesCount: facts.openIssues,
+        subscribersCount: facts.watchers,
+        license: facts.license,
+        topics: JSON.stringify(topicsResponse.data.names),
+        languages: JSON.stringify(facts.languages),
+        latestRelease: JSON.stringify(facts.releases),
+        weeklyCommits: facts.weeklyCommits ? JSON.stringify(facts.weeklyCommits) : null,
+        lastEnrichedAt: new Date(),
+        enrichError: null,
+      };
+      await prisma.repo.upsert({ where: { fullName }, create: { fullName, ...data }, update: data });
+    } catch (error) {
+      const enrichError = describeError(error);
+      messages.push({ type: "warning", text: `Repo enrichment warning (${fullName}): ${enrichError}` });
+      // `lastEnrichedAt` deliberately untouched on failure: whatever figures
+      // the row already holds keep their real age instead of looking fresh.
+      await prisma.repo.upsert({
+        where: { fullName },
+        create: { fullName, enrichError },
+        update: { enrichError },
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The day's dispatch — one short piece per day. Direct `runNewspaperAgent()`
 // call, no outline→sections workflow: a day's activity is already smaller
 // than what a single chronicle category call handled before, which is the
@@ -384,6 +509,18 @@ export async function processOneDay(
   const dayLabel = dayLabelOf(dayStart);
 
   await fetchDayGithubActivity(editionId, dayStart, dayEnd, messages);
+
+  // Enrich this day's starred repos, now that its star rows are written.
+  // Called here rather than from `runTrackedDayProcessing` so both entry
+  // points get it — the admin "process this day now" route (which runs this
+  // inside its tracked run, so it keeps that run's concurrency safety) *and*
+  // the automatic `processYesterdayIfNeeded` path, which calls this function
+  // directly. Degrades to warnings like every other step in here.
+  try {
+    await enrichStarredRepos(editionId, dayStart, dayEnd, messages);
+  } catch (error) {
+    messages.push({ type: "warning", text: `Repo enrichment warning (${dayLabel}): ${describeError(error)}` });
+  }
 
   // Recompute the GitHub stats bank cumulatively-to-date — `computeTopicCandidates`
   // reads it, and it already just filters by `editionId` with no date bound,

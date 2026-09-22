@@ -3,10 +3,11 @@
  * (`@/lib/generation/daily`, plan `daily-stars-only-bootstrap.md` §4) — a
  * read-mostly window onto a single UTC calendar day: its real status (see
  * {@link computeDayStatus} — "processed" is an evidence-based claim here, not
- * a cursor comparison), the repos starred that day (`ServiceActivity` rows,
- * `eventType: "star"`, no separate "day record" table), and a manual "process
- * this day now" action, offered for every day already over so a skipped day
- * always has a way back.
+ * a cursor comparison), everything the day's fetch stored (`ServiceActivity`
+ * rows of every event type, grouped per type, no separate "day record" table —
+ * with starred repos annotated by their persisted `Repo` facts when a run has
+ * enriched them), and a manual "process this day now" action, offered for
+ * every day already over so a skipped day always has a way back.
  *
  * `date` is `YYYY-MM-DD`, always read as a UTC calendar day — the same
  * `[dayStart, dayEnd)` convention `dayBounds()` (`@/lib/cadence`) already
@@ -92,6 +93,34 @@ function parseStarDescription(rawJson: string | null): string | null {
   }
 }
 
+/** `Repo`'s JSON columns are free-form text as far as the DB is concerned — a bad/absent value is just "no facts". */
+function parseJsonField<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+type RepoLanguage = { name?: unknown };
+type RepoReleases = { count?: unknown; latestTag?: unknown };
+
+/**
+ * Non-star event types shown on this page, in render order. Everything the
+ * daily fetch stores (`@/lib/sources/github`) except `star`, which keeps its
+ * own enriched section below.
+ */
+const ACTIVITY_SECTIONS: ReadonlyArray<{ type: string; title: string }> = [
+  { type: "commit", title: "Commits" },
+  { type: "pr", title: "Pull Requests" },
+  { type: "review", title: "Reviews" },
+  { type: "issue", title: "Issues" },
+  { type: "release", title: "Releases" },
+  { type: "repo_created", title: "New Repos" },
+  { type: "gist", title: "Gists" },
+];
+
 export async function generateMetadata({
   params,
 }: PageProps<"/admin/editions/[editionId]/day/[date]">): Promise<Metadata> {
@@ -119,15 +148,12 @@ export default async function EditionDayPage({
 
   const today = dayBounds(new Date()).periodStart;
 
-  const [stars, activityCount, run] = await Promise.all([
-    prisma.serviceActivity.findMany({
-      where: { editionId: edition.id, eventType: "star", timestamp: { gte: dayStart, lt: dayEnd } },
-      orderBy: { timestamp: "asc" },
-    }),
-    // Any event type, not just stars — a day can have been processed and have
+  const [activity, run] = await Promise.all([
+    // Every event type, not just stars — a day can have been processed and have
     // commits but no stars, and that is still evidence it ran.
-    prisma.serviceActivity.count({
+    prisma.serviceActivity.findMany({
       where: { editionId: edition.id, timestamp: { gte: dayStart, lt: dayEnd } },
+      orderBy: { timestamp: "asc" },
     }),
     // The recorded attempt, if any — what turns "no evidence" into the honest
     // "running" / "failed" / "ran, found nothing" the strip and grid show too.
@@ -137,11 +163,26 @@ export default async function EditionDayPage({
     }),
   ]);
 
+  const stars = activity.filter((item) => item.eventType === "star");
+
+  // Persisted facts for this day's starred repos (`Repo`, written by
+  // `enrichStarredRepos`), joined by name rather than FK — one query for the
+  // whole list, and simply absent for a repo no run has enriched yet.
+  const starRepoNames = [...new Set(stars.map((star) => star.repo).filter((n): n is string => !!n))];
+  const repoFacts = starRepoNames.length
+    ? new Map(
+        (await prisma.repo.findMany({ where: { fullName: { in: starRepoNames } } })).map((repo) => [
+          repo.fullName,
+          repo,
+        ]),
+      )
+    : new Map<string, Awaited<ReturnType<typeof prisma.repo.findMany>>[number]>();
+
   const day = foldDayRun(
     computeDayStatus({
       dayStart,
       lastProcessedDay: edition.lastProcessedDay,
-      hasActivity: activityCount > 0,
+      hasActivity: activity.length > 0,
       today,
     }),
     run ?? undefined,
@@ -265,7 +306,35 @@ export default async function EditionDayPage({
           {stars.length > 0 ? (
             <ul className="space-y-3">
               {stars.map((star) => {
-                const description = parseStarDescription(star.rawJson);
+                const facts = star.repo ? (repoFacts.get(star.repo) ?? null) : null;
+                const description = facts?.description ?? parseStarDescription(star.rawJson);
+                const topLanguage = parseJsonField<RepoLanguage[]>(facts?.languages ?? null)?.[0]
+                  ?.name;
+                const releases = parseJsonField<RepoReleases>(facts?.latestRelease ?? null);
+                // Three states: never enriched (no row), never *once* enriched
+                // (row, error, no `lastEnrichedAt`), and enriched-then-failed —
+                // which still has real, if ageing, figures worth showing.
+                const neverEnriched = facts !== null && !facts.lastEnrichedAt;
+                const topics = neverEnriched
+                  ? []
+                  : (parseJsonField<string[]>(facts?.topics ?? null) ?? []);
+                const chips: string[] = facts?.lastEnrichedAt
+                  ? [
+                      facts.stargazersCount !== null
+                        ? `★ ${facts.stargazersCount.toLocaleString("en-US")}`
+                        : null,
+                      facts.forksCount !== null
+                        ? `⑂ ${facts.forksCount.toLocaleString("en-US")}`
+                        : null,
+                      typeof topLanguage === "string" ? topLanguage : null,
+                      facts.license,
+                      typeof releases?.count === "number" &&
+                      releases.count > 0 &&
+                      typeof releases.latestTag === "string"
+                        ? releases.latestTag
+                        : null,
+                    ].filter((chip): chip is string => !!chip)
+                  : [];
                 return (
                   <li
                     key={star.id}
@@ -289,6 +358,32 @@ export default async function EditionDayPage({
                       {description && (
                         <p className="text-xs font-sans text-stone-500 mt-0.5">{description}</p>
                       )}
+                      {chips.length > 0 && (
+                        <p className="text-xs font-sans text-stone-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                          {chips.map((chip) => (
+                            <span key={chip}>{chip}</span>
+                          ))}
+                        </p>
+                      )}
+                      {topics.length > 0 && (
+                        <p className="mt-2 flex flex-wrap gap-1">
+                          {topics.slice(0, 8).map((topic) => (
+                            <span
+                              key={topic}
+                              className="text-[10px] font-sans text-stone-600 bg-stone-100 px-1.5 py-0.5"
+                            >
+                              {topic}
+                            </span>
+                          ))}
+                        </p>
+                      )}
+                      {facts?.enrichError && (
+                        <p className="text-[10px] font-sans text-red-700 mt-1.5">
+                          {neverEnriched
+                            ? `Never enriched: ${facts.enrichError}`
+                            : `Figures may be stale — last refresh failed: ${facts.enrichError}`}
+                        </p>
+                      )}
                     </div>
                     <p className="text-[10px] font-sans text-stone-400 shrink-0 whitespace-nowrap">
                       {star.timestamp ? star.timestamp.toISOString() : "—"}
@@ -304,6 +399,51 @@ export default async function EditionDayPage({
             </div>
           )}
         </div>
+
+        {/* Everything else the day's fetch stored — one section per event type
+            that actually has rows, empty types omitted entirely. */}
+        {ACTIVITY_SECTIONS.map(({ type, title }) => {
+          const items = activity.filter((item) => item.eventType === type);
+          if (items.length === 0) return null;
+          return (
+            <div key={type} className="mt-10">
+              <h3 className="font-headline text-lg font-bold border-b border-ink pb-2 mb-5">
+                {title} ({items.length})
+              </h3>
+              <ul className="space-y-3">
+                {items.map((item) => (
+                  <li
+                    key={item.id}
+                    className="border border-stone-200 bg-white p-4 flex items-start justify-between gap-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-headline font-bold text-base">
+                        {item.url ? (
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:underline"
+                          >
+                            {item.title}
+                          </a>
+                        ) : (
+                          item.title
+                        )}
+                      </p>
+                      {item.repo && (
+                        <p className="text-xs font-sans text-stone-500 mt-0.5">{item.repo}</p>
+                      )}
+                    </div>
+                    <p className="text-[10px] font-sans text-stone-400 shrink-0 whitespace-nowrap">
+                      {item.timestamp ? item.timestamp.toISOString() : "—"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </NewspaperShell>
   );
