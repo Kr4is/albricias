@@ -18,7 +18,7 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import Disclosure from "@/components/admin/Disclosure";
 import { prisma } from "@/lib/prisma";
 import { computeMissingGenerationPieces } from "@/lib/generation";
-import { DAY_STATUS_LABELS, DAY_STRIP_STYLES, getEditionDayStatuses } from "@/lib/generation/day-status";
+import { DAY_STRIP_STYLES, dayStatusLabel, getEditionDayStatuses } from "@/lib/generation/day-status";
 import { ARTICLE_ORDER } from "@/lib/editions";
 import { EDITION_STATUS_DRAFT } from "@/lib/edition-helpers";
 import { readFlash, type FlashMessage, type FlashType } from "@/lib/flash";
@@ -104,10 +104,12 @@ function readTopicCandidates(edition: LoadedEdition): TopicCandidate[] | null {
 
 /**
  * Compact navigation aid into the new admin day view (plan
- * `daily-stars-only-bootstrap.md` §4) — one small square per day from the
- * period's start through today (or the period's end, whichever is sooner),
- * colored by {@link DayStatus}. Not the main feature: no per-day detail here,
- * just a link and a hover title.
+ * `daily-stars-only-bootstrap.md` §4) — one small square per day of the
+ * edition's whole period (including days still to come), colored by
+ * {@link DayStatus}. Not the main feature: no per-day detail here, just a
+ * link and a hover title — the dashboard's `DayGrid`
+ * (`/admin/editions/page.tsx`) is the bigger, clickable version of the same
+ * shared day list.
  */
 async function DayStrip({ edition }: { edition: LoadedEdition }) {
   const days = await getEditionDayStatuses(edition);
@@ -118,12 +120,12 @@ async function DayStrip({ edition }: { edition: LoadedEdition }) {
       <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mr-1">
         Days
       </span>
-      {days.map(({ dateStr, status }) => (
+      {days.map((day) => (
         <a
-          key={dateStr}
-          href={`/admin/editions/${edition.id}/day/${dateStr}`}
-          title={`${dateStr} — ${DAY_STATUS_LABELS[status]}`}
-          className={`w-2.5 h-2.5 shrink-0 ${DAY_STRIP_STYLES[status]} hover:ring-2 hover:ring-offset-1 hover:ring-ink transition-all`}
+          key={day.dateStr}
+          href={`/admin/editions/${edition.id}/day/${day.dateStr}`}
+          title={`${day.dateStr} — ${dayStatusLabel(day)}${day.error ? `: ${day.error}` : ""}`}
+          className={`w-2.5 h-2.5 shrink-0 ${DAY_STRIP_STYLES[day.status]} hover:ring-2 hover:ring-offset-1 hover:ring-ink transition-all`}
         />
       ))}
     </div>
@@ -1000,7 +1002,7 @@ export default async function EditionEditPage({
             )}
 
             {githubStats && (
-              <Disclosure summary="GitHub Stats (35 metrics)">
+              <Disclosure summary="GitHub Stats (35 metrics)" persistKey={`stats-${edition.id}`}>
                 <p className="font-sans text-[11px] text-stone-400 mb-3 mt-3">
                   Starring a metric here is a personal note only — it doesn&apos;t affect what gets
                   published. (Unmarking a topic candidate above does hide its article.)

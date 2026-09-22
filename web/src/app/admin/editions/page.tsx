@@ -16,19 +16,92 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import PeriodPickerFields from "@/components/admin/PeriodPickerFields";
 import Disclosure from "@/components/admin/Disclosure";
 import { prisma } from "@/lib/prisma";
-import { getCadence } from "@/lib/cadence";
+import { getCadence, dayBounds } from "@/lib/cadence";
 import { EDITION_STATUS_DRAFT, EDITION_STATUS_PUBLISHED, periodLabelShort } from "@/lib/edition-helpers";
 import { readFlash } from "@/lib/flash";
 import { getOnboardingStep, isOnboardingCompleted } from "@/app/setup/onboarding";
-import { DAY_STATUS_LABELS, DAY_STRIP_STYLES, getEditionDayStatuses } from "@/lib/generation/day-status";
+import {
+  canProcessDay,
+  DAY_STRIP_STYLES,
+  dayStatusLabel,
+  getEditionDayStatuses,
+  type DayInfo,
+} from "@/lib/generation/day-status";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Editions Dashboard - Admin" };
 
-// DAY_STRIP_STYLES's dark statuses (processed/today) need light text; the
-// light statuses (skipped/pending) need the page's normal dark "ink" text.
-const DAY_BADGE_LIGHT_TEXT: Record<string, boolean> = { processed: true, today: true };
+// DAY_STRIP_STYLES's dark statuses need light text on top; skipped/pending
+// carry their own text color already.
+const DAY_BADGE_LIGHT_TEXT: Record<string, boolean> = {
+  processed: true,
+  processing: true,
+  failed: true,
+  today: true,
+};
+
+/**
+ * One edition's full-period day grid — every day from the period's start
+ * through its end, including days still to come, each a clickable entry into
+ * the day view plus (for a day already over) a one-click reprocess button
+ * mirroring the day page's own "Process this day now" action, so fixing a
+ * `skipped` day never requires leaving the dashboard.
+ */
+function DayGrid({ editionId, dayInfos }: { editionId: number; dayInfos: DayInfo[] }) {
+  if (dayInfos.length === 0) return null;
+  const today = dayBounds(new Date()).periodStart;
+
+  return (
+    <div className="mt-4 pt-3 border-t border-stone-100">
+      <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mb-3">
+        Days ({dayInfos.length})
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        {dayInfos.map((d) => {
+          const weekday = d.date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+          // A day already running has nothing useful to offer a second click —
+          // the route's claim would reject it anyway.
+          const reprocessable = canProcessDay(d.date, today) && d.status !== "processing";
+          return (
+            <div
+              key={d.dateStr}
+              title={d.error ? `Last run failed: ${d.error}` : undefined}
+              className={`border border-stone-300 hover:border-ink transition-colors flex flex-col ${DAY_STRIP_STYLES[d.status]} ${DAY_BADGE_LIGHT_TEXT[d.status] ? "text-white" : ""}`}
+            >
+              <a href={`/admin/editions/${editionId}/day/${d.dateStr}`} className="px-3 py-2.5">
+                <p className="text-[10px] font-sans font-bold uppercase tracking-widest opacity-75">
+                  {weekday}
+                </p>
+                <p className="text-sm font-sans font-bold">{d.dateStr}</p>
+                <p className="text-[10px] font-sans uppercase tracking-widest mt-1 opacity-90">
+                  {dayStatusLabel(d)}
+                </p>
+              </a>
+              {reprocessable && (
+                <form
+                  method="POST"
+                  action={`/admin/editions/${editionId}/day/${d.dateStr}/process`}
+                  data-loading-submit
+                  className="border-t border-black/10 mt-auto"
+                >
+                  <button
+                    type="submit"
+                    data-loading-text="Processing…"
+                    className="w-full px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest hover:bg-black/5 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <span className="material-icons text-xs">refresh</span>
+                    {d.status === "processed" ? "Re-process" : "Process"}
+                  </button>
+                </form>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const editionSelect = {
   id: true,
@@ -144,6 +217,7 @@ export default async function EditionsDashboardPage({
                   <Disclosure
                     key={edition.id}
                     defaultOpen={current}
+                    persistKey={`edition-${edition.id}`}
                     summary={
                       <span className="flex-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 normal-case tracking-normal min-w-0">
                         <span className="flex items-center gap-3 min-w-0">
@@ -204,26 +278,7 @@ export default async function EditionsDashboardPage({
                       )}
                     </div>
 
-                    {dayInfos.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-stone-100">
-                        <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mb-2">
-                          Days ({dayInfos.length})
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                          {dayInfos.map((d) => (
-                            <a
-                              key={d.dateStr}
-                              href={`/admin/editions/${edition.id}/day/${d.dateStr}`}
-                              className={`px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest text-center border border-stone-300 hover:border-ink transition-colors ${DAY_STRIP_STYLES[d.status]} ${DAY_BADGE_LIGHT_TEXT[d.status] ? "text-white" : "text-ink"}`}
-                            >
-                              {d.dateStr}
-                              <br />
-                              {DAY_STATUS_LABELS[d.status]}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <DayGrid editionId={edition.id} dayInfos={dayInfos} />
                   </Disclosure>
                 );
               })}
@@ -254,6 +309,7 @@ export default async function EditionsDashboardPage({
                   <Disclosure
                     key={edition.id}
                     defaultOpen={current}
+                    persistKey={`edition-${edition.id}`}
                     summary={
                       <span className="flex-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 normal-case tracking-normal min-w-0">
                         <span className="flex items-center gap-3 min-w-0">
@@ -313,26 +369,7 @@ export default async function EditionsDashboardPage({
                       </form>
                     </div>
 
-                    {dayInfos.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-stone-100">
-                        <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-400 mb-2">
-                          Days ({dayInfos.length})
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                          {dayInfos.map((d) => (
-                            <a
-                              key={d.dateStr}
-                              href={`/admin/editions/${edition.id}/day/${d.dateStr}`}
-                              className={`px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest text-center border border-stone-300 hover:border-ink transition-colors ${DAY_STRIP_STYLES[d.status]} ${DAY_BADGE_LIGHT_TEXT[d.status] ? "text-white" : "text-ink"}`}
-                            >
-                              {d.dateStr}
-                              <br />
-                              {DAY_STATUS_LABELS[d.status]}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <DayGrid editionId={edition.id} dayInfos={dayInfos} />
                   </Disclosure>
                 );
               })}

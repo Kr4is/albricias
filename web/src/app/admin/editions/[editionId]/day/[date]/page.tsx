@@ -23,10 +23,11 @@ import FlashBanner from "@/components/admin/FlashBanner";
 import { prisma } from "@/lib/prisma";
 import { dayBounds } from "@/lib/cadence";
 import {
-  DAY_STATUS_LABELS,
   type DayStatus,
   canProcessDay,
   computeDayStatus,
+  dayStatusLabel,
+  foldDayRun,
 } from "@/lib/generation/day-status";
 import { readFlash } from "@/lib/flash";
 
@@ -60,6 +61,8 @@ function dateLabel(date: Date): string {
 
 const STATUS_STYLES: Record<DayStatus, string> = {
   processed: "text-green-700 bg-green-50",
+  processing: "text-amber-800 bg-amber-100 animate-pulse",
+  failed: "text-red-700 bg-red-100",
   skipped: "text-stone-600 bg-stone-100",
   today: "text-blue-700 bg-blue-50",
   pending: "text-amber-600 bg-amber-50",
@@ -116,7 +119,7 @@ export default async function EditionDayPage({
 
   const today = dayBounds(new Date()).periodStart;
 
-  const [stars, activityCount] = await Promise.all([
+  const [stars, activityCount, run] = await Promise.all([
     prisma.serviceActivity.findMany({
       where: { editionId: edition.id, eventType: "star", timestamp: { gte: dayStart, lt: dayEnd } },
       orderBy: { timestamp: "asc" },
@@ -126,15 +129,26 @@ export default async function EditionDayPage({
     prisma.serviceActivity.count({
       where: { editionId: edition.id, timestamp: { gte: dayStart, lt: dayEnd } },
     }),
+    // The recorded attempt, if any — what turns "no evidence" into the honest
+    // "running" / "failed" / "ran, found nothing" the strip and grid show too.
+    prisma.dayProcessingRun.findUnique({
+      where: { editionId_date: { editionId: edition.id, date: dayStart } },
+      select: { status: true, hadActivity: true, error: true },
+    }),
   ]);
 
-  const status = computeDayStatus({
-    dayStart,
-    lastProcessedDay: edition.lastProcessedDay,
-    hasActivity: activityCount > 0,
-    today,
-  });
-  const canProcess = canProcessDay(dayStart, today);
+  const day = foldDayRun(
+    computeDayStatus({
+      dayStart,
+      lastProcessedDay: edition.lastProcessedDay,
+      hasActivity: activityCount > 0,
+      today,
+    }),
+    run ?? undefined,
+  );
+  const status = day.status;
+  // Already running: a second click would just be rejected by the route's claim.
+  const canProcess = canProcessDay(dayStart, today) && status !== "processing";
 
   // Prev/next navigation, clamped to the edition's own period so this page
   // never links to a day outside `[periodStart, periodEnd)`.
@@ -176,10 +190,21 @@ export default async function EditionDayPage({
               <p
                 className={`inline-block text-[10px] font-sans font-bold uppercase tracking-widest mb-1 px-1.5 py-0.5 ${STATUS_STYLES[status]}`}
               >
-                {DAY_STATUS_LABELS[status]}
+                {dayStatusLabel(day)}
               </p>
               <h2 className="font-masthead text-4xl">{dayLabel}</h2>
               <p className="text-xs font-sans text-stone-500 mt-1">{edition.title}</p>
+              {status === "processing" && (
+                <p className="text-xs font-sans text-stone-500 mt-2 max-w-xl">
+                  This day is being fetched in the background right now. It keeps going whether or
+                  not you stay on this page — reload in a moment to see the result.
+                </p>
+              )}
+              {status === "failed" && (
+                <p className="text-xs font-sans text-red-700 mt-2 max-w-xl">
+                  The last run failed{day.error ? `: ${day.error}` : "."} Try processing it again.
+                </p>
+              )}
               {status === "skipped" && (
                 <p className="text-xs font-sans text-stone-500 mt-2 max-w-xl">
                   Daily processing only ever covers the most recently completed day and never

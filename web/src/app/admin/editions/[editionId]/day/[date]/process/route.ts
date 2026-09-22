@@ -1,11 +1,14 @@
 /**
  * Manual "Process this day now" action for the admin day view
- * (`../page.tsx`) — calls `processOneDay` (`@/lib/generation/daily`)
- * directly for one specific `[dayStart, dayEnd)`, for iterating without
- * waiting on the daily cron. Sync (no `after()`): this is GitHub-only,
- * zero-LLM work for a single day, unlike the whole-edition "Generate"
- * pipeline those async routes defer — see `.../topic-candidates/[candidateId]/regenerate/route.ts`
- * for why that one needs deferral and this one doesn't.
+ * (`../page.tsx`) — one specific `[dayStart, dayEnd)`, for iterating without
+ * waiting on the daily cron.
+ *
+ * Fire-and-forget, the same shape as `admin/editions/generate/route.ts`: the
+ * day's `DayProcessingRun` row is claimed synchronously *before* the response,
+ * then `after()` runs the actual 15-30s of GitHub calls. That ordering is what
+ * makes a reload immediately after clicking show `"processing"` rather than
+ * looking like nothing happened — and what stops a reload from aborting the
+ * work, which is exactly what the old blocking `await processOneDay(...)` did.
  *
  * Deliberately never touches `Edition.lastProcessedDay` — `processOneDay`'s
  * own doc comment calls this route out by name as the reason it doesn't
@@ -13,17 +16,17 @@
  * processed or not) must never rewind or corrupt what the daily cron
  * (`processYesterdayIfNeeded`) considers caught up.
  *
- * Which also means nothing here locks a day against being processed twice, so
- * the write it drives has to be idempotent rather than additive — it is; see
- * `replaceDayActivities` in `@/lib/generation/daily`. Repeat clicks replace
- * that day's rows instead of stacking duplicates.
+ * The claim does lock a day against a second concurrent run of itself, but the
+ * write it drives is idempotent anyway — see `replaceDayActivities` in
+ * `@/lib/generation/daily`. Repeat clicks replace that day's rows instead of
+ * stacking duplicates.
  */
 
-import { type NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dayBounds } from "@/lib/cadence";
-import { processOneDay } from "@/lib/generation/daily";
-import { describeError, flashRedirect, type FlashMessage } from "@/lib/flash";
+import { claimDayProcessingRun, runTrackedDayProcessing } from "@/lib/generation/daily";
+import { flashRedirect } from "@/lib/flash";
 
 /** `YYYY-MM-DD` -> UTC midnight `Date`, rejecting anything not a real calendar date. */
 function parseDateParam(raw: string): Date | null {
@@ -80,15 +83,22 @@ export async function POST(
     ]);
   }
 
-  const messages: FlashMessage[] = [];
-  try {
-    await processOneDay(edition.id, dayStart, dayEnd, messages);
-  } catch (error) {
-    messages.push({ type: "error", text: `Processing failed: ${describeError(error)}` });
-  }
-  if (messages.length === 0) {
-    messages.push({ type: "success", text: `Processed ${date}.` });
+  const claim = await claimDayProcessingRun(edition.id, dayStart);
+  if (!claim.claimed) {
+    return flashRedirect(request, dayPath, [
+      { type: "info", text: `${date} is already being processed.` },
+    ]);
   }
 
-  return flashRedirect(request, dayPath, messages);
+  // `runTrackedDayProcessing` settles the run row itself and never throws, so
+  // there is nothing to catch here — and nothing listening either, the
+  // response below is already gone by the time this runs.
+  after(() => runTrackedDayProcessing(edition.id, dayStart, dayEnd, claim.runId!));
+
+  return flashRedirect(request, dayPath, [
+    {
+      type: "info",
+      text: `Processing ${date} — this keeps running in the background; reload to see it finish.`,
+    },
+  ]);
 }

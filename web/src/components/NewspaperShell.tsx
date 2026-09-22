@@ -110,6 +110,28 @@ export default function NewspaperShell({
               tick();
               setInterval(tick, 1000);
             });
+
+            // Remember every persistable <details> (Disclosure, data-persist-key
+            // set) open/closed across full page reloads — native <details>
+            // forgets its \`open\` state on every navigation, which otherwise
+            // loses e.g. which admin-dashboard row was expanded the moment a
+            // form on the page (like "process this day") submits and reloads
+            // it. The \`toggle\` event on <details> doesn't bubble, so this
+            // listens on the capturing phase to catch it via delegation anyway.
+            document.addEventListener('toggle', function (event) {
+              var el = event.target;
+              if (!(el instanceof HTMLDetailsElement) || !el.dataset.persistKey) return;
+              try {
+                localStorage.setItem('disclosure:' + el.dataset.persistKey, el.open ? '1' : '0');
+              } catch (e) {}
+            }, true);
+            document.querySelectorAll('details[data-persist-key]').forEach(function (el) {
+              try {
+                var saved = localStorage.getItem('disclosure:' + el.dataset.persistKey);
+                if (saved === '1') el.open = true;
+                else if (saved === '0') el.open = false;
+              } catch (e) {}
+            });
           `,
         }}
       />

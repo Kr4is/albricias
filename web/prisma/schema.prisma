@@ -137,6 +137,7 @@ model Edition {
 
   articles          Article[]
   serviceActivities ServiceActivity[]
+  dayProcessingRuns DayProcessingRun[]
 
   @@unique([cadence, periodStart], map: "uq_edition_cadence_period_start")
   @@index([status])
@@ -209,6 +210,39 @@ model ServiceActivity {
   @@index([editionId])
   @@index([source])
   @@map("service_activities")
+}
+
+/// One attempt at processing one UTC calendar day of an edition — the record
+/// of the *attempt*, not of its evidence. `ServiceActivity` rows only show
+/// what a day found; without this table a day with genuinely zero GitHub
+/// activity is indistinguishable from a day nobody ever processed.
+///
+/// One row per `(editionId, date)`, claimed atomically by
+/// `claimDayProcessingRun` (`src/lib/generation/daily.ts`) — the unique
+/// constraint is what makes several days processable concurrently without a
+/// shared lock, and what stops the same day being started twice. A row stuck
+/// at `"running"` (server killed mid-run) is reclaimable after a staleness
+/// window rather than blocking that day forever.
+model DayProcessingRun {
+  id        Int @id @default(autoincrement())
+  editionId Int @map("edition_id")
+
+  /// UTC midnight of the day this run is for.
+  date DateTime
+  /// "running" | "done" | "failed".
+  status     String
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  /// Set on "done" — did this run find any real GitHub activity for the day?
+  /// `false` is the honest "processed, and there was nothing" state.
+  hadActivity Boolean? @map("had_activity")
+  /// Set on "failed" — the thrown error's message.
+  error String?
+
+  edition Edition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@unique([editionId, date])
+  @@map("day_processing_runs")
 }
 
 /// Persisted OAuth token for an external service (one row per service).

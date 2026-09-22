@@ -123,6 +123,7 @@ function Card({
 }) {
   return (
     <Disclosure
+      persistKey={action}
       summary={
         <span className="flex items-center gap-2">
           <span>{title}</span>

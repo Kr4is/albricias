@@ -388,10 +388,20 @@ export async function processOneDay(
   // Recompute the GitHub stats bank cumulatively-to-date — `computeTopicCandidates`
   // reads it, and it already just filters by `editionId` with no date bound,
   // so re-running it daily against the growing row set needs no rework.
+  //
+  // The write goes through `$transaction` because days now process
+  // concurrently (see {@link claimDayProcessingRun}) and this is a
+  // whole-JSON-column overwrite: SQLite serializes transactions, so two days
+  // finishing at once queue instead of interleaving. `computeGithubStats`
+  // stays outside it deliberately — it does a network language fetch, and
+  // holding the write lock across that would trip Prisma's transaction
+  // timeout.
   try {
     const stats = await computeGithubStats(editionId);
     if (stats) {
-      await prisma.edition.update({ where: { id: editionId }, data: { githubStats: JSON.stringify(stats) } });
+      await prisma.$transaction(async (tx) => {
+        await tx.edition.update({ where: { id: editionId }, data: { githubStats: JSON.stringify(stats) } });
+      });
     }
   } catch (error) {
     messages.push({ type: "warning", text: `GitHub stats warning (${dayLabel}): ${describeError(error)}` });
@@ -404,17 +414,25 @@ export async function processOneDay(
   // stays even though this phase only fetches GitHub: it scores the stats
   // bank, so with no blog/Spotify/Alexandria rows it simply finds less —
   // nothing to special-case, and it keeps the list ready for the AI phase.
+  //
+  // The read-merge-write is one `$transaction` — this is the genuine
+  // lost-update hazard now that days run concurrently: two days each reading
+  // the stored list, merging their own candidates into it and writing it back
+  // would silently drop whichever wrote first. The scoring runs before the
+  // transaction opens (it only reads `ServiceActivity`, and it is the slow
+  // part) so the lock covers just the read-merge-write.
   try {
-    const before = await prisma.edition.findUnique({ where: { id: editionId }, select: { topicCandidates: true } });
-    const existing = parseStoredTopicCandidates(before?.topicCandidates);
     const [topicCandidates, starCandidates] = await Promise.all([
       computeTopicCandidates(editionId),
       computeStarCandidates(editionId, { since: dayStart }),
     ]);
     const fresh = [...(topicCandidates ?? []), ...starCandidates];
     if (fresh.length > 0) {
-      const merged = mergeTopicCandidates(existing, fresh);
-      await prisma.edition.update({ where: { id: editionId }, data: { topicCandidates: JSON.stringify(merged) } });
+      await prisma.$transaction(async (tx) => {
+        const before = await tx.edition.findUnique({ where: { id: editionId }, select: { topicCandidates: true } });
+        const merged = mergeTopicCandidates(parseStoredTopicCandidates(before?.topicCandidates), fresh);
+        await tx.edition.update({ where: { id: editionId }, data: { topicCandidates: JSON.stringify(merged) } });
+      });
     }
   } catch (error) {
     messages.push({ type: "warning", text: `Topic candidate warning (${dayLabel}): ${describeError(error)}` });
@@ -435,6 +453,101 @@ export async function processOneDay(
   // function and on `processYesterdayIfNeeded`). The last-day branch also
   // needs its `isLastDay` flag back — it was
   // `dayEnd >= edition.periodEnd` at the call site.
+}
+
+// ---------------------------------------------------------------------------
+// Per-day run tracking — the record of an *attempt*, unlike `ServiceActivity`
+// rows, which only record what an attempt found. Backs the fire-and-forget
+// day-process route: the claim happens synchronously before the response, the
+// work runs in `after()`.
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a `"running"` row is believed before it's treated as abandoned.
+ * A day takes 15-30s; anything past this is a run whose process died (server
+ * restart mid-`after()`), and blocking that day forever would be worse than
+ * the rare double-run this risks.
+ */
+const STALE_RUN_MS = 10 * 60 * 1000;
+
+/**
+ * Claim this edition/day pair for processing, or report that it's already
+ * running.
+ *
+ * Same never-read-then-write shape as {@link beginDailyProcessing}, scoped to
+ * one day instead of the whole edition: a conditional `updateMany` reclaims
+ * any row that isn't a live run (finished, failed, or stale), and `count`
+ * names the winner when two requests arrive together. `count === 0` means
+ * either no row exists yet — the `create` below — or a live run holds the
+ * day, which the create's unique-constraint conflict tells apart.
+ *
+ * Different days claim different rows, so nothing here serializes across
+ * days; only same-day double-clicks are rejected.
+ */
+export async function claimDayProcessingRun(
+  editionId: number,
+  date: Date,
+): Promise<{ claimed: boolean; runId?: number }> {
+  const { count } = await prisma.dayProcessingRun.updateMany({
+    where: {
+      editionId,
+      date,
+      OR: [{ status: { not: "running" } }, { startedAt: { lt: new Date(Date.now() - STALE_RUN_MS) } }],
+    },
+    data: { status: "running", startedAt: new Date(), finishedAt: null, error: null, hadActivity: null },
+  });
+  if (count > 0) {
+    const reclaimed = await prisma.dayProcessingRun.findUnique({
+      where: { editionId_date: { editionId, date } },
+      select: { id: true },
+    });
+    if (reclaimed) return { claimed: true, runId: reclaimed.id };
+  }
+
+  try {
+    const created = await prisma.dayProcessingRun.create({ data: { editionId, date, status: "running" } });
+    return { claimed: true, runId: created.id };
+  } catch (error) {
+    // P2002 = the `(editionId, date)` unique index: a live run already owns
+    // this day (the `updateMany` above declined to reclaim it).
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      return { claimed: false };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Run one day's processing and always settle its {@link claimDayProcessingRun}
+ * row — the `after()` half of the day-process route.
+ *
+ * The `finally`-style settle is the point: a run that never writes `"done"` or
+ * `"failed"` leaves the day showing `"processing"` forever, and the next click
+ * can't reclaim it until the staleness window passes. Errors are logged and
+ * swallowed rather than rethrown — nothing is listening (the response was sent
+ * long ago), and the failure is already durable on the row.
+ */
+export async function runTrackedDayProcessing(
+  editionId: number,
+  dayStart: Date,
+  dayEnd: Date,
+  runId: number,
+): Promise<void> {
+  const messages: FlashMessage[] = [];
+  try {
+    await processOneDay(editionId, dayStart, dayEnd, messages);
+    const hadActivity = (await countDayActivities(editionId, dayStart, dayEnd)) > 0;
+    await prisma.dayProcessingRun.update({
+      where: { id: runId },
+      data: { status: "done", finishedAt: new Date(), hadActivity },
+    });
+  } catch (error) {
+    console.error(`Day processing failed (edition ${editionId}, ${dayLabelOf(dayStart)}):`, error);
+    await prisma.dayProcessingRun.update({
+      where: { id: runId },
+      data: { status: "failed", finishedAt: new Date(), error: describeError(error) },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
