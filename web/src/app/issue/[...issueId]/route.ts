@@ -9,7 +9,8 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { publicOrigin } from "@/lib/request-origin";
 
 export function GET(request: NextRequest) {
-  return NextResponse.redirect(new URL("/archive", request.url), 301);
+  return NextResponse.redirect(new URL("/archive", publicOrigin(request)), 301);
 }

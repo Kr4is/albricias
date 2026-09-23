@@ -24,6 +24,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { hasAdminPassword } from "@/lib/config/admin-auth";
+import { publicOrigin } from "@/lib/request-origin";
 
 export async function proxy(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -31,11 +32,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const origin = publicOrigin(request);
+
   if (!(await hasAdminPassword())) {
-    return NextResponse.redirect(new URL("/setup", request.url));
+    return NextResponse.redirect(new URL("/setup", origin));
   }
 
-  const loginUrl = new URL("/login", request.url);
+  const loginUrl = new URL("/login", origin);
   loginUrl.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
   return NextResponse.redirect(loginUrl);
 }

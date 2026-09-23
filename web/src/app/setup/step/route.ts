@@ -24,6 +24,7 @@ import { hasAdminPassword } from "@/lib/config/admin-auth";
 import { ONBOARDING_CATEGORIES } from "@/app/admin/settings/field-specs";
 import { saveFields } from "@/app/admin/settings/save-fields";
 import { markOnboardingCompleted, setOnboardingStep } from "../onboarding";
+import { publicOrigin } from "@/lib/request-origin";
 
 function clampStep(raw: string | null): number {
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
@@ -32,8 +33,10 @@ function clampStep(raw: string | null): number {
 }
 
 export async function POST(request: NextRequest) {
+  const origin = publicOrigin(request);
+
   if (!(await hasAdminPassword())) {
-    return NextResponse.redirect(new URL("/setup", request.url), 303);
+    return NextResponse.redirect(new URL("/setup", origin), 303);
   }
 
   const form = await request.formData();
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   if (intent === "finish") {
     await markOnboardingCompleted();
-    return NextResponse.redirect(new URL("/admin/editions", request.url), 303);
+    return NextResponse.redirect(new URL("/admin/editions", origin), 303);
   }
 
   if (intent === "save") {
@@ -53,11 +56,11 @@ export async function POST(request: NextRequest) {
   const next = stepIndex + 1;
   if (next > ONBOARDING_CATEGORIES.length) {
     await markOnboardingCompleted();
-    return NextResponse.redirect(new URL("/admin/editions", request.url), 303);
+    return NextResponse.redirect(new URL("/admin/editions", origin), 303);
   }
 
   await setOnboardingStep(next);
-  const url = new URL("/setup", request.url);
+  const url = new URL("/setup", origin);
   url.searchParams.set("step", String(next));
   return NextResponse.redirect(url, 303);
 }

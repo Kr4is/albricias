@@ -10,6 +10,7 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { publicOrigin } from "@/lib/request-origin";
 
 export type FlashType = "success" | "error" | "warning" | "info";
 
@@ -45,9 +46,11 @@ function withFlash(url: URL, messages: FlashMessage[]): URL {
 }
 
 /**
- * Redirect to `path` (resolved against `request`) carrying `messages` as
- * flash query params. Uses 303 so the browser re-issues the follow-up as GET,
- * matching the rest of this codebase's POST-then-redirect routes.
+ * Redirect to `path` (resolved against the request's public origin — see
+ * {@link publicOrigin}, not necessarily `request.url`'s own origin) carrying
+ * `messages` as flash query params. Uses 303 so the browser re-issues the
+ * follow-up as GET, matching the rest of this codebase's POST-then-redirect
+ * routes.
  */
 export function flashRedirect(
   request: NextRequest,
@@ -55,7 +58,7 @@ export function flashRedirect(
   messages: FlashMessage[],
   status = 303,
 ): NextResponse {
-  const url = withFlash(new URL(path, request.url), messages);
+  const url = withFlash(new URL(path, publicOrigin(request)), messages);
   return NextResponse.redirect(url, status);
 }
 

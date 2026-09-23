@@ -24,19 +24,22 @@ import {
 import { hasAdminPassword, setAdminPassword } from "@/lib/config/admin-auth";
 import { setSetting } from "@/lib/config/settings";
 import { setOnboardingStep } from "@/app/setup/onboarding";
+import { publicOrigin } from "@/lib/request-origin";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export async function POST(request: NextRequest) {
+  const origin = publicOrigin(request);
+
   if (await hasAdminPassword()) {
-    return NextResponse.redirect(new URL("/login", request.url), 303);
+    return NextResponse.redirect(new URL("/login", origin), 303);
   }
 
   const form = await request.formData();
   const password = String(form.get("password") ?? "");
   const confirm = String(form.get("confirm") ?? "");
 
-  const back = new URL("/setup", request.url);
+  const back = new URL("/setup", origin);
 
   if (password.length < MIN_PASSWORD_LENGTH) {
     back.searchParams.set("error", "short");
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
   await setSetting("auth.sessionSecret", sessionSecret, { encrypted: true });
   await setOnboardingStep(1);
 
-  const response = NextResponse.redirect(new URL("/setup?step=1", request.url), 303);
+  const response = NextResponse.redirect(new URL("/setup?step=1", origin), 303);
   response.cookies.set(SESSION_COOKIE_NAME, await createSessionToken(), {
     ...SESSION_COOKIE_OPTIONS,
     maxAge: SESSION_MAX_AGE,

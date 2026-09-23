@@ -20,6 +20,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { describeError, flashRedirect } from "@/lib/flash";
 import { sendMail } from "@/lib/mail";
+import { publicOrigin } from "@/lib/request-origin";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REDIRECT_PATH = "/newsletter/subscribe";
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (shouldEmail) {
-    const origin = new URL(request.url).origin;
+    const origin = publicOrigin(request);
     const confirmUrl = `${origin}/newsletter/confirm/${confirmToken}`;
     try {
       await sendMail({

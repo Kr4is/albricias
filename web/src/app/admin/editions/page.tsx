@@ -11,6 +11,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import Script from "next/script";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import PeriodPickerFields from "@/components/admin/PeriodPickerFields";
@@ -468,9 +469,15 @@ export default async function EditionsDashboardPage({
         </div>
       </div>
 
-      <script
+      <Script
+        id="editions-dashboard-generate-modal"
+        strategy="afterInteractive"
         // Plain vanilla-JS modal toggle, matching the Jinja original's inline
-        // onclick handlers — no client component needed for this.
+        // onclick handlers — no client component needed for this. `next/script`
+        // (not a raw `<script>`) so it survives a client-side refresh — this
+        // page's `DayProcessingWatcher` now triggers `router.refresh()` calls,
+        // and a raw `<script>` errors on that (see `NewspaperShell.tsx`'s own
+        // comment on its form-intercept script for the same reasoning).
         dangerouslySetInnerHTML={{
           __html: `
             document.querySelectorAll('[data-open-generate-modal]').forEach(function (btn) {
