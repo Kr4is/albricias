@@ -71,6 +71,18 @@ export function computeDayStatus({ dayStart, lastProcessedDay, hasActivity, toda
   return "skipped";
 }
 
+/**
+ * How long a `"running"` `DayProcessingRun` row is believed before it's
+ * treated as abandoned. A day takes 15-30s; anything past this is a run whose
+ * process died (server restart mid-`after()`).
+ *
+ * Lives here rather than in `./daily.ts` (whose `claimDayProcessingRun` is the
+ * other user, and imports it from here) purely for weight: this module is
+ * imported by admin pages and the live SSE route, and `daily.ts` drags in
+ * Octokit and the Mastra agents.
+ */
+export const STALE_RUN_MS = 10 * 60 * 1000;
+
 export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   processed: "Processed",
   processing: "Processing…",
@@ -89,6 +101,12 @@ export interface DayInfo {
   hadActivity?: boolean;
   /** Only on `failed`. */
   error?: string;
+  /**
+   * Only on `processing`: the run has been `"running"` past
+   * {@link STALE_RUN_MS}, so it's almost certainly abandoned and the admin
+   * views should offer a retry (which `claimDayProcessingRun` will reclaim).
+   */
+  stale?: boolean;
 }
 
 /** The run row shape {@link foldDayRun} needs — a `DayProcessingRun`, narrowed. */
@@ -96,6 +114,8 @@ export interface DayRunRow {
   status: string;
   hadActivity: boolean | null;
   error: string | null;
+  /** Optional only so a caller that doesn't select it still type-checks; without it a running day is never reported {@link DayInfo.stale}. */
+  startedAt?: Date | null;
 }
 
 /**
@@ -110,7 +130,12 @@ export interface DayRunRow {
  */
 export function foldDayRun(base: DayStatus, run: DayRunRow | undefined): Omit<DayInfo, "date" | "dateStr"> {
   if (!run) return { status: base };
-  if (run.status === "running") return { status: "processing" };
+  if (run.status === "running") {
+    return {
+      status: "processing",
+      stale: run.startedAt ? Date.now() - run.startedAt.getTime() > STALE_RUN_MS : false,
+    };
+  }
   if (run.status === "failed") return { status: "failed", error: run.error ?? undefined };
   return { status: "processed", hadActivity: run.hadActivity ?? undefined };
 }
@@ -196,7 +221,7 @@ export async function getEditionDayStatuses(edition: {
     // indexed lookup for the whole edition, bucketed by date like the above.
     prisma.dayProcessingRun.findMany({
       where: { editionId: edition.id },
-      select: { date: true, status: true, hadActivity: true, error: true },
+      select: { date: true, status: true, hadActivity: true, error: true, startedAt: true },
     }),
   ]);
   const daysWithActivity = new Set(

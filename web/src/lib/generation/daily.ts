@@ -72,6 +72,9 @@ import {
 } from "@/mastra/agents";
 import { summariseGroup } from "@/mastra/workflows";
 import type { ActivityInput } from "@/mastra/schemas";
+// Reclaiming a stale run and reporting a day as stale in the admin UI are the
+// same rule; one definition, in the lighter of the two modules.
+import { STALE_RUN_MS } from "./day-status";
 import type { GenerationProgress } from "./index";
 import { DEFAULT_AUTHOR } from "./index";
 
@@ -598,14 +601,6 @@ export async function processOneDay(
 // day-process route: the claim happens synchronously before the response, the
 // work runs in `after()`.
 // ---------------------------------------------------------------------------
-
-/**
- * How long a `"running"` row is believed before it's treated as abandoned.
- * A day takes 15-30s; anything past this is a run whose process died (server
- * restart mid-`after()`), and blocking that day forever would be worse than
- * the rare double-run this risks.
- */
-const STALE_RUN_MS = 10 * 60 * 1000;
 
 /**
  * Claim this edition/day pair for processing, or report that it's already

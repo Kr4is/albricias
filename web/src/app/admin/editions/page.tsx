@@ -15,6 +15,7 @@ import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
 import PeriodPickerFields from "@/components/admin/PeriodPickerFields";
 import Disclosure from "@/components/admin/Disclosure";
+import DayProcessingWatcher from "@/components/admin/DayProcessingWatcher";
 import { prisma } from "@/lib/prisma";
 import { getCadence, dayBounds } from "@/lib/cadence";
 import { EDITION_STATUS_DRAFT, EDITION_STATUS_PUBLISHED, periodLabelShort } from "@/lib/edition-helpers";
@@ -61,8 +62,10 @@ function DayGrid({ editionId, dayInfos }: { editionId: number; dayInfos: DayInfo
         {dayInfos.map((d) => {
           const weekday = d.date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
           // A day already running has nothing useful to offer a second click —
-          // the route's claim would reject it anyway.
-          const reprocessable = canProcessDay(d.date, today) && d.status !== "processing";
+          // the route's claim would reject it anyway. Unless it's stale: that
+          // run is abandoned, and `claimDayProcessingRun` will reclaim it.
+          const reprocessable =
+            canProcessDay(d.date, today) && (d.status !== "processing" || !!d.stale);
           return (
             <div
               key={d.dateStr}
@@ -76,6 +79,7 @@ function DayGrid({ editionId, dayInfos }: { editionId: number; dayInfos: DayInfo
                 <p className="text-sm font-sans font-bold">{d.dateStr}</p>
                 <p className="text-[10px] font-sans uppercase tracking-widest mt-1 opacity-90">
                   {dayStatusLabel(d)}
+                  {d.stale && " (stuck?)"}
                 </p>
               </a>
               {reprocessable && (
@@ -91,7 +95,11 @@ function DayGrid({ editionId, dayInfos }: { editionId: number; dayInfos: DayInfo
                     className="w-full px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest hover:bg-black/5 transition-colors flex items-center justify-center gap-1"
                   >
                     <span className="material-icons text-xs">refresh</span>
-                    {d.status === "processed" ? "Re-process" : "Process"}
+                    {d.status === "processing"
+                      ? "Retry (stuck?)"
+                      : d.status === "processed"
+                        ? "Re-process"
+                        : "Process"}
                   </button>
                 </form>
               )}
@@ -149,8 +157,15 @@ export default async function EditionsDashboardPage({
     ),
   );
 
+  // Every day currently mid-run, across every edition on the page — one
+  // watcher for the lot, not one per edition.
+  const processingDays = [...dayInfoByEdition].flatMap(([id, infos]) =>
+    infos.filter((d) => d.status === "processing").map((d) => ({ editionId: id, dateStr: d.dateStr })),
+  );
+
   return (
     <NewspaperShell endpoint="admin.editions">
+      <DayProcessingWatcher days={processingDays} />
       <div className="pb-12 fade-in">
         {/* Page Header */}
         <div className="border-b-4 border-double border-ink pb-6 mb-10">

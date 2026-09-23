@@ -21,6 +21,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
 import FlashBanner from "@/components/admin/FlashBanner";
+import DayProcessingWatcher from "@/components/admin/DayProcessingWatcher";
 import { prisma } from "@/lib/prisma";
 import { dayBounds } from "@/lib/cadence";
 import {
@@ -159,7 +160,7 @@ export default async function EditionDayPage({
     // "running" / "failed" / "ran, found nothing" the strip and grid show too.
     prisma.dayProcessingRun.findUnique({
       where: { editionId_date: { editionId: edition.id, date: dayStart } },
-      select: { status: true, hadActivity: true, error: true },
+      select: { status: true, hadActivity: true, error: true, startedAt: true },
     }),
   ]);
 
@@ -188,8 +189,9 @@ export default async function EditionDayPage({
     run ?? undefined,
   );
   const status = day.status;
-  // Already running: a second click would just be rejected by the route's claim.
-  const canProcess = canProcessDay(dayStart, today) && status !== "processing";
+  // Already running: a second click would just be rejected by the route's
+  // claim — unless the run is stale, in which case the claim reclaims it.
+  const canProcess = canProcessDay(dayStart, today) && (status !== "processing" || !!day.stale);
 
   // Prev/next navigation, clamped to the edition's own period so this page
   // never links to a day outside `[periodStart, periodEnd)`.
@@ -210,6 +212,11 @@ export default async function EditionDayPage({
 
   return (
     <NewspaperShell endpoint="admin.edition_edit">
+      <DayProcessingWatcher
+        days={
+          status === "processing" ? [{ editionId: edition.id, dateStr: dateLabel(dayStart) }] : []
+        }
+      />
       <div className="pb-16 fade-in">
         <div className="flex items-center gap-2 text-xs font-sans text-stone-500 mb-6 flex-wrap">
           <Link href="/admin/editions" className="hover:underline">
@@ -232,13 +239,15 @@ export default async function EditionDayPage({
                 className={`inline-block text-[10px] font-sans font-bold uppercase tracking-widest mb-1 px-1.5 py-0.5 ${STATUS_STYLES[status]}`}
               >
                 {dayStatusLabel(day)}
+                {day.stale && " (stuck?)"}
               </p>
               <h2 className="font-masthead text-4xl">{dayLabel}</h2>
               <p className="text-xs font-sans text-stone-500 mt-1">{edition.title}</p>
               {status === "processing" && (
                 <p className="text-xs font-sans text-stone-500 mt-2 max-w-xl">
-                  This day is being fetched in the background right now. It keeps going whether or
-                  not you stay on this page — reload in a moment to see the result.
+                  {day.stale
+                    ? "This run started a long time ago and has not finished — it was most likely abandoned by a server restart. Retry it with the button on the right."
+                    : "This day is being fetched in the background right now. It keeps going whether or not you stay on this page — the status updates itself when it finishes."}
                 </p>
               )}
               {status === "failed" && (
@@ -267,7 +276,11 @@ export default async function EditionDayPage({
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
                   >
                     <span className="material-icons text-sm">play_arrow</span>{" "}
-                    {status === "processed" ? "Re-process this day" : "Process this day now"}
+                    {status === "processing"
+                      ? "Retry (stuck?)"
+                      : status === "processed"
+                        ? "Re-process this day"
+                        : "Process this day now"}
                   </button>
                 </form>
               )}
