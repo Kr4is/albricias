@@ -75,6 +75,7 @@ import type { ActivityInput } from "@/mastra/schemas";
 // Reclaiming a stale run and reporting a day as stale in the admin UI are the
 // same rule; one definition, in the lighter of the two modules.
 import { STALE_RUN_MS } from "./day-status";
+import { runTrackedDayPostGeneration } from "./day-post-trigger";
 import type { GenerationProgress } from "./index";
 import { DEFAULT_AUTHOR } from "./index";
 
@@ -673,6 +674,19 @@ export async function runTrackedDayProcessing(
       where: { id: runId },
       data: { status: "done", finishedAt: new Date(), hadActivity },
     });
+    // The day's post, chained on *after* the activity run is settled `"done"` —
+    // it is a separate, much longer (6-11 minutes of LLM calls) fallible step
+    // tracked on its own `postStatus` column, so it must not hold this run's
+    // status open while it writes. Both its guards live inside it: a day that
+    // already has a post, or that had no activity at all, is a silent no-op, so
+    // re-processing a day is not a re-generation. It never throws — it settles
+    // `postStatus` itself, exactly as this function settles `status`.
+    //
+    // Awaited rather than floated: this whole function already runs inside the
+    // caller's `after()` block, long after the HTTP response was sent, and an
+    // un-awaited promise here would be an unhandled rejection with no run row
+    // ever settled.
+    await runTrackedDayPostGeneration(editionId, dayStart);
   } catch (error) {
     console.error(`Day processing failed (edition ${editionId}, ${dayLabelOf(dayStart)}):`, error);
     await prisma.dayProcessingRun.update({

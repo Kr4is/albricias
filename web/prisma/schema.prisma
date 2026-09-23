@@ -159,6 +159,16 @@ model Article {
   order    Int     @default(0)
   /// Optional dateline. Stored as a DateTime; only the date part is meaningful.
   date DateTime?
+  /// UTC midnight of the calendar day this article is *the post for* — set only
+  /// by the `day-post` workflow (`@/mastra/workflows/day-post`), `null` on every
+  /// other article, including the whole-edition pieces that predate it. Distinct
+  /// from `date` above, which is a free-form dateline any article may carry: this
+  /// one is a key, and the `(editionId, dayDate)` unique index below is what makes
+  /// "a day has at most one post" a database fact rather than a convention —
+  /// re-generating a day replaces its post instead of adding a second one.
+  /// SQLite treats NULLs as distinct in a unique index, so any number of articles
+  /// may keep `dayDate = null`.
+  dayDate DateTime? @map("day_date")
 
   // Media — image/audio stored locally; video is always a URL.
   image String?
@@ -182,11 +192,40 @@ model Article {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  edition Edition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  edition      Edition              @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  repoMentions ArticleRepoMention[]
 
+  @@unique([editionId, dayDate])
   @@index([editionId])
   @@index([editionId, order])
   @@map("articles")
+}
+
+/// Which repositories one article actually talks about — written by
+/// `assemble-day-post` (`@/mastra/workflows/day-post`) from the repos its
+/// assembled sections reference.
+///
+/// Exists so "have we covered this repo before?" is an indexed lookup on
+/// `repoFullName` instead of a scan of every prior article's markdown, which is
+/// what `research-day` asks on every run. Deliberately a join table rather than a
+/// JSON array on `Article` (the convention elsewhere in this schema): the query
+/// goes *from* a repo *to* the articles, which a JSON blob cannot index.
+///
+/// Like `Repo`, keyed by the `"owner/name"` string with no FK to `Repo` — a
+/// mention is a record of what an article said, and must survive the repo row
+/// being absent or never enriched.
+model ArticleRepoMention {
+  id        Int @id @default(autoincrement())
+  articleId Int @map("article_id")
+
+  /// "owner/name" — matches `Repo.fullName` / `ServiceActivity.repo`.
+  repoFullName String @map("repo_full_name")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, repoFullName])
+  @@index([repoFullName])
+  @@map("article_repo_mentions")
 }
 
 /// Raw external service event stored before AI summarisation.
@@ -238,6 +277,26 @@ model DayProcessingRun {
   hadActivity Boolean? @map("had_activity")
   /// Set on "failed" — the thrown error's message.
   error String?
+
+  /// "pending" | "running" | "done" | "failed" — the day's *post generation*
+  /// (`@/mastra/workflows/day-post`), deliberately separate from `status` above,
+  /// which stays about the activity fetch/enrichment. They are different fallible
+  /// steps with different retry semantics: a day whose activity fetch succeeded
+  /// but whose post failed should say exactly that. `null` for a run that never
+  /// attempted a post.
+  postStatus String? @map("post_status")
+  /// JSON, nullable — live per-section progress while `postStatus === "running"`,
+  /// same `{ totalSections, completedSections, sections: [...] }` shape (and
+  /// plain-`String`-column convention) as `Edition.generationProgress`.
+  postProgress String? @map("post_progress")
+  /// Last time the post run wrote anything — set on every `postStatus:
+  /// "running"` write (`runTrackedDayPostGeneration`), so a `"running"` row
+  /// older than `STALE_RUN_MS` is one whose process died. A *heartbeat* rather
+  /// than a start time on purpose: `startedAt` above belongs to the activity
+  /// phase, and a post run legitimately takes 6-11 minutes — longer than the
+  /// staleness window — so timing it from its start alone would report every
+  /// healthy long run as stuck.
+  postHeartbeatAt DateTime? @map("post_heartbeat_at")
 
   edition Edition @relation(fields: [editionId], references: [id], onDelete: Cascade)
 

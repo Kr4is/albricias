@@ -2,7 +2,9 @@
  * Shows how a profile article's outline→sections generation actually went
  * (`@/mastra/workflows/profile`) — the outline, then one box per section in
  * the order they were actually written, colour-coded by status, each with
- * its own "Retry this section" button. Only ever rendered when
+ * its own "Retry this section" button — except on a `day-post` trace, whose
+ * sections the profile-only retry route cannot regenerate in the right voice.
+ * Only ever rendered when
  * `Article.sourceData.generationTrace` is present (the edit page checks),
  * so every other article type's edit page is unaffected.
  *
@@ -58,6 +60,13 @@ export default function GenerationTraceGraph({
   trace: GenerationTrace;
 }) {
   const outlineDuration = duration(trace.outline.startedAt, trace.outline.endedAt);
+  // The retry route regenerates through the *profile* workflow only
+  // (`regenerateProfileSection`), so offering it on a day post would silently
+  // rewrite the section in the single-repo-deep-dive voice. Until a day-post
+  // section retry exists, point at the whole-post regenerate instead.
+  // Absent `workflowId` = a trace written before the field existed, which can
+  // only be a profile one.
+  const canRetrySection = trace.workflowId !== "day-post";
 
   return (
     <div className="border border-dashed border-stone-300 p-5">
@@ -115,20 +124,28 @@ export default function GenerationTraceGraph({
                 {section.status === "failed" && section.error && (
                   <p className="text-[10px] font-sans text-red-700 mt-1">{section.error}</p>
                 )}
-                <form
-                  id={formId}
-                  method="POST"
-                  action={`/admin/editions/${editionId}/articles/${articleId}/sections/${section.index}/regenerate`}
-                  data-loading-submit
-                />
-                <button
-                  type="submit"
-                  form={formId}
-                  data-loading-text="Retrying…"
-                  className="mt-2 w-full px-2 py-1.5 text-[9px] font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
-                >
-                  Retry this section
-                </button>
+                {canRetrySection ? (
+                  <>
+                    <form
+                      id={formId}
+                      method="POST"
+                      action={`/admin/editions/${editionId}/articles/${articleId}/sections/${section.index}/regenerate`}
+                      data-loading-submit
+                    />
+                    <button
+                      type="submit"
+                      form={formId}
+                      data-loading-text="Retrying…"
+                      className="mt-2 w-full px-2 py-1.5 text-[9px] font-bold font-sans uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors"
+                    >
+                      Retry this section
+                    </button>
+                  </>
+                ) : (
+                  <p className="mt-2 text-[9px] font-sans text-stone-500 leading-snug">
+                    Use &ldquo;Regenerate post&rdquo; above to rewrite this post.
+                  </p>
+                )}
               </div>
             </div>
           );

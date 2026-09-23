@@ -47,8 +47,23 @@ export {
   splitSourceIntoChunks,
 } from "./profile";
 
+export {
+  type DayPostResult,
+  type DayPostWorkflowInput,
+  DAY_SECTION_CONCURRENCY,
+  DAY_TREND_WINDOW_DAYS,
+  buildDayOutlinePrompt,
+  buildDaySectionPrompt,
+  collectRepoMentions,
+  dayPostResultSchema,
+  dayPostWorkflow,
+  matchSectionRepo,
+  renderDayTrendText,
+} from "./day-post";
+
 import { assistedGenerationWorkflow } from "./assisted";
 import { chronicleWorkflow } from "./chronicle";
+import { dayPostWorkflow } from "./day-post";
 import { profileWorkflow } from "./profile";
 
 /** Registered on the Mastra instance in `src/mastra/index.ts`. */
@@ -56,4 +71,5 @@ export const workflows = {
   chronicle: chronicleWorkflow,
   "assisted-generation": assistedGenerationWorkflow,
   "profile-deep-dive": profileWorkflow,
+  "day-post": dayPostWorkflow,
 };

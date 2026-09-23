@@ -1349,6 +1349,17 @@ export async function beginArticleSectionRetry(
   if (!section) {
     return { ok: false, reason: `No section ${sectionIndex} found in this article's generation trace.` };
   }
+  // `finishArticleSectionRetry` only knows `regenerateProfileSection`, which
+  // always writes in the profile workflow's single-repo-deep-dive voice. A day
+  // post shares the trace *shape* but not the voice, so retrying one section of
+  // it here would quietly produce a paragraph that doesn't belong. The graph
+  // hides the button for these; this covers a stale tab or a direct POST.
+  if (trace.success && trace.data.workflowId === "day-post") {
+    return {
+      ok: false,
+      reason: "Sections of a day post can't be retried individually — use “Regenerate post” on the day page.",
+    };
+  }
   return beginSinglePieceRetry(editionId, `${article.title} — ${section.heading}`);
 }
 

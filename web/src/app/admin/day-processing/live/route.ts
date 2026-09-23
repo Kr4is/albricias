@@ -9,7 +9,9 @@
  * connections diffing one each.
  *
  * Watched days arrive as `?days=<editionId>:<YYYY-MM-DD>,...` — exactly the
- * days the requesting page currently renders as `processing`. Missing/empty,
+ * days the requesting page currently renders as mid-run, on either of the two
+ * independent runs a day has: its activity fetch (`status`) and its post
+ * generation (`postStatus`, `@/lib/generation/day-post-trigger`). Missing/empty,
  * or every watched day already settled, gets an immediate `done`: nothing to
  * watch, no poll loop (mirrors the existing route's non-running short-circuit).
  *
@@ -42,6 +44,10 @@ interface DaySnapshot {
   status: string | null;
   finishedAt: string | null;
   error: string | null;
+  /** The day's *post* generation, tracked separately from `status` above. */
+  postStatus: string | null;
+  /** Its live JSON progress — diffed as the stored string, so every step change is a change. */
+  postProgress: string | null;
 }
 
 function sseEvent(event: string, data: unknown): string {
@@ -71,7 +77,15 @@ function parseWatchedDays(raw: string | null): WatchedDay[] {
 async function readSnapshots(days: WatchedDay[]): Promise<DaySnapshot[]> {
   const rows = await prisma.dayProcessingRun.findMany({
     where: { OR: days.map(({ editionId, date }) => ({ editionId, date })) },
-    select: { editionId: true, date: true, status: true, finishedAt: true, error: true },
+    select: {
+      editionId: true,
+      date: true,
+      status: true,
+      finishedAt: true,
+      error: true,
+      postStatus: true,
+      postProgress: true,
+    },
   });
   const byKey = new Map(
     rows.map((row) => [`${row.editionId}:${row.date.toISOString().slice(0, 10)}`, row]),
@@ -84,13 +98,23 @@ async function readSnapshots(days: WatchedDay[]): Promise<DaySnapshot[]> {
       status: row?.status ?? null,
       finishedAt: row?.finishedAt?.toISOString() ?? null,
       error: row?.error ?? null,
+      postStatus: row?.postStatus ?? null,
+      postProgress: row?.postProgress ?? null,
     };
   });
 }
 
-/** Every watched day reached `done`/`failed`, or lost its row entirely. */
+/**
+ * Every watched day reached `done`/`failed` on *both* of its independent runs,
+ * or lost its row entirely.
+ *
+ * Post generation is checked as well as the activity fetch because it usually
+ * starts exactly when the activity run settles — watching `status` alone would
+ * close the stream one poll into a run that then writes for another ten
+ * minutes.
+ */
 function allSettled(snapshots: DaySnapshot[]): boolean {
-  return snapshots.every((day) => day.status !== "running");
+  return snapshots.every((day) => day.status !== "running" && day.postStatus !== "running");
 }
 
 const SSE_HEADERS = {

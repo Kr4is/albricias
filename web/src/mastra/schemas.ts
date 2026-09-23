@@ -120,7 +120,16 @@ export const generationTraceStepSchema = z.object({
 export type GenerationTraceStep = z.infer<typeof generationTraceStepSchema>;
 
 export const generationTraceSchema = z.object({
-  workflowId: z.literal("profile-deep-dive"),
+  /**
+   * Which workflow produced this trace. Widened from a bare
+   * `"profile-deep-dive"` literal when `@/mastra/workflows/day-post` started
+   * building the same trace shape so `GenerationTraceGraph` could render a
+   * day's post with no changes at all — the component reads `outline` and
+   * `sections` and never this field, so one enum here is the whole cost of
+   * that reuse. It stays recorded because the per-section retry route needs to
+   * know which workflow's section it is retrying.
+   */
+  workflowId: z.enum(["profile-deep-dive", "day-post"]),
   startedAt: z.string(),
   endedAt: z.string(),
   status: z.enum(["success", "partial", "failed"]),

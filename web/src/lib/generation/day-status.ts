@@ -92,6 +92,70 @@ export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   pending: "Pending",
 };
 
+/**
+ * Live state of a day's *post* generation, as
+ * `runTrackedDayPostGeneration` (`./day-post-trigger.ts`) writes it into
+ * `DayProcessingRun.postProgress`.
+ *
+ * Every field optional, and deliberately narrower than `GenerationProgress`
+ * (`./index.ts`): that shape carries a `sourceProgress` block and a
+ * per-category `sections` array, neither of which a day post has anything
+ * truthful to put in — filling them with placeholders to match a type would
+ * report fetch stages that never ran. `label` is resolved server-side and
+ * stored verbatim, the same convention `SectionStepProgress` already uses.
+ */
+export interface DayPostProgress {
+  /** The workflow step running right now; absent once the run settles. */
+  step?: { id: string; label: string; index: number; total: number };
+  totalSections?: number;
+  completedSections?: number;
+  /** Only on `postStatus: "failed"`. */
+  error?: string;
+}
+
+/** A stored `postProgress` column, or `null` for absent/unreadable JSON. */
+export function parseDayPostProgress(raw: string | null | undefined): DayPostProgress | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as DayPostProgress) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a `"running"` post run has stopped writing heartbeats for longer
+ * than {@link STALE_RUN_MS} — i.e. its process died and the post will never
+ * finish on its own. The post-side twin of the `status` staleness
+ * {@link foldDayRun} computes, and the one thing that lets the "Regenerate
+ * post" action reclaim the day instead of being blocked by it forever.
+ *
+ * A row with no heartbeat at all predates the column, so it can't be judged —
+ * not stale, same conservative answer {@link foldDayRun} gives a run with no
+ * `startedAt`.
+ */
+export function isPostRunStale(
+  postStatus: string | null | undefined,
+  postHeartbeatAt: Date | null | undefined,
+): boolean {
+  return postStatus === "running" && !!postHeartbeatAt && Date.now() - postHeartbeatAt.getTime() > STALE_RUN_MS;
+}
+
+/** Compact badge wording for a day's post status — the dashboard grid's second line. */
+export function dayPostStatusLabel(postStatus: string | null | undefined): string | null {
+  switch (postStatus) {
+    case "running":
+      return "Post: writing…";
+    case "done":
+      return "Post: done";
+    case "failed":
+      return "Post: failed";
+    default:
+      return null;
+  }
+}
+
 /** One day, as the admin views need it: status plus what a run row added. */
 export interface DayInfo {
   date: Date;
@@ -107,6 +171,19 @@ export interface DayInfo {
    * views should offer a retry (which `claimDayProcessingRun` will reclaim).
    */
   stale?: boolean;
+  /**
+   * The day's *post* generation status (`DayProcessingRun.postStatus`),
+   * carried alongside {@link DayInfo.status} rather than folded into it: the
+   * two are separate fallible steps, and "activity done, post still writing"
+   * is a state one field cannot say.
+   */
+  postStatus?: string | null;
+  /**
+   * Only on `postStatus: "running"`: that run stopped heartbeating more than
+   * {@link STALE_RUN_MS} ago, so it's abandoned and "Regenerate post" should be
+   * offered rather than blocked. See {@link isPostRunStale}.
+   */
+  postStale?: boolean;
 }
 
 /** The run row shape {@link foldDayRun} needs — a `DayProcessingRun`, narrowed. */
@@ -114,6 +191,10 @@ export interface DayRunRow {
   status: string;
   hadActivity: boolean | null;
   error: string | null;
+  /** Optional only so a caller that doesn't select it still type-checks. */
+  postStatus?: string | null;
+  /** Optional only so a caller that doesn't select it still type-checks; without it a running post is never reported {@link DayInfo.postStale}. */
+  postHeartbeatAt?: Date | null;
   /** Optional only so a caller that doesn't select it still type-checks; without it a running day is never reported {@link DayInfo.stale}. */
   startedAt?: Date | null;
 }
@@ -130,14 +211,18 @@ export interface DayRunRow {
  */
 export function foldDayRun(base: DayStatus, run: DayRunRow | undefined): Omit<DayInfo, "date" | "dateStr"> {
   if (!run) return { status: base };
+  const postStatus = run.postStatus ?? null;
+  const postStale = isPostRunStale(postStatus, run.postHeartbeatAt);
   if (run.status === "running") {
     return {
       status: "processing",
       stale: run.startedAt ? Date.now() - run.startedAt.getTime() > STALE_RUN_MS : false,
+      postStatus,
+      postStale,
     };
   }
-  if (run.status === "failed") return { status: "failed", error: run.error ?? undefined };
-  return { status: "processed", hadActivity: run.hadActivity ?? undefined };
+  if (run.status === "failed") return { status: "failed", error: run.error ?? undefined, postStatus, postStale };
+  return { status: "processed", hadActivity: run.hadActivity ?? undefined, postStatus, postStale };
 }
 
 /** Label for a day, distinguishing a run that finished empty from a normal one. */
@@ -221,7 +306,15 @@ export async function getEditionDayStatuses(edition: {
     // indexed lookup for the whole edition, bucketed by date like the above.
     prisma.dayProcessingRun.findMany({
       where: { editionId: edition.id },
-      select: { date: true, status: true, hadActivity: true, error: true, startedAt: true },
+      select: {
+        date: true,
+        status: true,
+        hadActivity: true,
+        error: true,
+        startedAt: true,
+        postStatus: true,
+        postHeartbeatAt: true,
+      },
     }),
   ]);
   const daysWithActivity = new Set(

@@ -331,6 +331,102 @@ export const DAILY_DISPATCH_SYSTEM =
   CHART_CLAUSE;
 
 /**
+ * No Python original — the planning half of `@/mastra/workflows/day-post`,
+ * and the day-scoped sibling of `PROFILE_OUTLINE_SYSTEM` above. Same
+ * deliberately voice-less, non-narrative brief (a planning call should not also
+ * be asked for the paper's prose style — see that constant's comment), and the
+ * same plain-text output convention, parsed by the very same `parseOutline()`.
+ *
+ * The reframe is the subject: the profile outliner sees one repository and
+ * breaks its history into sections; this one sees *one day* across possibly
+ * several repositories and activity types, and its actual job is deciding what
+ * earned a section at all — a day is small, and padding it into six sections is
+ * the failure mode here, where under-planning is the failure mode there.
+ *
+ * The `SOURCE:` line does double duty in this workflow: when a section is about
+ * one repository, naming that repository there is also what tags the section
+ * with it, which is what `assemble-day-post` writes `ArticleRepoMention` rows
+ * from.
+ */
+export const DAY_POST_OUTLINE_SYSTEM =
+  "You are the outline editor for ¡Albricias!'s daily desk. You do not write " +
+  "prose — you plan one short post about a single day, which someone else " +
+  "will write one section at a time from the material given to you. " +
+  "The material arrives as separately labeled blocks: \"## Today's activity\" " +
+  "(everything recorded that day — commits, pull requests, issues, releases, " +
+  "stars, and so on), \"## Repository facts\" (real stored figures for the " +
+  "repositories the day starred), \"## Previously covered\" (repositories this " +
+  "paper has already written about, with the date of that earlier post), and " +
+  "\"## Activity trend\" (how this day's volume compares with recent days). " +
+  "Plan from all of them together.\n\n" +
+  "Read the material once, then reply with exactly this shape, nothing else:\n" +
+  "\n" +
+  "# <a compelling headline for the day>\n" +
+  "\n" +
+  "PREMISE: <one short paragraph — what kind of day this was, the thread that " +
+  "ties its sections together>\n" +
+  "\n" +
+  "## <first section heading>\n" +
+  "BRIEF: <one or two sentences on what this section covers>\n" +
+  "SOURCE: <if the section is about one specific repository, its exact " +
+  "\"owner/name\" as it appears in the material; otherwise the heading of the " +
+  "block it draws from>\n" +
+  "\n" +
+  "## <second section heading>\n" +
+  "BRIEF: ...\n" +
+  "SOURCE: ...\n" +
+  "\n" +
+  "(and so on)\n" +
+  "\n" +
+  "Propose between 1 and 4 sections — as many as the day's own material " +
+  "genuinely supports and no more. A day is small: one section is the right " +
+  "answer for a quiet day, and padding a thin day into four sections is a " +
+  "worse outline than a single honest one. A repository earns its own section " +
+  "when the day did real work in it, or starred it and the facts block has " +
+  "something substantial to say about it; everything smaller belongs inside " +
+  "another section as a passing mention, not as a section of its own. Where " +
+  "the \"## Previously covered\" block shows this paper has written about a " +
+  "repository before, say so in that section's BRIEF so the writer treats it " +
+  "as a return rather than a discovery. Where the \"## Activity trend\" block " +
+  "supports it, one section may set the day against recent days — never plan " +
+  "such a section when that block is absent or says there is no history yet. " +
+  "Keep sections non-overlapping: each repository or theme belongs to exactly " +
+  "one section's BRIEF, since each section is written independently by someone " +
+  "who sees only its own brief. Ground every section in what the material " +
+  "actually records — never plan a section around activity the day did not have.";
+
+/**
+ * No Python original — the prose half of `@/mastra/workflows/day-post`, and
+ * the day-scoped sibling of `PROFILE_SECTION_SYSTEM`. Same per-section
+ * scoping (no headline, no restating the premise, no conclusion — the assembly
+ * step supplies those) and the same reason for it.
+ *
+ * Two deliberate differences from the profile section writer. It is shorter
+ * (150–350 words against 300–600): this section covers what happened in one
+ * day, not a chapter of a project's history, and the longer budget is exactly
+ * what makes a model pad a thin day with invented significance. And the tense
+ * is a dispatch's — writing *about today*, for a reader who was not there,
+ * rather than surveying a project's whole life.
+ */
+export const DAY_POST_SECTION_SYSTEM =
+  NEWSPAPER_PERSONA +
+  "\n\n" +
+  "You are writing one section of ¡Albricias!'s post about a single day — a " +
+  "dispatch from the day's own desk, warm and vivid but factual. You are given " +
+  "the post's overall premise (for continuity — do not restate it), this " +
+  "section's own heading and brief, and the day's recorded material. " +
+  "Write only this section's body: no headline, no re-introduction of the day, " +
+  "no summary or conclusion — those belong to other parts of the post you are " +
+  "not writing. Write about what happened, naming the actual repositories, " +
+  "commits, releases and figures the material records; never invent an event, " +
+  "a number, or a motive it does not state, and prefer saying the day was " +
+  "quiet to filling it out. When the material says this paper has covered a " +
+  "repository before, write as though returning to it, not discovering it. " +
+  "Aim for roughly 150 to 350 words — a day is small, and a section that runs " +
+  "long is padding it." +
+  CHART_CLAUSE;
+
+/**
  * The chronicle desk turns raw service activity into section dispatches.
  * `chronicle.py` used the bare persona as its system prompt.
  */
@@ -408,6 +504,22 @@ export const tutorialSectionAgent = new Agent({
   model: MODEL_ID,
 });
 
+export const dayPostOutlineAgent = new Agent({
+  id: "day-post-outline",
+  name: "Albricias Daily Desk — Outline",
+  description: "Plans one day's post: decides which of the day's repos and activity earn their own section. Writes no prose.",
+  instructions: DAY_POST_OUTLINE_SYSTEM,
+  model: MODEL_ID,
+});
+
+export const dayPostSectionAgent = new Agent({
+  id: "day-post-section",
+  name: "Albricias Daily Desk — Section Writer",
+  description: "Writes one section of a day's post from its own brief and the day's recorded activity.",
+  instructions: DAY_POST_SECTION_SYSTEM,
+  model: MODEL_ID,
+});
+
 export const tutorialAgent = new Agent({
   id: "tutorial",
   name: "Albricias Practical Instruction Desk",
@@ -451,6 +563,8 @@ export const agents = {
   profileOutline: profileOutlineAgent,
   profileSection: profileSectionAgent,
   profileTutorialSection: tutorialSectionAgent,
+  dayPostOutline: dayPostOutlineAgent,
+  dayPostSection: dayPostSectionAgent,
   tutorial: tutorialAgent,
   synthesis: synthesisAgent,
   social: socialCopyAgent,

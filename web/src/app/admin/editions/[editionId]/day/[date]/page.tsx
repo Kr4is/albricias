@@ -20,8 +20,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import NewspaperShell from "@/components/NewspaperShell";
+import ArticleBody from "@/components/ArticleBody";
 import FlashBanner from "@/components/admin/FlashBanner";
 import DayProcessingWatcher from "@/components/admin/DayProcessingWatcher";
+import GenerationTraceGraph from "@/components/admin/GenerationTraceGraph";
 import { prisma } from "@/lib/prisma";
 import { dayBounds } from "@/lib/cadence";
 import {
@@ -30,8 +32,11 @@ import {
   computeDayStatus,
   dayStatusLabel,
   foldDayRun,
+  parseDayPostProgress,
 } from "@/lib/generation/day-status";
 import { readFlash } from "@/lib/flash";
+import { renderMarkdown } from "@/lib/markdown";
+import { generationTraceSchema } from "@/mastra/schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +109,14 @@ function parseJsonField<T>(raw: string | null): T | null {
   }
 }
 
+/** A day post's `generationTrace` back out of `Article.sourceData` — same reader as the article edit page's. */
+function readGenerationTrace(sourceData: string | null) {
+  const parsed = parseJsonField<{ generationTrace?: unknown }>(sourceData);
+  if (!parsed || typeof parsed !== "object") return null;
+  const result = generationTraceSchema.safeParse(parsed.generationTrace);
+  return result.success ? result.data : null;
+}
+
 type RepoLanguage = { name?: unknown };
 type RepoReleases = { count?: unknown; latestTag?: unknown };
 
@@ -149,7 +162,7 @@ export default async function EditionDayPage({
 
   const today = dayBounds(new Date()).periodStart;
 
-  const [activity, run] = await Promise.all([
+  const [activity, run, post] = await Promise.all([
     // Every event type, not just stars — a day can have been processed and have
     // commits but no stars, and that is still evidence it ran.
     prisma.serviceActivity.findMany({
@@ -160,9 +173,27 @@ export default async function EditionDayPage({
     // "running" / "failed" / "ran, found nothing" the strip and grid show too.
     prisma.dayProcessingRun.findUnique({
       where: { editionId_date: { editionId: edition.id, date: dayStart } },
-      select: { status: true, hadActivity: true, error: true, startedAt: true },
+      select: {
+        status: true,
+        hadActivity: true,
+        error: true,
+        startedAt: true,
+        postStatus: true,
+        postProgress: true,
+        postHeartbeatAt: true,
+      },
+    }),
+    // The day's post, if one has been written — `(editionId, dayDate)` is
+    // unique, so this is at most one row (`@/mastra/workflows/day-post`).
+    prisma.article.findUnique({
+      where: { editionId_dayDate: { editionId: edition.id, dayDate: dayStart } },
+      select: { id: true, title: true, content: true, sourceData: true },
     }),
   ]);
+
+  const postProgress = parseDayPostProgress(run?.postProgress);
+  const postRunning = run?.postStatus === "running";
+  const postTrace = readGenerationTrace(post?.sourceData ?? null);
 
   const stars = activity.filter((item) => item.eventType === "star");
 
@@ -189,6 +220,9 @@ export default async function EditionDayPage({
     run ?? undefined,
   );
   const status = day.status;
+  // A post run that stopped heartbeating: nothing is coming, so stop watching
+  // it and let "Regenerate post" through (the route reclaims it too).
+  const postStale = !!day.postStale;
   // Already running: a second click would just be rejected by the route's
   // claim — unless the run is stale, in which case the claim reclaims it.
   const canProcess = canProcessDay(dayStart, today) && (status !== "processing" || !!day.stale);
@@ -212,9 +246,13 @@ export default async function EditionDayPage({
 
   return (
     <NewspaperShell endpoint="admin.edition_edit">
+      {/* Watched while *either* of the day's two independent runs is live: the
+          activity fetch, or the post generation that outlives it by minutes. */}
       <DayProcessingWatcher
         days={
-          status === "processing" ? [{ editionId: edition.id, dateStr: dateLabel(dayStart) }] : []
+          status === "processing" || (postRunning && !postStale)
+            ? [{ editionId: edition.id, dateStr: dateLabel(dayStart) }]
+            : []
         }
       />
       <div className="pb-16 fade-in">
@@ -309,6 +347,107 @@ export default async function EditionDayPage({
             </a>
           ) : (
             <span />
+          )}
+        </div>
+
+        {/* The day's post — written automatically once the day's activity has
+            been processed, and re-writable on demand from here. Its status is
+            `DayProcessingRun.postStatus`, deliberately separate from the
+            activity status in the header above. */}
+        <div className="mb-10">
+          <div className="flex items-end justify-between gap-4 flex-wrap border-b border-ink pb-2 mb-5">
+            <h3 className="font-headline text-lg font-bold">The Day&apos;s Post</h3>
+            <form
+              method="POST"
+              action={`/admin/editions/${edition.id}/day/${dateLabel(dayStart)}/generate-post`}
+              data-loading-submit
+              className="no-print"
+            >
+              <button
+                type="submit"
+                disabled={postRunning && !postStale}
+                data-loading-text="Starting…"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest bg-ink text-paper hover:bg-ink-light transition-colors disabled:opacity-40"
+              >
+                <span className="material-icons text-xs">auto_stories</span>
+                {postStale ? "Retry post (stuck?)" : post ? "Regenerate post" : "Generate post"}
+              </button>
+            </form>
+          </div>
+
+          {postRunning && (
+            <div className="border border-amber-300 bg-amber-50 p-4 mb-5">
+              <p
+                className={`text-[10px] font-sans font-bold uppercase tracking-widest text-amber-800 ${
+                  postStale ? "" : "animate-pulse"
+                }`}
+              >
+                {postStale ? "Post run stuck" : "Writing the post…"}
+              </p>
+              {postProgress?.step && (
+                <p className="text-xs font-sans text-stone-700 mt-1.5">
+                  Step {postProgress.step.index} of {postProgress.step.total}:{" "}
+                  {postProgress.step.label}
+                </p>
+              )}
+              {typeof postProgress?.completedSections === "number" &&
+                typeof postProgress?.totalSections === "number" && (
+                  <p className="text-xs font-sans text-stone-600 mt-0.5">
+                    {postProgress.completedSections} of {postProgress.totalSections} sections
+                    written.
+                  </p>
+                )}
+              <p className="text-[10px] font-sans text-stone-500 mt-2">
+                {postStale
+                  ? "This run stopped reporting progress a long time ago — most likely a server restart killed it. Use the button above to start it again."
+                  : "One AI call per section — several minutes end to end. It keeps going whether or not you stay on this page, and this panel updates itself."}
+              </p>
+            </div>
+          )}
+
+          {run?.postStatus === "failed" && (
+            <p className="text-xs font-sans text-red-700 mb-5">
+              The last post run failed{postProgress?.error ? `: ${postProgress.error}` : "."} Use
+              the button above to try again.
+            </p>
+          )}
+
+          {post ? (
+            <article>
+              <div className="flex items-baseline justify-between gap-4 flex-wrap">
+                <h4 className="font-masthead text-3xl">{post.title}</h4>
+                <a
+                  href={`/admin/editions/${edition.id}/articles/${post.id}/edit`}
+                  className="text-[10px] font-sans uppercase tracking-widest text-stone-500 hover:text-ink hover:underline no-print"
+                >
+                  Edit article
+                </a>
+              </div>
+              <ArticleBody html={renderMarkdown(post.content)} />
+              {/* The same trace the profile pipeline records, rendered by the
+                  same component — `assemble-day-post` builds the identical
+                  `GenerationTrace` shape on purpose. */}
+              {postTrace && (
+                <div className="mt-8">
+                  <GenerationTraceGraph
+                    editionId={edition.id}
+                    articleId={post.id}
+                    trace={postTrace}
+                  />
+                </div>
+              )}
+            </article>
+          ) : (
+            !postRunning && (
+              <div className="text-center py-10 border-2 border-dashed border-stone-200">
+                <span className="material-icons text-4xl text-stone-300 block mb-2">
+                  auto_stories
+                </span>
+                <p className="font-serif italic text-stone-500">
+                  No post written for this day yet.
+                </p>
+              </div>
+            )
           )}
         </div>
 

@@ -24,6 +24,7 @@ import { getOnboardingStep, isOnboardingCompleted } from "@/app/setup/onboarding
 import {
   canProcessDay,
   DAY_STRIP_STYLES,
+  dayPostStatusLabel,
   dayStatusLabel,
   getEditionDayStatuses,
   type DayInfo,
@@ -81,6 +82,20 @@ function DayGrid({ editionId, dayInfos }: { editionId: number; dayInfos: DayInfo
                   {dayStatusLabel(d)}
                   {d.stale && " (stuck?)"}
                 </p>
+                {/* The day's *post*, a second independent run — a bordered chip
+                    rather than a second plain line, so "activity done, post
+                    still writing" can't be misread as one status contradicting
+                    itself. Absent entirely when no post has been attempted. */}
+                {dayPostStatusLabel(d.postStatus) && (
+                  <span
+                    className={`inline-block text-[9px] font-sans uppercase tracking-widest mt-1.5 border border-current px-1 py-px opacity-80 ${
+                      d.postStatus === "running" && !d.postStale ? "animate-pulse" : ""
+                    }`}
+                  >
+                    {dayPostStatusLabel(d.postStatus)}
+                    {d.postStale && " (stuck?)"}
+                  </span>
+                )}
               </a>
               {/* Always rendered, not conditionally, so every card in the grid
                   reserves the same footer height — a card without a button
@@ -165,8 +180,14 @@ export default async function EditionsDashboardPage({
 
   // Every day currently mid-run, across every edition on the page — one
   // watcher for the lot, not one per edition.
+  // A day is mid-run on either of its two independent runs: the activity fetch
+  // (`status`) or the post generation (`postStatus`) — which routinely runs for
+  // minutes *after* the activity one finished, so it needs watching in its own
+  // right, not only while the day says `processing`.
   const processingDays = [...dayInfoByEdition].flatMap(([id, infos]) =>
-    infos.filter((d) => d.status === "processing").map((d) => ({ editionId: id, dateStr: d.dateStr })),
+    infos
+      .filter((d) => d.status === "processing" || (d.postStatus === "running" && !d.postStale))
+      .map((d) => ({ editionId: id, dateStr: d.dateStr })),
   );
 
   return (
