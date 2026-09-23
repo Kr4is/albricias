@@ -53,6 +53,42 @@ article:nth-child(3) { animation-delay: 0.3s; }
 article:nth-child(4) { animation-delay: 0.4s; }
 article:nth-child(5) { animation-delay: 0.5s; }
 
+/* ---------------------------------------------------------------------------
+ * Disclosure (`@/components/admin/Disclosure`) open/close animation, and the
+ * default cross-fade for View Transitions-driven refreshes. Plain CSS here
+ * rather than Tailwind config, matching how `fadeIn` above already lives.
+ *
+ * Both are gated on `prefers-reduced-motion: no-preference` rather than
+ * overridden afterwards, so "reduce" gets today's instant behaviour with no
+ * half-applied styles.
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* `interpolate-size` is what makes the `auto` end-value interpolable;
+     `allow-discrete` keeps the content visible for the duration of the
+     closing animation instead of vanishing on frame one. */
+  .disclosure-anim {
+    interpolate-size: allow-keywords;
+  }
+  .disclosure-anim::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 200ms ease-out,
+      content-visibility 200ms ease-out allow-discrete;
+  }
+  .disclosure-anim[open]::details-content {
+    block-size: auto;
+  }
+
+  /* The UA's own root transition is already an opacity cross-fade; this only
+     shortens it to match the rest of the motion in the app. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 180ms;
+    animation-timing-function: ease-out;
+  }
+}
+
 /* Mobile Reponsiveness Improvements */
 @media (max-width: 1024px) {
     .issue-card {

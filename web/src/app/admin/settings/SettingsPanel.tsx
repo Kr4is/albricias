@@ -542,7 +542,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
         </Card>
 
         {/* Cadence — transplanted from the now-deleted /admin/cadence page. */}
-        <div className="border border-stone-200 bg-white p-6">
+        <div className="border border-stone-200 bg-white px-4 py-4">
           <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-4">
             Generation Cadence
           </h3>
@@ -646,7 +646,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
             how often the currently-open draft is walked forward a day at a
             time (fetch that day's activity, write its dispatch, surface
             anything newly interesting). See `@/lib/generation/daily`. */}
-        <div className="border border-stone-200 bg-white p-6">
+        <div className="border border-stone-200 bg-white px-4 py-4">
           <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-1">
             Daily Processing
           </h3>
@@ -706,7 +706,7 @@ export default async function SettingsPanel({ messages }: { messages: FlashMessa
         </div>
 
         {/* Account — transplanted from the now-deleted /admin/account page. */}
-        <div className="border border-stone-200 bg-white p-6">
+        <div className="border border-stone-200 bg-white px-4 py-4">
           <h3 className="text-xs font-sans font-bold uppercase tracking-widest text-stone-600 mb-4">
             Account
           </h3>

@@ -104,23 +104,29 @@ export default function GenerationWatcher({
   const refreshQueuedRef = useRef(false);
   const sourceRef = useRef<EventSource | null>(null);
 
+  // Cross-fade the incoming render where the browser supports it; a browser
+  // without View Transitions just gets the plain refresh.
+  function refreshWithTransition() {
+    if (typeof document.startViewTransition === "function") {
+      document.startViewTransition(() => router.refresh());
+    } else {
+      router.refresh();
+    }
+  }
+
   function requestRefresh() {
     if (isRefreshing) {
       refreshQueuedRef.current = true;
       return;
     }
-    startRefreshTransition(() => {
-      router.refresh();
-    });
+    startRefreshTransition(refreshWithTransition);
   }
 
   // Flush a refresh that arrived while the previous one was still in flight.
   useEffect(() => {
     if (!isRefreshing && refreshQueuedRef.current) {
       refreshQueuedRef.current = false;
-      startRefreshTransition(() => {
-        router.refresh();
-      });
+      startRefreshTransition(refreshWithTransition);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRefreshing]);

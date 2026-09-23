@@ -88,10 +88,15 @@ export default function NewspaperShell({
               // Prepended, not textContent-based, so it never destroys an
               // icon+label button that didn't set data-loading-text.
               var spinner = document.createElement('span');
-              spinner.className = 'material-icons text-sm animate-spin align-middle mr-1.5';
+              spinner.className = 'material-icons text-sm animate-spin align-middle mr-1.5 transition-opacity duration-150 opacity-0';
               spinner.textContent = 'autorenew';
               spinner.setAttribute('aria-hidden', 'true');
               btn.prepend(spinner);
+              // Faded in on the next frame rather than the same one, so the
+              // browser has an opacity-0 starting style to transition from.
+              requestAnimationFrame(function () {
+                spinner.classList.replace('opacity-0', 'opacity-100');
+              });
 
               // Live elapsed-time counter — some of these (AI generation
               // against a slow self-hosted model) run for minutes, and a

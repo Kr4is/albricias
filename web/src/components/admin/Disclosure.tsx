@@ -12,6 +12,13 @@
  * key unique across the page (an id, an action URL — anything stable and
  * distinct per instance); omit it for a one-off reveal where that would be
  * meaningless (there's only ever one, so there's nothing to "remember").
+ *
+ * `disclosure-anim` (defined in `globals.css`) animates the open/close via the
+ * native `::details-content` pseudo-element. The usual `grid-template-rows:
+ * 0fr/1fr` accordion trick does *not* work here: a closed `<details>` has its
+ * content `display: none`d by the UA, so there is no "from" state to
+ * interpolate and the row snaps open (measured, Chrome 153). Browsers without
+ * `::details-content` simply keep today's instant show/hide.
  */
 
 export default function Disclosure({
@@ -29,7 +36,7 @@ export default function Disclosure({
 }) {
   return (
     <details
-      className="group border border-stone-200 bg-white"
+      className="disclosure-anim group border border-stone-200 bg-white"
       data-persist-key={persistKey}
       {...(defaultOpen ? { open: true } : {})}
     >

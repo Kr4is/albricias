@@ -781,7 +781,7 @@ export default async function EditionEditPage({
                   type="file"
                   name="cover_image"
                   accept="image/*"
-                  className="w-full text-xs font-sans text-stone-600 file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:uppercase file:bg-ink file:text-paper hover:file:bg-ink-light"
+                  className="w-full text-xs font-sans text-stone-600 file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:uppercase file:bg-ink file:text-paper file:transition-colors file:duration-150 file:ease-out hover:file:bg-ink-light"
                 />
               </div>
               {coverSrc && (

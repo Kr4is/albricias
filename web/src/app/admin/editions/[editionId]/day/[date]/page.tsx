@@ -293,7 +293,7 @@ export default async function EditionDayPage({
           {hasPrev ? (
             <a
               href={`/admin/editions/${edition.id}/day/${dateLabel(prevDay)}`}
-              className="inline-flex items-center gap-1 text-stone-600 hover:text-ink hover:underline"
+              className="inline-flex items-center gap-1 text-stone-600 hover:text-ink transition-colors duration-150 ease-out hover:underline"
             >
               <span className="material-icons text-sm">chevron_left</span> {dateLabel(prevDay)}
             </a>
@@ -303,7 +303,7 @@ export default async function EditionDayPage({
           {hasNext ? (
             <a
               href={`/admin/editions/${edition.id}/day/${dateLabel(nextDay)}`}
-              className="inline-flex items-center gap-1 text-stone-600 hover:text-ink hover:underline"
+              className="inline-flex items-center gap-1 text-stone-600 hover:text-ink transition-colors duration-150 ease-out hover:underline"
             >
               {dateLabel(nextDay)} <span className="material-icons text-sm">chevron_right</span>
             </a>

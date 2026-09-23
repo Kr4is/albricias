@@ -82,27 +82,33 @@ function DayGrid({ editionId, dayInfos }: { editionId: number; dayInfos: DayInfo
                   {d.stale && " (stuck?)"}
                 </p>
               </a>
-              {reprocessable && (
-                <form
-                  method="POST"
-                  action={`/admin/editions/${editionId}/day/${d.dateStr}/process`}
-                  data-loading-submit
-                  className="border-t border-black/10 mt-auto"
+              {/* Always rendered, not conditionally, so every card in the grid
+                  reserves the same footer height — a card without a button
+                  used to sit shorter than its siblings. Hidden via
+                  `invisible` (keeps its layout space, drops it from the a11y
+                  tree and tab order) rather than omitted, and `disabled` as a
+                  second guard against submitting an action that isn't valid
+                  for this day. */}
+              <form
+                method="POST"
+                action={`/admin/editions/${editionId}/day/${d.dateStr}/process`}
+                data-loading-submit
+                className={`border-t border-black/10 mt-auto ${reprocessable ? "" : "invisible"}`}
+              >
+                <button
+                  type="submit"
+                  disabled={!reprocessable}
+                  data-loading-text="Processing…"
+                  className="w-full px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest hover:bg-black/5 transition-colors flex items-center justify-center gap-1"
                 >
-                  <button
-                    type="submit"
-                    data-loading-text="Processing…"
-                    className="w-full px-2 py-1.5 text-[10px] font-sans font-bold uppercase tracking-widest hover:bg-black/5 transition-colors flex items-center justify-center gap-1"
-                  >
-                    <span className="material-icons text-xs">refresh</span>
-                    {d.status === "processing"
-                      ? "Retry (stuck?)"
-                      : d.status === "processed"
-                        ? "Re-process"
-                        : "Process"}
-                  </button>
-                </form>
-              )}
+                  <span className="material-icons text-xs">refresh</span>
+                  {d.status === "processing"
+                    ? "Retry (stuck?)"
+                    : d.status === "processed"
+                      ? "Re-process"
+                      : "Process"}
+                </button>
+              </form>
             </div>
           );
         })}

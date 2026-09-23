@@ -96,7 +96,7 @@ export default async function ArticleEditPage({
 
   return (
     <NewspaperShell endpoint="admin.article_edit">
-      <div className="max-w-4xl mx-auto pb-16 fade-in">
+      <div className="max-w-3xl mx-auto pb-16 fade-in">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-xs font-sans text-stone-500 mb-6">
           <a href="/admin/editions" className="hover:underline">

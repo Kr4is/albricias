@@ -55,6 +55,17 @@ export interface HeaderProps {
   article?: { edition: EditionHeaderInfo } | null;
 }
 
+/**
+ * Nav links: the underline is always present but transparent, and only its
+ * colour changes on hover/active. `hover:underline` alone cannot be animated —
+ * `text-decoration-line` is a discrete property, so a `transition-*` class next
+ * to it would be dead weight; `text-decoration-color` is the animatable half.
+ * `decoration-current` / `decoration-transparent` is supplied per call site so
+ * the active page's underline stays permanently on.
+ */
+const NAV_LINK =
+  "underline decoration-2 underline-offset-4 hover:decoration-current transition-colors duration-150 ease-out";
+
 const WEEKDAYS = [
   "Sunday",
   "Monday",
@@ -132,16 +143,16 @@ export default async function Header({ endpoint, issue, article }: HeaderProps) 
         <div className="flex justify-center md:justify-end gap-6 no-print order-3">
           <a
             href="/"
-            className={`hover:underline decoration-2 underline-offset-4 ${ep === "home" ? "underline" : ""}`}
+            className={`${NAV_LINK} ${ep === "home" ? "decoration-current" : "decoration-transparent"}`}
           >
             Current Edition
           </a>
           <a
             href="/archive"
-            className={`hover:underline decoration-2 underline-offset-4 ${
+            className={`${NAV_LINK} ${
               ["archive", "edition_detail", "article_detail"].includes(ep)
-                ? "underline"
-                : ""
+                ? "decoration-current"
+                : "decoration-transparent"
             }`}
           >
             Archive
@@ -150,13 +161,13 @@ export default async function Header({ endpoint, issue, article }: HeaderProps) 
             <>
               <a
                 href="/admin/editions"
-                className={`hover:underline decoration-2 underline-offset-4 ${isAdmin ? "underline" : ""}`}
+                className={`${NAV_LINK} ${isAdmin ? "decoration-current" : "decoration-transparent"}`}
               >
                 Admin
               </a>
               <a
                 href="/logout"
-                className="hover:underline decoration-2 underline-offset-4 text-red-800"
+                className={`${NAV_LINK} decoration-transparent text-red-800`}
               >
                 Logout
               </a>
