@@ -3,14 +3,6 @@ services:
     build: ./web
     ports:
       - "3000:3000"
-    volumes:
-      - ./instance:/app/instance
-      - ./web/public/uploads:/app/public/uploads
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=file:/app/instance/albricias.db
     restart: unless-stopped
-
-volumes:
-  instance:

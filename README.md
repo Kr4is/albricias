@@ -1,42 +1,34 @@
-# Albricias
+# ¡Albricias!
 
-A vintage newspaper-style web application. Albricias is a personal digest —
-editions are generated with AI assistance from your GitHub activity and blog
-posts, then previewed, edited, and published through an admin interface.
+A self-serve vintage newspaper generator: type a GitHub username, pick a
+period (daily/weekly/monthly), bring your own LLM API key, and get a
+one-off broadsheet front page of that user's public activity — commits,
+pull requests, releases, stars — written up in the voice of an early
+20th-century newsroom.
+
+Nothing is persisted. No accounts, no database, no saved editions — every
+generation is a single request, and the LLM key you provide is used only for
+that call.
 
 The app lives under [`web/`](web/): Next.js (App Router) + React + TypeScript,
-Prisma (SQLite), and [Mastra](https://mastra.ai) agents/workflows for the
-generation pipeline.
+with [Mastra](https://mastra.ai) agents/workflows for the generation
+pipeline.
 
 ## Features
 
-- **Configurable cadence**: generate editions weekly or monthly, set globally
-  in the admin panel.
-- **AI-assisted generation**: fetches GitHub activity, blog RSS posts,
-  Spotify listening activity, Google Calendar events, and Alexandria reading
-  activity, then uses an AI agent to draft articles in a classic newspaper
-  voice — including a synthesized front-page "Compendium" editorial that
-  ties the whole period together.
-- **Multi-provider AI**: pick LiteLLM (any OpenAI-compatible proxy, the
-  default), OpenAI, Google Gemini, or a local Ollama model as the active
-  provider, switchable anytime from the admin settings.
-- **GitHub Insights**: a monthly stats bank (busiest days, commit/PR/issue
-  breakdown, languages, ...) and heuristically-scored topic candidates,
-  auto-generated into articles and curated from the edition edit page.
-- **Admin workflow**: Draft → Preview → Edit → Publish, all through a
-  browser-based admin dashboard.
-- **Archive**: browse all published editions by year with pagination.
-- **Vintage design**: styled to resemble a traditional printed newspaper,
-  with five rotating layout variants.
-- **Spotify integration**: optional listening-activity source for editions.
+- **Any public GitHub user** — no login, no OAuth, just a username.
+- **Daily, weekly, or monthly** front pages.
+- **Bring your own AI** — OpenAI, Google Gemini, a local Ollama, or any
+  OpenAI-compatible endpoint (e.g. a LiteLLM proxy). The key travels only
+  for the duration of one request.
+- **Vintage design** — six rotating front-page layout variants, unchanged
+  from the original single-tenant version.
 
 ## Getting started
 
 See [`web/README.md`](web/README.md) for setup and running the app locally.
-The only environment variable this app reads is `DATABASE_URL` — every
-credential (admin password, OpenAI, GitHub, Spotify/X/Google, SMTP,
-branding, Alexandria) is configured through the web interface itself, via
-the first-run `/setup` wizard and `/admin/settings`.
+The only environment variable this app reads is `GITHUB_TOKEN` — a
+server-held token used for every visitor's read-only GitHub activity lookup.
 
 ## Docker
 
@@ -44,27 +36,17 @@ the first-run `/setup` wizard and `/admin/settings`.
 docker compose up --build
 ```
 
-The app is available at [http://localhost:3000](http://localhost:3000). It
-reads/writes its SQLite database and uploaded media under the `./instance`
-and `./web/public/uploads` volumes.
+The app is available at [http://localhost:3000](http://localhost:3000).
 
 ## Project Structure
 
 ```
 albricias/
-├── web/                    Next.js/TypeScript/Prisma/Mastra app
-│   ├── src/app/            Routes (public site + admin)
-│   ├── src/components/     React components, incl. the 5 vintage layouts
-│   ├── src/lib/            Sources, generation, session, Prisma client
-│   ├── src/mastra/         Mastra agents & workflows
-│   └── prisma/             Database schema & migrations
+├── web/                    Next.js/TypeScript app
+│   ├── src/app/            Routes: landing (/), generator (/app), API (/api/generate)
+│   ├── src/components/     React components, incl. the 6 vintage front-page layouts
+│   ├── src/lib/            GitHub fetch, period math, markdown/chart rendering
+│   └── src/mastra/         Mastra agents & the period-post generation workflow
 ├── docker-compose.yml
 └── .env.example
 ```
-
-## Admin Access
-
-On first run, visiting the app shows a one-time `/setup` wizard instead of
-`/login` — it creates a DB-stored admin password (there is no default
-password and no `ADMIN_PASSWORD` env var). After that, `/login` works
-normally and the admin dashboard is at `/admin/editions`.

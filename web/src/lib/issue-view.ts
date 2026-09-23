@@ -1,10 +1,7 @@
 /**
- * Mappers from Prisma rows to the plain view shapes the newspaper components
- * render, resolving the computed properties the Flask models exposed
- * (`Edition.date`, `.date_short`, `.weather`).
- *
- * Keeping this in one place means the public pages, the 404 shell and the
- * Phase 3 admin preview all derive the same labels from the same helpers.
+ * Mappers from a generated issue's plain data to the view shapes the
+ * newspaper components render, resolving the computed period labels
+ * (`dateLabel`, `dateShortLabel`, `weather`).
  */
 
 import {
@@ -13,13 +10,9 @@ import {
   periodLabelShort,
 } from "@/lib/edition-helpers";
 import type { EditionHeaderInfo } from "@/components/Header";
-import type {
-  IssueArticle,
-  IssueNavRef,
-  IssueView,
-} from "@/components/issue/types";
+import type { IssueArticle, IssueView } from "@/components/issue/types";
 
-/** The Edition columns these mappers read. */
+/** The fields these mappers read from a generated (never-persisted) issue. */
 export interface EditionRow {
   id: number;
   cadence: string;
@@ -55,10 +48,6 @@ export function toIssueView(edition: EditionRow): IssueView {
   };
 }
 
-export function toIssueNavRef(edition: EditionRow): IssueNavRef {
-  return { id: edition.id, dateShortLabel: periodLabelShort(edition) };
-}
-
 export function toEditionHeaderInfo(edition: EditionRow): EditionHeaderInfo {
   return {
     vol: edition.vol,
@@ -79,13 +68,11 @@ export function toIssueArticle(article: ArticleRow): IssueArticle {
 }
 
 /**
- * Where an article link in an issue layout should point. The public
- * `/article/[id]` route 404s for unpublished editions (see `isPublished` in
- * `edition-helpers.ts`), so admin preview links — where the edition may still
- * be a draft — go to the `/admin/*`-gated article preview route instead.
+ * Where an article headline in an issue layout should point. Generated
+ * issues are ephemeral and never get their own route, so headlines are
+ * inert — the anchor is just what makes them look and behave like a
+ * newspaper headline.
  */
-export function articleHref(editionId: number, articleId: number, isPreview: boolean): string {
-  return isPreview
-    ? `/admin/editions/${editionId}/articles/${articleId}/preview`
-    : `/article/${articleId}`;
+export function articleHref(): string {
+  return "#";
 }

@@ -248,10 +248,11 @@ export async function fetchGithubActivity({
   }
 
   // ---------------------------------------------------------------------
-  // Repositories created during the period (authenticated user's repos)
+  // Repositories created during the period (username's public repos)
   // ---------------------------------------------------------------------
   try {
-    const pages = octokit.paginate.iterator("GET /user/repos", {
+    const pages = octokit.paginate.iterator("GET /users/{username}/repos", {
+      username,
       per_page: 100,
       sort: "created",
       direction: "desc",

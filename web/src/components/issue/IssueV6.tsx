@@ -12,9 +12,7 @@
  * with.
  */
 
-import IssueNav from "@/components/issue/IssueNav";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -22,21 +20,12 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 export default function IssueV6({
   issue,
   articles,
-  prevIssue,
-  nextIssue,
-  isCurrentIssue,
-  isPreview,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
   const rest = articles.slice(1);
 
   return (
     <>
-      <IssueNav
-        prevIssue={prevIssue}
-        nextIssue={nextIssue}
-        isCurrentIssue={isCurrentIssue}
-      />
       <IssueCoverBanner issue={issue} />
 
       {/* V6: BROADSIDE */}
@@ -45,7 +34,7 @@ export default function IssueV6({
           <span className="font-sans text-xs font-bold uppercase tracking-[0.3em] text-stone-500">
             {main.category} · {issue.dateLabel}
           </span>
-          <a href={articleHref(issue.id, main.id, isPreview)}>
+          <a href={articleHref()}>
             <h1 className="font-headline text-6xl md:text-8xl font-black uppercase leading-[0.95] my-6 hover:opacity-80 transition-opacity">
               {main.title}
             </h1>
@@ -74,7 +63,7 @@ export default function IssueV6({
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <div>
-                  <a href={articleHref(issue.id, article.id, isPreview)}>
+                  <a href={articleHref()}>
                     <h4 className="font-headline text-lg font-bold leading-tight hover:underline">
                       {article.title}
                     </h4>
@@ -89,7 +78,6 @@ export default function IssueV6({
         </div>
       )}
 
-      <PreviewToolbar issue={issue} isPreview={isPreview} />
     </>
   );
 }

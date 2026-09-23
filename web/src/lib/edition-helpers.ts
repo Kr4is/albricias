@@ -10,10 +10,14 @@
 
 import { createHash } from "node:crypto";
 
+export const CADENCE_DAILY = "daily";
 export const CADENCE_WEEKLY = "weekly";
 export const CADENCE_MONTHLY = "monthly";
 
-export type Cadence = typeof CADENCE_WEEKLY | typeof CADENCE_MONTHLY;
+export type Cadence =
+  | typeof CADENCE_DAILY
+  | typeof CADENCE_WEEKLY
+  | typeof CADENCE_MONTHLY;
 
 export const EDITION_STATUS_DRAFT = "draft";
 export const EDITION_STATUS_PUBLISHED = "published";
@@ -79,6 +83,9 @@ export function isoWeek(date: Date): { year: number; week: number } {
  */
 export function periodKey(edition: EditionPeriod): string {
   const start = edition.periodStart;
+  if (edition.cadence === CADENCE_DAILY) {
+    return `${start.getUTCFullYear()}-${start.getUTCMonth() + 1}-${start.getUTCDate()}`;
+  }
   if (edition.cadence === CADENCE_WEEKLY) {
     const { year, week } = isoWeek(start);
     return `${year}-W${week}`;
@@ -128,6 +135,9 @@ export function periodLabel(edition: EditionPeriod): string {
   const month = MONTHS_LONG[start.getUTCMonth()];
   const year = start.getUTCFullYear();
 
+  if (edition.cadence === CADENCE_DAILY) {
+    return `${month} ${start.getUTCDate()}, ${year}`;
+  }
   if (edition.cadence === CADENCE_WEEKLY) {
     return `Week of ${month} ${start.getUTCDate()}, ${year}`;
   }
@@ -145,6 +155,9 @@ export function periodLabelShort(edition: EditionPeriod): string {
   const startMonth = MONTHS_SHORT[start.getUTCMonth()];
   const year = start.getUTCFullYear();
 
+  if (edition.cadence === CADENCE_DAILY) {
+    return `${startMonth} ${start.getUTCDate()}, ${year}`;
+  }
   if (edition.cadence !== CADENCE_WEEKLY) {
     return `${startMonth} ${year}`;
   }

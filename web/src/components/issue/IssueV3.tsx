@@ -7,9 +7,7 @@
  * above already carries the issue's imagery.
  */
 
-import IssueNav from "@/components/issue/IssueNav";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -17,21 +15,12 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 export default function IssueV3({
   issue,
   articles,
-  prevIssue,
-  nextIssue,
-  isCurrentIssue,
-  isPreview,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
   const rest = articles.slice(1);
 
   return (
     <>
-      <IssueNav
-        prevIssue={prevIssue}
-        nextIssue={nextIssue}
-        isCurrentIssue={isCurrentIssue}
-      />
       <IssueCoverBanner issue={issue} />
 
       {/* V3: HERO LAYOUT */}
@@ -44,7 +33,7 @@ export default function IssueV3({
                 {main.category}
               </span>
             </div>
-            <a href={articleHref(issue.id, main.id, isPreview)}>
+            <a href={articleHref()}>
               <h1 className="font-headline text-5xl lg:text-6xl font-black uppercase leading-none mb-4 hover:opacity-70 transition-opacity">
                 {main.title}
               </h1>
@@ -59,7 +48,7 @@ export default function IssueV3({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 divide-x divide-stone-300">
           {rest.map((article, index) => (
             <article key={article.id} className={index !== 0 ? "pl-8" : ""}>
-              <a href={articleHref(issue.id, article.id, isPreview)}>
+              <a href={articleHref()}>
                 <h3 className="font-headline text-xl font-bold mb-2 hover:underline">
                   {article.title}
                 </h3>
@@ -72,7 +61,6 @@ export default function IssueV3({
         </div>
       </div>
 
-      <PreviewToolbar issue={issue} isPreview={isPreview} />
     </>
   );
 }

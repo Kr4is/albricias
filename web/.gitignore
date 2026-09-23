@@ -45,16 +45,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/src/generated/prisma
-
-# local sqlite database (DATABASE_URL=file:./dev.db resolves from this dir)
-/*.db
-/*.db-journal
-
-# settings encryption key (src/lib/config/crypto.ts) — generated as a sibling
-# of the sqlite file above; in Docker it lives under the gitignored
-# repo-root `instance/` bind mount instead, but local dev's DATABASE_URL
-# resolves to this directory, so guard for it here too. Back this up
-# alongside the database — losing it makes every encrypted Setting
-# unreadable.
-/settings.key
+# stray local sqlite files (no database in this app, but easy to end up
+# with one during local experiments)
+*.db
+*.db-journal

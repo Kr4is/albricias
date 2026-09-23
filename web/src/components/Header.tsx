@@ -1,68 +1,28 @@
-/* eslint-disable @next/next/no-html-link-for-pages -- see NAVIGATION NOTE below */
+/* eslint-disable @next/next/no-html-link-for-pages -- plain <a> tags are
+   deliberate: `body.fade-in` and the article stagger in globals.css are
+   one-shot CSS animations that only replay on a full document load, which
+   next/link's client-side navigation would skip. */
 /**
- * Ported from `app/templates/partials/header.html`.
- *
- * NAVIGATION NOTE — every link on the public site is a plain `<a>`, not
- * `next/link`. Flask served full page loads, and the vintage look depends on
- * that: `body.fade-in` and the `article:nth-child()` stagger in style.css are
- * one-shot CSS animations that only replay on a document load. Client-side
- * navigation would silently drop the paper's "printing" entrance on every
- * link, which is exactly the kind of drift this port exists to avoid.
- *
- * Jinja read `issue`, `article`, `now`, `session` and `newspaper` off the
- * template globals; here they arrive as props (or, for the session flag, from
- * the request cookie).
- *
- * PARITY NOTE — the original compares `request.endpoint` against bare names
- * (`'archive'`, `'article_detail'`, `'edition_detail'`, `'home'`) while Flask
- * actually reports blueprint-qualified names (`'public.archive'`, …), so those
- * branches never fire on the live site: public pages always show today's date
- * and "Late City Edition", and no nav link is ever underlined. Passing the real
- * endpoint names keeps that rendered output byte-identical. Fixing the
- * comparison lists below is all it would take to switch the intended
- * behaviour on — deliberately left off, since this phase ports rather than
- * redesigns.
+ * The broadsheet masthead. Stateless — no session, no archive, no admin nav:
+ * the site is just the landing page and the generator.
  */
 
-import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
 import { newspaperConfig } from "@/lib/newspaper";
 
-/** Header-facing view of an Edition — the three fields the masthead reads. */
+/** Header-facing view of a generated issue — the three fields the masthead reads. */
 export interface EditionHeaderInfo {
   vol: string;
-  /** `periodLabel(edition)` — the Flask `Edition.date` property. */
   dateLabel: string;
-  /** `editionWeather(edition)` — the Flask `Edition.weather` property. */
   weather: string;
 }
 
-/** Flask endpoint name of the page being rendered. */
-export type Endpoint =
-  | "public.home"
-  | "public.archive"
-  | "public.edition_detail"
-  | "public.article_detail"
-  | "public.login"
-  | "public.setup"
-  | "public.page_not_found"
-  | "public.newsletter_subscribe"
-  | `admin.${string}`;
+export type Endpoint = "home" | "app";
 
 export interface HeaderProps {
   endpoint: Endpoint;
   issue?: EditionHeaderInfo | null;
-  article?: { edition: EditionHeaderInfo } | null;
 }
 
-/**
- * Nav links: the underline is always present but transparent, and only its
- * colour changes on hover/active. `hover:underline` alone cannot be animated —
- * `text-decoration-line` is a discrete property, so a `transition-*` class next
- * to it would be dead weight; `text-decoration-color` is the animatable half.
- * `decoration-current` / `decoration-transparent` is supplied per call site so
- * the active page's underline stays permanently on.
- */
 const NAV_LINK =
   "underline decoration-2 underline-offset-4 hover:decoration-current transition-colors duration-150 ease-out";
 
@@ -91,38 +51,23 @@ const MONTHS = [
   "December",
 ];
 
-/** Python's `now.strftime('%A, %B %d, %Y')`, zero-padded day included. */
+/** `now.strftime('%A, %B %d, %Y')`, zero-padded day included. */
 function longDate(now: Date): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${WEEKDAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${day}, ${now.getFullYear()}`;
 }
 
-export default async function Header({ endpoint, issue, article }: HeaderProps) {
+export default async function Header({ endpoint, issue }: HeaderProps) {
   const newspaper = await newspaperConfig();
   const now = new Date();
-
-  const cookieStore = await cookies();
-  const loggedIn = await verifySessionToken(
-    cookieStore.get(SESSION_COOKIE_NAME)?.value,
-  );
-
-  // Widened to `string` on purpose: the comparison lists below are the ones the
-  // Jinja template uses, and they do not overlap the (correct, blueprint-
-  // qualified) endpoint names — see the PARITY NOTE at the top of this file.
-  const ep: string = endpoint;
-  const isArchiveish = ["archive", "article_detail"].includes(ep);
-  const isEditionDetail = ep === "edition_detail";
-  const isAdmin = ep.startsWith("admin");
-
-  const headerEdition = issue ?? article?.edition ?? null;
 
   return (
     <header className="flex flex-col px-6 sm:px-8 lg:px-10 pt-4 print:px-0">
       {/* Top Meta Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 items-center py-2 border-b border-ink border-double text-[10px] sm:text-xs font-sans font-bold uppercase tracking-widest gap-y-2 md:gap-y-0">
         <div className="text-center md:text-left order-2 md:order-1">
-          {headerEdition ? (
-            <span>{headerEdition.vol}</span>
+          {issue ? (
+            <span>{issue.vol}</span>
           ) : (
             <span>
               VOL. {now.getFullYear()} . NO. {now.getMonth() + 1}
@@ -130,49 +75,21 @@ export default async function Header({ endpoint, issue, article }: HeaderProps) 
           )}
         </div>
         <div className="text-center order-1 md:order-2">
-          {isArchiveish ? (
-            <span>Past Editions Archive</span>
-          ) : isEditionDetail ? (
-            <span>{issue ? issue.dateLabel : "Edition"}</span>
-          ) : isAdmin ? (
-            <span>Editorial Office</span>
-          ) : (
-            <span>{longDate(now)}</span>
-          )}
+          <span>{issue ? issue.dateLabel : longDate(now)}</span>
         </div>
         <div className="flex justify-center md:justify-end gap-6 no-print order-3">
           <a
             href="/"
-            className={`${NAV_LINK} ${ep === "home" ? "decoration-current" : "decoration-transparent"}`}
+            className={`${NAV_LINK} ${endpoint === "home" ? "decoration-current" : "decoration-transparent"}`}
           >
-            Current Edition
+            Home
           </a>
           <a
-            href="/archive"
-            className={`${NAV_LINK} ${
-              ["archive", "edition_detail", "article_detail"].includes(ep)
-                ? "decoration-current"
-                : "decoration-transparent"
-            }`}
+            href="/app"
+            className={`${NAV_LINK} ${endpoint === "app" ? "decoration-current" : "decoration-transparent"}`}
           >
-            Archive
+            Generate Yours
           </a>
-          {loggedIn && (
-            <>
-              <a
-                href="/admin/editions"
-                className={`${NAV_LINK} ${isAdmin ? "decoration-current" : "decoration-transparent"}`}
-              >
-                Admin
-              </a>
-              <a
-                href="/logout"
-                className={`${NAV_LINK} decoration-transparent text-red-800`}
-              >
-                Logout
-              </a>
-            </>
-          )}
         </div>
       </div>
 
@@ -192,16 +109,10 @@ export default async function Header({ endpoint, issue, article }: HeaderProps) 
             &quot;{newspaper.tagline}&quot;
           </div>
           <div className="text-center">
-            {isArchiveish
-              ? "Browse Collection"
-              : isEditionDetail
-                ? "Monthly Edition"
-                : isAdmin
-                  ? "Editorial Office"
-                  : "Late City Edition"}
+            {issue ? "Your Edition" : "Late City Edition"}
           </div>
           <div className="text-right">
-            {headerEdition ? headerEdition.weather : newspaper.metadataRight}
+            {issue ? issue.weather : newspaper.metadataRight}
           </div>
         </div>
       </div>

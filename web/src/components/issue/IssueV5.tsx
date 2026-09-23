@@ -6,9 +6,7 @@
  * edition's own cover art up top.
  */
 
-import IssueNav from "@/components/issue/IssueNav";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -16,21 +14,12 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 export default function IssueV5({
   issue,
   articles,
-  prevIssue,
-  nextIssue,
-  isCurrentIssue,
-  isPreview,
 }: IssueLayoutProps) {
   const leads = articles.slice(0, 2);
   const rest = articles.slice(2);
 
   return (
     <>
-      <IssueNav
-        prevIssue={prevIssue}
-        nextIssue={nextIssue}
-        isCurrentIssue={isCurrentIssue}
-      />
       <IssueCoverBanner issue={issue} />
 
       {/* V5: EDITORIAL GRID */}
@@ -44,7 +33,7 @@ export default function IssueV5({
                   {article.category}
                 </span>
               </div>
-              <a href={articleHref(issue.id, article.id, isPreview)}>
+              <a href={articleHref()}>
                 <h2 className="font-headline text-3xl lg:text-4xl font-black leading-none mb-4 hover:underline">
                   {article.title}
                 </h2>
@@ -67,7 +56,7 @@ export default function IssueV5({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {rest.map((article) => (
             <article key={article.id} className="border-t border-stone-300 pt-4">
-              <a href={articleHref(issue.id, article.id, isPreview)}>
+              <a href={articleHref()}>
                 <h4 className="font-headline text-lg font-bold leading-tight mb-2 hover:text-stone-600 transition-colors">
                   {article.title}
                 </h4>
@@ -80,7 +69,6 @@ export default function IssueV5({
         </div>
       </div>
 
-      <PreviewToolbar issue={issue} isPreview={isPreview} />
     </>
   );
 }

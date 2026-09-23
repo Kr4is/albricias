@@ -11,9 +11,7 @@
  */
 
 import { Fragment } from "react";
-import IssueNav from "@/components/issue/IssueNav";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
@@ -26,10 +24,6 @@ function everyThird(articles: IssueArticle[], start: number): IssueArticle[] {
 export default function IssueV1({
   issue,
   articles,
-  prevIssue,
-  nextIssue,
-  isCurrentIssue,
-  isPreview,
 }: IssueLayoutProps) {
   const mainArticle = articles.length > 0 ? articles[0] : null;
   const otherArticles = articles.slice(1);
@@ -40,11 +34,6 @@ export default function IssueV1({
 
   return (
     <>
-      <IssueNav
-        prevIssue={prevIssue}
-        nextIssue={nextIssue}
-        isCurrentIssue={isCurrentIssue}
-      />
       <IssueCoverBanner issue={issue} />
 
       {/* Main Grid Layout */}
@@ -66,7 +55,7 @@ export default function IssueV1({
                   )}
                 </div>
 
-                <a href={articleHref(issue.id, article.id, isPreview)}>
+                <a href={articleHref()}>
                   <h2 className="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
                     {article.title}
                   </h2>
@@ -88,7 +77,7 @@ export default function IssueV1({
           {/* LEAD ARTICLE */}
           {mainArticle && (
             <article className="mb-12 border-b-4 border-double border-stone-300 pb-8">
-              <a href={articleHref(issue.id, mainArticle.id, isPreview)}>
+              <a href={articleHref()}>
                 <h2 className="font-headline text-5xl md:text-7xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 transition-opacity">
                   {mainArticle.title}
                 </h2>
@@ -121,7 +110,7 @@ export default function IssueV1({
                       {article.category}
                     </span>
                   </div>
-                  <a href={articleHref(issue.id, article.id, isPreview)}>
+                  <a href={articleHref()}>
                     <h2 className="font-headline text-2xl font-bold leading-tight mb-2 hover:underline">
                       {article.title}
                     </h2>
@@ -148,7 +137,7 @@ export default function IssueV1({
                     {article.category}
                   </span>
                 </div>
-                <a href={articleHref(issue.id, article.id, isPreview)}>
+                <a href={articleHref()}>
                   <h3 className="font-headline text-lg font-bold leading-tight mb-2 hover:opacity-70">
                     {article.title}
                   </h3>
@@ -163,7 +152,6 @@ export default function IssueV1({
         </div>
       </div>
 
-      <PreviewToolbar issue={issue} isPreview={isPreview} />
     </>
   );
 }

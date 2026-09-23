@@ -1,33 +1,16 @@
 /**
- * Shared shapes for every activity source (GitHub, blog RSS, Spotify) and for
- * the assisted-generation input processors (audio, text).
- *
- * Ported from the Flask app's implicit "activity dict" contract
- * (`app/services/github.py`, `app/services/spotify.py`) and from
- * `app/services/sources/__init__.py` (`SourceResult`).
- *
- * The dict keys are camelCased here so an `ActivityItem` maps 1:1 onto the
- * Prisma `ServiceActivity` model; the `eventType` *values* are unchanged from
- * Python so `chronicle`'s `EVENT_CATEGORY_MAP` still groups them identically.
+ * Shared shapes for the GitHub activity source.
  */
 
-/** Value of `ServiceActivity.source`. */
-export type ActivitySource = "github" | "blog" | "spotify" | "alexandria";
+/** Value of `ActivityItem.source`. */
+export type ActivitySource = "github";
 
-/**
- * One normalised external event, ready to be written as a `ServiceActivity`
- * row (`raw` goes to `rawJson` after `JSON.stringify`).
- */
+/** One normalised GitHub event. */
 export interface ActivityItem {
   source: ActivitySource;
-  /**
-   * `commit` | `pr` | `review` | `issue` | `release` | `repo_created` |
-   * `gist` | `star` | `blog_post` | `spotify_track` | `spotify_artist` |
-   * `spotify_played` | `spotify_podcast_episode` | `book_finished` |
-   * `book_reading`.
-   */
+  /** `commit` | `pr` | `review` | `issue` | `release` | `repo_created` | `gist` | `star`. */
   eventType: string;
-  /** `owner/name` for GitHub repo-scoped events; `null` everywhere else. */
+  /** `owner/name` for repo-scoped events; `null` otherwise. */
   repo: string | null;
   title: string;
   url: string | null;
@@ -36,10 +19,7 @@ export interface ActivityItem {
   raw: unknown;
 }
 
-/**
- * A half-open period `[periodStart, periodEnd)`, matching
- * `Edition.periodStart` / `Edition.periodEnd` (the end is exclusive).
- */
+/** A half-open period `[periodStart, periodEnd)`. */
 export interface Period {
   periodStart: Date;
   periodEnd: Date;
@@ -62,53 +42,4 @@ export function parseTimestamp(ts: string | null | undefined): Date | null {
   if (!ts) return null;
   const date = new Date(ts);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-// ---------------------------------------------------------------------------
-// Assisted-generation input processors
-// ---------------------------------------------------------------------------
-
-/**
- * Ported from `SOURCES` in `app/services/sources/__init__.py`, plus
- * `"calendar_event"` — from the Google Calendar plan (Phase F): a specific
- * Google Calendar event, whose Gemini meeting notes (or, failing that, its
- * title/description/attendees) become the seed text. See
- * `@/lib/sources/calendar-event.ts`. And `"github_repo"` — from the
- * `github-repo-article-generators` plan: a repo touched/starred this period,
- * whose README (or, failing that, its topics/description) becomes the seed
- * text. See `@/lib/sources/github-repo.ts`. Both are "pick from a list, the
- * server resolves the real content" sources, unlike the four above where the
- * admin supplies the text/audio directly.
- */
-export type SourceType =
-  | "audio_monologue"
-  | "audio_conversation"
-  | "text"
-  | "notes"
-  | "calendar_event"
-  | "github_repo";
-
-export const SOURCES: Record<SourceType, string> = {
-  audio_monologue: "Audio — Monologue",
-  audio_conversation: "Audio — Conversation / Interview",
-  text: "Text / Transcription",
-  notes: "Notes / Bullet Points",
-  calendar_event: "Calendar Event — Meeting",
-  github_repo: "GitHub Repository",
-};
-
-/** Normalized output from any source processor. */
-export interface SourceResult {
-  text: string;
-  sourceType: SourceType;
-  metadata: Record<string, unknown>;
-  /**
-   * A real, attributable hero image for the article this source feeds —
-   * currently only `github_repo` ever sets this (its project's own og:image,
-   * README logo, or GitHub's social preview card; see
-   * `@/lib/sources/github-repo.ts`). `undefined`/`null` means "no real image
-   * found," which is what lets `generateArticleFromSource` decide whether to
-   * fall back to AI generation.
-   */
-  imageUrl?: string | null;
 }

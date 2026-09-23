@@ -10,9 +10,7 @@
  * background, so the two read as the same paper's typography.
  */
 
-import IssueNav from "@/components/issue/IssueNav";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -20,18 +18,9 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 export default function IssueV2({
   issue,
   articles,
-  prevIssue,
-  nextIssue,
-  isCurrentIssue,
-  isPreview,
 }: IssueLayoutProps) {
   return (
     <>
-      <IssueNav
-        prevIssue={prevIssue}
-        nextIssue={nextIssue}
-        isCurrentIssue={isCurrentIssue}
-      />
       <IssueCoverBanner issue={issue} />
 
       <div className="border-b-4 border-black mb-6"></div>
@@ -47,7 +36,7 @@ export default function IssueV2({
               </span>
             </div>
 
-            <a href={articleHref(issue.id, article.id, isPreview)}>
+            <a href={articleHref()}>
               <h2
                 className={`font-headline font-bold leading-tight mb-2 hover:opacity-70 transition-opacity ${
                   index < 2 ? "text-2xl" : "text-lg"
@@ -64,7 +53,6 @@ export default function IssueV2({
         ))}
       </div>
 
-      <PreviewToolbar issue={issue} isPreview={isPreview} />
     </>
   );
 }

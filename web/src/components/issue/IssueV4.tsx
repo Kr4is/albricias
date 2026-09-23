@@ -11,9 +11,7 @@
  * `IssueCoverBanner` above, not any single story's.
  */
 
-import IssueNav from "@/components/issue/IssueNav";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import PreviewToolbar from "@/components/issue/PreviewToolbar";
 import { excerpt } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -21,21 +19,12 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 export default function IssueV4({
   issue,
   articles,
-  prevIssue,
-  nextIssue,
-  isCurrentIssue,
-  isPreview,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
   const rest = articles.slice(1);
 
   return (
     <>
-      <IssueNav
-        prevIssue={prevIssue}
-        nextIssue={nextIssue}
-        isCurrentIssue={isCurrentIssue}
-      />
       <IssueCoverBanner issue={issue} />
 
       {/* V4: ASYMMETRIC LAYOUT */}
@@ -53,7 +42,7 @@ export default function IssueV4({
                 </span>
               </div>
 
-              <a href={articleHref(issue.id, main.id, isPreview)}>
+              <a href={articleHref()}>
                 <h1 className="font-headline text-5xl md:text-7xl font-bold leading-none mb-6 hover:opacity-80 transition-opacity">
                   {main.title}
                 </h1>
@@ -76,7 +65,7 @@ export default function IssueV4({
 
           {rest.map((article) => (
             <article key={article.id}>
-              <a href={articleHref(issue.id, article.id, isPreview)}>
+              <a href={articleHref()}>
                 <h3 className="font-headline text-xl font-bold leading-tight mb-2 hover:underline">
                   {article.title}
                 </h3>
@@ -90,7 +79,6 @@ export default function IssueV4({
         </div>
       </div>
 
-      <PreviewToolbar issue={issue} isPreview={isPreview} />
     </>
   );
 }

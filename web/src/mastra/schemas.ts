@@ -1,11 +1,5 @@
 /**
- * Zod schemas shared by the Mastra agents, the Mastra workflows, and the
- * plain-TypeScript orchestration in `src/lib/generation`.
- *
- * `GeneratorResult` is the direct port of the dataclass in
- * `app/services/generators/__init__.py`; `ActivityInput` is the reduced view of
- * a `ServiceActivity` row that `ai_writer.generate_edition_draft` built by hand
- * before handing it to the chronicle generator.
+ * Zod schemas shared by the Mastra agents and the period-post workflow.
  */
 
 import { z } from "zod";
@@ -26,20 +20,7 @@ export const resolvedAiModelSchema = z.object({
   url: z.string().optional(),
 });
 
-/** Structured output from any article generator. */
-export const generatorResultSchema = z.object({
-  title: z.string(),
-  /** Markdown body. */
-  content: z.string(),
-  /** Suggested newspaper section. */
-  category: z.string(),
-  /** Prompt, raw response, model, and generator-specific extras. */
-  sourceData: z.record(z.string(), z.unknown()),
-});
-
-export type GeneratorResult = z.infer<typeof generatorResultSchema>;
-
-/** The subset of a `ServiceActivity` row the chronicle workflow reads. */
+/** One normalised GitHub activity event, as the period-post workflow reads it. */
 export const activityInputSchema = z.object({
   eventType: z.string(),
   repo: z.string().nullable(),
@@ -49,128 +30,3 @@ export const activityInputSchema = z.object({
 });
 
 export type ActivityInput = z.infer<typeof activityInputSchema>;
-
-/**
- * `reflection`/`interview`/`review`/`profile` ported from `GENERATORS` in
- * `app/services/generators/__init__.py`. `tutorial` is new — the
- * `github-repo-article-generators` plan's one genuinely new generator type
- * (its prompt lives in `@/mastra/workflows/assisted`'s `buildTutorialPrompt`),
- * since none of the ported four fit instructional/how-to content.
- */
-export const generatorTypeSchema = z.enum([
-  "reflection",
-  "interview",
-  "review",
-  "profile",
-  "tutorial",
-]);
-
-export type GeneratorType = z.infer<typeof generatorTypeSchema>;
-
-export const GENERATORS: Record<GeneratorType, string> = {
-  reflection: "Reflection / Essay",
-  interview: "Interview",
-  review: "Review",
-  profile: "Profile / Feature",
-  tutorial: "Tutorial / How-To",
-};
-
-/**
- * Ported from `GENERATOR_CATEGORIES`, plus `tutorial`'s `"How-To"` — not in
- * `@/lib/article-categories`'s `ARTICLE_CATEGORIES` (the manual-add
- * dropdown), same as the AI-only chronicle categories ("Discoveries",
- * "Culture", ...) already aren't; that list is deliberately not exhaustive.
- */
-export const GENERATOR_CATEGORIES: Record<GeneratorType, string> = {
-  reflection: "Editorial",
-  interview: "Front Page",
-  review: "Arts & Letters",
-  profile: "Front Page",
-  tutorial: "How-To",
-};
-
-/**
- * One profile article's generation trace — an outline call plus one call per
- * section, each with its own prompt/response/timing/status. Built by
- * `@/mastra/workflows/profile`'s `assemble-article` step, stored at
- * `Article.sourceData.generationTrace` (see `@/lib/generation`'s
- * `generateArticleFromSource`), and read back by the admin edit page's trace
- * graph and by `regenerateProfileSection` (single-section retry).
- */
-export const generationTraceStepSchema = z.object({
-  index: z.number().int(),
-  heading: z.string(),
-  brief: z.string(),
-  /**
-   * Which writer produced this section — `standard` prose, the `tutorial`
-   * walkthrough (the outline's `KIND: tutorial` section), or the code-built
-   * `data` section. Optional because traces persisted before this existed
-   * don't carry it; absent reads as `standard`. `regenerateProfileSection`
-   * uses it to retry a section with the same agent that wrote it, instead of
-   * quietly rewriting the tutorial in narrative voice.
-   */
-  kind: z.enum(["standard", "tutorial", "data"]).optional(),
-  status: z.enum(["success", "failed"]),
-  prompt: z.string(),
-  response: z.string().optional(),
-  startedAt: z.string(),
-  endedAt: z.string(),
-  error: z.string().optional(),
-});
-export type GenerationTraceStep = z.infer<typeof generationTraceStepSchema>;
-
-export const generationTraceSchema = z.object({
-  /**
-   * Which workflow produced this trace. Widened from a bare
-   * `"profile-deep-dive"` literal when `@/mastra/workflows/day-post` started
-   * building the same trace shape so `GenerationTraceGraph` could render a
-   * day's post with no changes at all — the component reads `outline` and
-   * `sections` and never this field, so one enum here is the whole cost of
-   * that reuse. It stays recorded because the per-section retry route needs to
-   * know which workflow's section it is retrying.
-   */
-  workflowId: z.enum(["profile-deep-dive", "day-post"]),
-  startedAt: z.string(),
-  endedAt: z.string(),
-  status: z.enum(["success", "partial", "failed"]),
-  /**
-   * What the non-LLM `research-repo` step turned up (see
-   * `@/mastra/workflows/profile`) — counts and URLs, not the fetched text,
-   * which is already inside `outline.prompt`. Optional: traces written before
-   * the research step existed have no such record, and a profile generated
-   * from a non-GitHub source has nothing to record.
-   */
-  research: z
-    .object({
-      repo: z.string(),
-      startedAt: z.string(),
-      endedAt: z.string(),
-      factsFound: z.boolean(),
-      docsChars: z.number().int(),
-      comparisonChars: z.number().int(),
-      sourceUrls: z.array(z.string()),
-    })
-    .optional(),
-  outline: z.object({
-    prompt: z.string(),
-    response: z.string(),
-    title: z.string(),
-    premise: z.string(),
-    startedAt: z.string(),
-    endedAt: z.string(),
-  }),
-  sections: z.array(generationTraceStepSchema),
-});
-export type GenerationTrace = z.infer<typeof generationTraceSchema>;
-
-/** Ported from `_SUBJECT_LABELS` in `app/services/generators/review.py`. */
-export const reviewSubjectTypeSchema = z.enum([
-  "book",
-  "film",
-  "tool",
-  "restaurant",
-  "album",
-  "other",
-]);
-
-export type ReviewSubjectType = z.infer<typeof reviewSubjectTypeSchema>;
