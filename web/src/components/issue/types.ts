@@ -26,4 +26,6 @@ export interface IssueView {
 export interface IssueLayoutProps {
   issue: IssueView;
   articles: IssueArticle[];
+  /** The article currently receiving live text deltas, if any — shows a blinking cursor after its body. */
+  streamingArticleId?: number | null;
 }

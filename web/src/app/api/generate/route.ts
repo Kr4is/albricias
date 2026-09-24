@@ -1,13 +1,10 @@
 /**
  * The whole self-serve pipeline, one request: fetch a GitHub user's activity
  * for a period, write a front page about it, return it — as Server-Sent
- * Events, since generation is several sequential LLM calls (concurrency 1,
- * see `period-post.ts`) that can run for a minute or more. Streaming keeps
- * the connection visibly alive instead of one long blocking request (a
- * failure mode this codebase has hit before — see the "generation can take
- * minutes" note in `@/mastra/agents/base`'s `runNewspaperAgent`), and lets
- * the client reveal each section as it's written rather than the whole page
- * at once.
+ * Events. Each section streams live (token by token) as the model writes
+ * it, both because generation is several sequential LLM calls that can run
+ * for a minute or more (streaming keeps the connection visibly alive) and
+ * so the client can show the text being written in place.
  *
  * Nothing is persisted — the LLM key travels only for the duration of this
  * call.
@@ -20,7 +17,9 @@ import { editionWeather, periodLabel as formatPeriodLabel, periodLabelShort } fr
 import { buildAiModel } from "@/lib/ai/resolve";
 import { fetchGithubActivity } from "@/lib/sources/github";
 import { randomLayoutIndex } from "@/lib/layout";
-import { periodPostWorkflow } from "@/mastra/workflows/period-post";
+import { buildOutline, researchPeriod, writeSection } from "@/lib/generation/period-post";
+import { buildByTheNumbersArticle, buildStarsArticle } from "@/lib/generation/deterministic-articles";
+import type { IssueArticle } from "@/components/issue/types";
 
 const baseFields = {
   githubUsername: z.string().trim().min(1).max(100),
@@ -56,20 +55,6 @@ function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-/** `period-post.ts` step ids → what to show on the generating screen. */
-const STEP_STATUS_LABELS: Record<string, string> = {
-  research: "Reading the activity…",
-  "build-outline": "Planning the front page…",
-  assemble: "Setting the final page…",
-};
-
-interface SectionIterationOutput {
-  heading?: string;
-  brief?: string;
-  content?: string | null;
-  ok?: boolean;
-}
-
 export async function POST(request: Request) {
   const body = requestSchema.safeParse(await request.json().catch(() => null));
   if (!body.success) {
@@ -100,7 +85,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const aiModel = buildAiModel(input);
+  const model = buildAiModel(input);
+  const periodLabel = formatPeriodLabel(edition);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -114,10 +100,16 @@ export async function POST(request: Request) {
           closed = true;
         }
       };
+      /** A whole, already-known article (the deterministic ones) — sent through the same three events a streamed section uses. */
+      const sendWholeArticle = (article: IssueArticle) => {
+        send("section-start", { index: article.id, heading: article.title, category: article.category, author: article.author, deck: article.deck });
+        send("section-delta", { index: article.id, delta: article.content });
+        send("section-end", { index: article.id });
+      };
 
       send("meta", {
         vol: defaultEditionVol(edition),
-        dateLabel: formatPeriodLabel(edition),
+        dateLabel: periodLabel,
         dateShortLabel: periodLabelShort(edition),
         weather: editionWeather(edition),
         layout: randomLayoutIndex(),
@@ -125,41 +117,34 @@ export async function POST(request: Request) {
       });
 
       try {
-        const run = await periodPostWorkflow.createRun();
-        const runStream = run.stream({
-          inputData: {
-            periodLabel: formatPeriodLabel(edition),
-            cadence: input.period,
-            activity: activity.map((item) => ({
-              eventType: item.eventType,
-              repo: item.repo,
-              title: item.title,
-              url: item.url,
-              timestamp: item.timestamp,
-            })),
-            aiModel,
-          },
-        });
+        send("status", { message: "Planning the front page…" });
+        const sourceText = researchPeriod(activity);
+        const outline = await buildOutline({ periodLabel, cadence: input.period, sourceText, model });
 
-        for await (const chunk of runStream.fullStream) {
-          if (chunk.type === "workflow-step-start") {
-            const label = STEP_STATUS_LABELS[chunk.payload.id];
-            if (label) send("status", { message: label });
-          } else if (chunk.type === "workflow-step-progress" && chunk.payload.id === "write-section") {
-            const output = chunk.payload.iterationOutput as SectionIterationOutput | undefined;
-            if (output?.ok && output.content) {
-              send("section", { index: chunk.payload.currentIndex, heading: output.heading, brief: output.brief, content: output.content });
-            }
+        for (let index = 0; index < outline.sections.length; index += 1) {
+          const section = outline.sections[index];
+          send("section-start", { index, heading: section.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: section.brief });
+          try {
+            await writeSection(
+              { heading: section.heading, brief: section.brief, lengthTier: section.lengthTier, premise: outline.premise, periodLabel, sourceText, model },
+              (delta) => send("section-delta", { index, delta }),
+            );
+            send("section-end", { index });
+          } catch (error) {
+            console.error(`[period-post] section "${section.heading}" failed:`, error);
+            send("section-end", { index, failed: true });
           }
         }
 
-        const outcome = await runStream.result;
-        if (outcome.status !== "success") {
-          const message = outcome.status === "failed" ? describe(outcome.error) : `Generation did not complete (${outcome.status}).`;
-          send("error", { error: message });
-        } else {
-          send("done", { title: outcome.result.title });
-        }
+        // Sent after the prose sections, so the AI's own headline section
+        // stays `articles[0]` (the front page's lead) — these two are
+        // sidebar material, never the lead story.
+        const starsArticle = buildStarsArticle(activity);
+        if (starsArticle) sendWholeArticle(starsArticle);
+        const numbersArticle = buildByTheNumbersArticle(activity);
+        if (numbersArticle) sendWholeArticle(numbersArticle);
+
+        send("done", { title: outline.title });
       } catch (error) {
         send("error", { error: describe(error) });
       } finally {

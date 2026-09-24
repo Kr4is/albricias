@@ -51,6 +51,7 @@ export default function AppClient() {
   const [layout, setLayout] = useState<LayoutIndex | null>(null);
   const [title, setTitle] = useState("");
   const [articles, setArticles] = useState<IssueArticle[]>([]);
+  const [streamingId, setStreamingId] = useState<number | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export default function AppClient() {
     setLayout(null);
     setTitle("");
     setArticles([]);
+    setStreamingId(null);
     setWarnings([]);
     setFinished(false);
   }
@@ -128,16 +130,24 @@ export default function AppClient() {
             setWarnings(data.warnings ?? []);
           } else if (message.event === "status") {
             setStatusMessage((message.data as { message: string }).message);
-          } else if (message.event === "section") {
-            const data = message.data as { index: number; heading: string; brief: string; content: string };
+          } else if (message.event === "section-start") {
+            const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string };
             setArticles((prev) => [
               ...prev,
-              { id: data.index + 1, title: data.heading, content: data.content, category: "Dispatch", author: "The Albricias Correspondent", deck: data.brief },
+              { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck },
             ]);
+            setStreamingId(data.index);
             if (!sawFirstSection) {
               sawFirstSection = true;
               setPhase("result");
             }
+          } else if (message.event === "section-delta") {
+            const data = message.data as { index: number; delta: string };
+            setArticles((prev) => prev.map((a) => (a.id === data.index ? { ...a, content: a.content + data.delta } : a)));
+          } else if (message.event === "section-end") {
+            const data = message.data as { index: number; failed?: boolean };
+            setStreamingId((current) => (current === data.index ? null : current));
+            if (data.failed) setArticles((prev) => prev.filter((a) => a.id !== data.index));
           } else if (message.event === "done") {
             setTitle((message.data as { title: string }).title);
             sawDone = true;
@@ -186,6 +196,7 @@ export default function AppClient() {
           layout={layout}
           issue={{ id: 0, title, status: "published", coverImage: null, ...issueMeta }}
           articles={articles}
+          streamingArticleId={streamingId}
         />
       </div>
     );

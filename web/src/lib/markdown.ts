@@ -10,8 +10,8 @@
  *
  * One addition on top of stock GFM: a ` ```chart ` fenced block (see
  * `@/lib/article-chart` for the JSON contract inside it, and `CHART_CLAUSE`
- * in `@/mastra/agents` for the prompt instruction that tells generators when
- * to use it) renders as a placeholder `<div data-chart>` instead of a code
+ * in `@/lib/generation/period-post` for the prompt instruction that tells
+ * generators when to use it) renders as a placeholder `<div data-chart>` instead of a code
  * block — `@/components/ArticleCharts` finds those client-side and draws
  * them with Chart.js. A block that fails to parse as a valid chart spec
  * falls through to marked's normal code-block rendering (`return false`),

@@ -8,13 +8,15 @@
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import { excerpt } from "@/lib/markdown";
+import ArticleBody from "@/components/ArticleBody";
+import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV3({
   issue,
   articles,
+  streamingArticleId,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
   const rest = articles.slice(1);
@@ -38,9 +40,8 @@ export default function IssueV3({
                 {main.title}
               </h1>
             </a>
-            <p className="font-body text-base leading-relaxed border-l-4 border-stone-300 pl-4 italic max-w-3xl">
-              {excerpt(main.content, 320)}
-            </p>
+            <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed border-l-4 border-stone-300 pl-4 italic max-w-3xl" />
+            {main.id === streamingArticleId && <span className="typing-cursor" />}
           </div>
         )}
 
@@ -53,9 +54,8 @@ export default function IssueV3({
                   {article.title}
                 </h3>
               </a>
-              <div className="text-xs font-body justified-text text-stone-600">
-                <p>{excerpt(article.content, 200)}</p>
-              </div>
+              <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text text-stone-600" />
+              {article.id === streamingArticleId && <span className="typing-cursor" />}
             </article>
           ))}
         </div>

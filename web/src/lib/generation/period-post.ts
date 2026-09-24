@@ -1,0 +1,358 @@
+/**
+ * Period-post generation — outline → per-section drafts, plain async
+ * functions calling the Vercel AI SDK directly (no workflow framework).
+ *
+ * Given one already-fetched batch of GitHub activity for a period, produces
+ * the sections of a front page. Nothing here reads or writes anything —
+ * this is a one-shot, in-memory pipeline with no cross-run history.
+ *
+ * The outline call is buffered (`generateText`) — it's an internal planning
+ * step (headline/premise/section briefs in a control-syntax format), nobody
+ * wants to watch `PREMISE:`/`BRIEF:` lines typed out. Each section is
+ * streamed (`streamText`) with its text forwarded live via `onDelta`, so the
+ * caller (the SSE route) can show it being written token by token.
+ */
+
+import { generateText, streamText, type LanguageModel } from "ai";
+import type { ActivityItem } from "@/lib/sources/types";
+
+/** Verbatim voice of the whole paper. */
+export const NEWSPAPER_PERSONA =
+  "You are the chief editor of ¡Albricias!, a whimsical vintage newspaper " +
+  "published in the style of early 20th-century broadsheets. " +
+  "Your writing is eloquent, slightly dramatic, and uses the grandiloquent " +
+  "journalistic voice of a bygone era — yet the content is accurate and grounded " +
+  "in the actual material provided. " +
+  "Use markdown for formatting.";
+
+const DEFAULT_TEMPERATURE = 0.8;
+
+type Cadence = "daily" | "weekly" | "monthly";
+export type LengthTier = "short" | "medium" | "long";
+
+/** How many sections a period's material may support — a quiet period should still propose fewer. */
+const SECTION_RANGE: Record<Cadence, readonly [number, number]> = {
+  daily: [1, 4],
+  weekly: [3, 6],
+  monthly: [5, 9],
+};
+
+/** Word-count band per length tier — named bands, not a numeric target no model hits anyway. */
+const LENGTH_BANDS: Record<LengthTier, string> = {
+  short: "roughly 60 to 120 words",
+  medium: "roughly 150 to 300 words",
+  long: "roughly 350 to 600 words",
+};
+
+const MAX_ACTIVITIES_LISTED = 25;
+
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Shared chart clause — appended where a desk might plausibly have real,
+ * countable numbers worth plotting. Renders via the `chart` fenced-code
+ * convention `@/lib/markdown` and `@/components/ArticleCharts` implement.
+ */
+const CHART_CLAUSE =
+  " When the material gives you real, countable numbers worth seeing as " +
+  "well as reading — a tally, a comparison, a trend over the period — you " +
+  "may include one chart alongside the prose: a fenced code block written " +
+  'exactly as ```chart containing a single JSON object shaped {"type": ' +
+  '"bar" | "line" | "doughnut", "title": string, "labels": string[], ' +
+  '"datasets": [{"label": string, "data": number[]}]}, each dataset\'s ' +
+  "data array the same length as labels. Use doughnut only for a genuine " +
+  "part-of-whole breakdown, e.g. percentages that sum to roughly 100% — " +
+  "reach for bar or line otherwise. Use only numbers that actually appear " +
+  "in the material — never invent or estimate a figure to fill a chart — " +
+  "and leave it out entirely when there is nothing quantitative worth " +
+  "plotting.";
+
+export const PERIOD_POST_OUTLINE_SYSTEM =
+  "You are the outline editor for ¡Albricias!'s correspondent desk. You do " +
+  "not write prose — you plan one short front page about a GitHub user's " +
+  "activity over a period, which someone else will write one section at a " +
+  "time from the material given to you. The material arrives as a single " +
+  "labeled block, \"## Activity\", listing everything recorded in the " +
+  "period — commits, pull requests, issues, releases, stars, and so on. " +
+  "The user prompt also states the period being covered and exactly how " +
+  "many sections to propose — follow that range precisely.\n\n" +
+  "Read the material once, then reply with exactly this shape, nothing else:\n" +
+  "\n" +
+  "# <a compelling headline for the period>\n" +
+  "\n" +
+  "PREMISE: <one short paragraph — what kind of period this was, the thread " +
+  "that ties its sections together>\n" +
+  "\n" +
+  "## <first section heading>\n" +
+  "BRIEF: <one or two sentences on what this section covers>\n" +
+  "LENGTH: short|medium|long\n" +
+  "\n" +
+  "## <second section heading>\n" +
+  "BRIEF: ...\n" +
+  "LENGTH: ...\n" +
+  "\n" +
+  "(and so on)\n" +
+  "\n" +
+  "Propose only as many sections as the period's own material genuinely " +
+  "supports, up to the stated maximum — a quiet period deserves fewer " +
+  "sections, and padding it out is a worse outline than a shorter, honest " +
+  "one. When the material spans many repositories or a large number of " +
+  "events, do not propose one section per item — group related activity by " +
+  "theme or repository cluster and cover the most interesting handful in " +
+  "depth rather than everything shallowly. A repository earns its own " +
+  "section when the period did real work in it or starred it with " +
+  "something substantial to say; everything smaller belongs inside another " +
+  "section as a passing mention, not a section of its own. Keep sections " +
+  "non-overlapping: each repository or theme belongs to exactly one " +
+  "section's BRIEF, since each section is written independently by someone " +
+  "who sees only its own brief. Vary each section's LENGTH deliberately — a " +
+  "real newspaper mixes short items with long features; do not mark every " +
+  "section the same length. Ground every section in what the material " +
+  "actually records — never plan a section around activity the period did " +
+  "not have.";
+
+/**
+ * The prose half of this pipeline. No headline, no restating the premise, no
+ * conclusion — those belong to the outline. Writing *about the period*, for
+ * a reader who was not there.
+ */
+export const PERIOD_POST_SECTION_SYSTEM =
+  NEWSPAPER_PERSONA +
+  "\n\n" +
+  "You are writing one section of ¡Albricias!'s post about a GitHub user's " +
+  "recent activity — a dispatch from the correspondent's desk, warm and " +
+  "vivid but factual. You are given the post's overall premise (for " +
+  "continuity — do not restate it), this section's own heading, brief, and " +
+  "target length, and the period's recorded material. Write only this " +
+  "section's body: no headline, no re-introduction of the period, no " +
+  "summary or conclusion — those belong to other parts of the post you are " +
+  "not writing. Write about what happened, naming the actual repositories, " +
+  "commits, releases and figures the material records; never invent an " +
+  "event, a number, or a motive it does not state, and prefer saying the " +
+  "period was quiet to filling it out." +
+  CHART_CLAUSE;
+
+// ---------------------------------------------------------------------------
+// Research
+// ---------------------------------------------------------------------------
+
+/** `{ commit: 7, star: 2 }` → `"7 commit, 2 star"`, busiest kind first. */
+function countByEventType(activity: ActivityItem[]): string {
+  const counts = new Map<string, number>();
+  for (const item of activity) counts.set(item.eventType, (counts.get(item.eventType) ?? 0) + 1);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, count]) => `${count} ${type}`)
+    .join(", ");
+}
+
+/** Up to `MAX_ACTIVITIES_LISTED` events as plain-text lines, newest material first. */
+function summariseActivity(activity: ActivityItem[]): string {
+  return activity
+    .slice(0, MAX_ACTIVITIES_LISTED)
+    .map((item) => {
+      const ts = item.timestamp
+        ? `${MONTHS_SHORT[item.timestamp.getUTCMonth()]} ${String(item.timestamp.getUTCDate()).padStart(2, "0")}`
+        : "";
+      return `- [${item.eventType || "?"}] ${item.repo ?? ""}: ${item.title ?? ""} (${ts}) ${item.url ?? ""}`;
+    })
+    .join("\n");
+}
+
+/** No LLM call, no network call — renders the already-fetched activity as one labeled source block. */
+export function researchPeriod(activity: ActivityItem[]): string {
+  if (activity.length === 0) {
+    throw new Error("No GitHub activity recorded for this period — there is nothing to write about.");
+  }
+  const repoCount = new Set(activity.map((item) => item.repo).filter(Boolean)).size;
+  const header = `${activity.length} recorded events across ${repoCount} repositories: ${countByEventType(activity)}.`;
+  return `## Activity\n\n${header}\n\n${summariseActivity(activity)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Prompts + outline parsing
+// ---------------------------------------------------------------------------
+
+export function buildOutlinePrompt(input: { periodLabel: string; cadence: Cadence; sourceText: string }): string {
+  const [minSections, maxSections] = SECTION_RANGE[input.cadence];
+  return (
+    `The period being covered is ${input.periodLabel}.\n\n` +
+    `Propose between ${minSections} and ${maxSections} sections for this outline.\n\n` +
+    `Material:\n${input.sourceText}\n`
+  );
+}
+
+export function buildSectionPrompt(input: {
+  periodLabel: string;
+  heading: string;
+  brief: string;
+  lengthTier: LengthTier;
+  premise: string;
+  sourceText: string;
+}): string {
+  return (
+    `The period being covered is ${input.periodLabel}.\n\n` +
+    `The post's overall premise: ${input.premise}\n\n` +
+    `Write the section titled "${input.heading}". ${input.brief}\n\n` +
+    `This section is a ${input.lengthTier} item — aim for ${LENGTH_BANDS[input.lengthTier]}, and no more.\n\n` +
+    `The period's material:\n${input.sourceText}\n`
+  );
+}
+
+function parseLengthTier(value: string): LengthTier {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "short" || normalized === "long" ? normalized : "medium";
+}
+
+export interface ParsedOutlineSection {
+  heading: string;
+  brief: string;
+  lengthTier: LengthTier;
+}
+
+export interface ParsedOutline {
+  title: string;
+  premise: string;
+  sections: ParsedOutlineSection[];
+}
+
+/** Reads the `# headline` / `PREMISE:` / `## heading` / `BRIEF:` / `LENGTH:` shape `PERIOD_POST_OUTLINE_SYSTEM` asks for. */
+export function parseOutline(raw: string): ParsedOutline {
+  const lines = raw.trim().split("\n");
+  let title = "";
+  let premise = "";
+  const sections: ParsedOutlineSection[] = [];
+  let current: ParsedOutlineSection | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (line.startsWith("# ")) {
+      title = line.slice(2).trim();
+    } else if (line.startsWith("## ")) {
+      if (current) sections.push(current);
+      current = { heading: line.slice(3).trim(), brief: "", lengthTier: "medium" };
+    } else if (line.startsWith("PREMISE:")) {
+      premise = line.slice("PREMISE:".length).trim();
+    } else if (line.startsWith("BRIEF:") && current) {
+      current.brief = line.slice("BRIEF:".length).trim();
+    } else if (line.startsWith("LENGTH:") && current) {
+      current.lengthTier = parseLengthTier(line.slice("LENGTH:".length));
+    }
+  }
+  if (current) sections.push(current);
+
+  return { title, premise, sections: sections.filter((section) => section.heading) };
+}
+
+/** Strip a leading Markdown heading line (any level, any text) plus one following blank line, if present. */
+export function stripLeadingHeadingLine(markdown: string): string {
+  const trimmed = markdown.trim();
+  const lines = trimmed.split("\n");
+  const first = lines[0]?.trim() ?? "";
+
+  if (!/^#{1,6}\s+\S/.test(first)) return trimmed;
+
+  let rest = lines.slice(1);
+  if (rest[0]?.trim() === "") rest = rest.slice(1);
+
+  return rest.join("\n").trim();
+}
+
+// ---------------------------------------------------------------------------
+// Outline + sections
+// ---------------------------------------------------------------------------
+
+interface TextResult {
+  text: string;
+  finishReason: string;
+}
+
+/** A response too broken to use: cut off mid-generation, or nothing at all. */
+function isUnusable(result: TextResult): boolean {
+  return result.finishReason === "length" || !result.text.trim();
+}
+
+export async function buildOutline(input: {
+  periodLabel: string;
+  cadence: Cadence;
+  sourceText: string;
+  model: LanguageModel;
+}): Promise<ParsedOutline> {
+  const prompt = buildOutlinePrompt(input);
+  const call = () => generateText({ model: input.model, system: PERIOD_POST_OUTLINE_SYSTEM, prompt, temperature: DEFAULT_TEMPERATURE });
+
+  let result = await call();
+  if (isUnusable(result)) {
+    console.warn(`[period-post] outline truncated/empty (finishReason: ${result.finishReason}) — retrying once`);
+    result = await call();
+  }
+  if (isUnusable(result)) {
+    throw new Error(
+      `The outline call returned a truncated/empty response twice in a row (finishReason: ${result.finishReason}). ` +
+        "The provider may be enforcing its own token ceiling, or the model may be failing silently.",
+    );
+  }
+
+  const outline = parseOutline(result.text);
+  // A weak model (small local Ollama models in particular) can produce real
+  // prose while still missing the exact "## heading" / "BRIEF:" shape this
+  // parses for — falling back to one section over the whole period, rather
+  // than failing the entire generation, degrades gracefully instead of
+  // punishing the visitor for a model they chose that can write but can't
+  // follow a structured multi-field format.
+  if (outline.sections.length === 0) {
+    outline.sections = [{ heading: outline.title || input.periodLabel, brief: "Cover the period's activity as a whole.", lengthTier: "medium" }];
+  }
+  if (!outline.title) outline.title = input.periodLabel;
+  return outline;
+}
+
+/**
+ * Write one section, forwarding live text deltas to `onDelta` as they arrive.
+ *
+ * No retry on truncation here (unlike the outline call): by the time a
+ * truncated/empty response is detected, partial text has already been
+ * streamed to the client — a silent retry would either leave stale text on
+ * screen or need a new "restart this section" signal, not worth it for one
+ * call. Throws instead; the caller drops the section (see the route).
+ * `ponytail: no retry on streamed truncation — revisit only if it turns out common enough to need a section-restart event.`
+ */
+export async function writeSection(
+  input: {
+    heading: string;
+    brief: string;
+    lengthTier: LengthTier;
+    premise: string;
+    periodLabel: string;
+    sourceText: string;
+    model: LanguageModel;
+  },
+  onDelta: (delta: string) => void,
+): Promise<string> {
+  const prompt = buildSectionPrompt(input);
+  const { textStream, text, finishReason } = streamText({
+    model: input.model,
+    system: PERIOD_POST_SECTION_SYSTEM,
+    prompt,
+    temperature: DEFAULT_TEMPERATURE,
+  });
+
+  try {
+    for await (const delta of textStream) onDelta(delta);
+  } catch (error) {
+    throw new Error(`Section "${input.heading}" stream failed: ${describe(error)}`);
+  }
+
+  const [finalText, reason] = await Promise.all([text, finishReason]);
+  if (reason === "length" || !finalText.trim()) {
+    throw new Error(`Section "${input.heading}" truncated/empty (finishReason: ${reason}).`);
+  }
+  return stripLeadingHeadingLine(finalText);
+}

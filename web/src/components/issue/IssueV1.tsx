@@ -12,7 +12,8 @@
 
 import { Fragment } from "react";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import { excerpt } from "@/lib/markdown";
+import ArticleBody from "@/components/ArticleBody";
+import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
 
@@ -24,6 +25,7 @@ function everyThird(articles: IssueArticle[], start: number): IssueArticle[] {
 export default function IssueV1({
   issue,
   articles,
+  streamingArticleId,
 }: IssueLayoutProps) {
   const mainArticle = articles.length > 0 ? articles[0] : null;
   const otherArticles = articles.slice(1);
@@ -61,9 +63,8 @@ export default function IssueV1({
                   </h2>
                 </a>
 
-                <div className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text">
-                  <p>{excerpt(article.content, 200)}</p>
-                </div>
+                <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text" />
+                {article.id === streamingArticleId && <span className="typing-cursor" />}
               </article>
               {index !== leftColumn.length - 1 && (
                 <div className="w-16 h-px bg-stone-200 mx-auto"></div>
@@ -93,9 +94,8 @@ export default function IssueV1({
                 </h4>
               </div>
 
-              <div className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap">
-                <p>{excerpt(mainArticle.content, 500)}</p>
-              </div>
+              <ArticleBody html={renderMarkdown(mainArticle.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
+              {mainArticle.id === streamingArticleId && <span className="typing-cursor" />}
             </article>
           )}
 
@@ -115,9 +115,8 @@ export default function IssueV1({
                       {article.title}
                     </h2>
                   </a>
-                  <p className="text-sm font-body leading-relaxed text-ink-light">
-                    {excerpt(article.content, 250)}
-                  </p>
+                  <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light" />
+                  {article.id === streamingArticleId && <span className="typing-cursor" />}
                 </article>
                 {index !== centerColumn.length - 1 && (
                   <div className="border-t border-dotted border-stone-300 w-full"></div>
@@ -142,9 +141,8 @@ export default function IssueV1({
                     {article.title}
                   </h3>
                 </a>
-                <p className="text-xs font-body justified-text leading-snug text-stone-600">
-                  {excerpt(article.content, 150)}
-                </p>
+                <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text leading-snug text-stone-600" />
+                {article.id === streamingArticleId && <span className="typing-cursor" />}
               </article>
               <div className="w-full border-t border-stone-200"></div>
             </Fragment>

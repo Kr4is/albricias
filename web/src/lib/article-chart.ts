@@ -1,7 +1,7 @@
 /**
  * Shared contract for the `chart` fenced-code convention a generation
  * prompt can use to ask for a real chart instead of prose or a table (see
- * `CHART_CLAUSE` in `@/mastra/agents`) — a single JSON object describing
+ * `CHART_CLAUSE` in `@/lib/generation/period-post`) — a single JSON object describing
  * bar/line/doughnut data, which `@/lib/markdown` turns into a placeholder
  * `<div>` and `@/components/ArticleCharts` (client-side, Chart.js) turns
  * into a canvas.

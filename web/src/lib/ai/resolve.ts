@@ -1,11 +1,15 @@
 /**
  * Resolves the visitor's chosen LLM provider + BYO API key (from the
- * `/api/generate` request body) into the Mastra model-router config the
- * agents consume — no server-side storage, no `Setting` lookup: the key
- * lives only for the duration of this one request.
+ * `/api/generate` request body) into an AI SDK `LanguageModel` — no
+ * server-side storage: the key lives only for the duration of this request.
+ *
+ * `createOpenAI({baseURL})` also covers Ollama and LiteLLM, both
+ * OpenAI-compatible endpoints — one resolver, four providers.
  */
 
-import type { ResolvedAiModel } from "@/mastra/agents/base";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import type { LanguageModel } from "ai";
 
 export type AiProviderId = "openai" | "gemini" | "ollama" | "litellm";
 
@@ -21,19 +25,15 @@ export interface BuildAiModelInput {
   llmBaseUrl?: string;
 }
 
-export function buildAiModel(input: BuildAiModelInput): ResolvedAiModel {
+export function buildAiModel(input: BuildAiModelInput): LanguageModel {
   switch (input.llmProvider) {
     case "openai":
-      return { id: `openai/${input.llmModel || DEFAULT_OPENAI_MODEL}`, apiKey: input.llmApiKey };
+      return createOpenAI({ apiKey: input.llmApiKey })(input.llmModel || DEFAULT_OPENAI_MODEL);
     case "gemini":
-      return { id: `google/${input.llmModel || DEFAULT_GEMINI_MODEL}`, apiKey: input.llmApiKey };
+      return createGoogleGenerativeAI({ apiKey: input.llmApiKey })(input.llmModel || DEFAULT_GEMINI_MODEL);
     case "ollama":
-      return {
-        id: `ollama/${input.llmModel}`,
-        url: input.llmBaseUrl || DEFAULT_OLLAMA_BASE_URL,
-        apiKey: "not-needed",
-      };
+      return createOpenAI({ apiKey: "not-needed", baseURL: input.llmBaseUrl || DEFAULT_OLLAMA_BASE_URL })(input.llmModel!);
     case "litellm":
-      return { id: `litellm/${input.llmModel}`, url: input.llmBaseUrl, apiKey: input.llmApiKey };
+      return createOpenAI({ apiKey: input.llmApiKey, baseURL: input.llmBaseUrl })(input.llmModel!);
   }
 }

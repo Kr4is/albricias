@@ -13,13 +13,15 @@
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import { excerpt } from "@/lib/markdown";
+import ArticleBody from "@/components/ArticleBody";
+import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV6({
   issue,
   articles,
+  streamingArticleId,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
   const rest = articles.slice(1);
@@ -39,9 +41,8 @@ export default function IssueV6({
               {main.title}
             </h1>
           </a>
-          <div className="columns-1 md:columns-2 gap-8 text-left text-base font-body leading-relaxed justified-text text-ink-light max-w-4xl mx-auto drop-cap">
-            <p>{excerpt(main.content, 700)}</p>
-          </div>
+          <ArticleBody html={renderMarkdown(main.content)} className="columns-1 md:columns-2 gap-8 text-left text-base font-body leading-relaxed justified-text text-ink-light max-w-4xl mx-auto drop-cap" />
+          {main.id === streamingArticleId && <span className="typing-cursor" />}
         </div>
       )}
 
@@ -68,9 +69,8 @@ export default function IssueV6({
                       {article.title}
                     </h4>
                   </a>
-                  <p className="text-xs font-body text-stone-600 mt-1">
-                    {excerpt(article.content, 160)}
-                  </p>
+                  <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-600 mt-1" />
+                  {article.id === streamingArticleId && <span className="typing-cursor" />}
                 </div>
               </li>
             ))}

@@ -41,6 +41,21 @@ body {
     animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* Blinking cursor after the article currently receiving live text deltas. */
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+.typing-cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1em;
+    background: currentColor;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+}
+
 /* Stagger animations for articles */
 article {
     opacity: 0;

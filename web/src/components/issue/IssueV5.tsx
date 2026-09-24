@@ -7,13 +7,15 @@
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
-import { excerpt } from "@/lib/markdown";
+import ArticleBody from "@/components/ArticleBody";
+import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV5({
   issue,
   articles,
+  streamingArticleId,
 }: IssueLayoutProps) {
   const leads = articles.slice(0, 2);
   const rest = articles.slice(2);
@@ -38,9 +40,8 @@ export default function IssueV5({
                   {article.title}
                 </h2>
               </a>
-              <div className="text-sm font-body leading-relaxed text-ink justified-text">
-                <p>{excerpt(article.content, 350)}</p>
-              </div>
+              <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink justified-text" />
+              {article.id === streamingArticleId && <span className="typing-cursor" />}
             </article>
           ))}
         </div>
@@ -61,9 +62,8 @@ export default function IssueV5({
                   {article.title}
                 </h4>
               </a>
-              <p className="text-xs font-body text-stone-500 leading-snug">
-                {excerpt(article.content, 100)}
-              </p>
+              <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-500 leading-snug" />
+              {article.id === streamingArticleId && <span className="typing-cursor" />}
             </article>
           ))}
         </div>
