@@ -3,12 +3,13 @@
  * Ported from `app/templates/issue_v3.html`. The hero's image column was
  * originally `issue.coverImage` treated as the lead story's own photo; that
  * field is now the edition's own cover art (see `IssueCoverBanner`, rendered
- * once for every layout), so the hero here is text-only — the cover banner
- * above already carries the issue's imagery.
+ * once for every layout). The hero and the stream below it carry each
+ * story's own `imageUrl` instead, when it has one (`ArticleImage`).
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
+import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -40,8 +41,13 @@ export default function IssueV3({
                 {main.title}
               </h1>
             </a>
-            <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed border-l-4 border-stone-300 pl-4 italic max-w-3xl" />
-            {main.id === streamingArticleId && <span className="typing-cursor" />}
+            <div className={main.imageUrl ? "lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-8 lg:items-start" : ""}>
+              <div>
+                <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed border-l-4 border-stone-300 pl-4 italic max-w-3xl" />
+                {main.id === streamingArticleId && <span className="typing-cursor" />}
+              </div>
+              <ArticleImage src={main.imageUrl} alt={main.title} eager className="mt-6 lg:mt-0" />
+            </div>
           </div>
         )}
 
@@ -49,6 +55,7 @@ export default function IssueV3({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 divide-x divide-stone-300">
           {rest.map((article, index) => (
             <article key={article.id} className={index !== 0 ? "pl-8" : ""}>
+              <ArticleImage src={article.imageUrl} alt={article.title} className="mb-3" />
               <a href={articleHref()}>
                 <h3 className="font-headline text-xl font-bold mb-2 hover:underline">
                   {article.title}

@@ -13,6 +13,7 @@
 import { Fragment } from "react";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
+import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
@@ -57,6 +58,8 @@ export default function IssueV1({
                   )}
                 </div>
 
+                <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+
                 <a href={articleHref()}>
                   <h2 className="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
                     {article.title}
@@ -94,6 +97,8 @@ export default function IssueV1({
                 </h4>
               </div>
 
+              <ArticleImage src={mainArticle.imageUrl} alt={mainArticle.title} eager className="mb-5" />
+
               <ArticleBody html={renderMarkdown(mainArticle.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
               {mainArticle.id === streamingArticleId && <span className="typing-cursor" />}
             </article>
@@ -110,6 +115,7 @@ export default function IssueV1({
                       {article.category}
                     </span>
                   </div>
+                  <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
                   <a href={articleHref()}>
                     <h2 className="font-headline text-2xl font-bold leading-tight mb-2 hover:underline">
                       {article.title}
@@ -136,6 +142,7 @@ export default function IssueV1({
                     {article.category}
                   </span>
                 </div>
+                <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
                 <a href={articleHref()}>
                   <h3 className="font-headline text-lg font-bold leading-tight mb-2 hover:opacity-70">
                     {article.title}

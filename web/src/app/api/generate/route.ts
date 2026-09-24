@@ -18,6 +18,7 @@ import { buildAiModel } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
 import { fetchGithubActivity } from "@/lib/sources/github";
 import { pickLayoutForContent } from "@/lib/layout";
+import { knownRepos, mostActiveRepo, repoImageUrl, resolveRepo } from "@/lib/repo-image";
 import { buildOutline, researchPeriod, writeSection } from "@/lib/generation/period-post";
 import { buildByTheNumbersArticle, buildStarsArticle } from "@/lib/generation/deterministic-articles";
 import type { IssueArticle } from "@/components/issue/types";
@@ -83,6 +84,8 @@ export async function POST(request: Request) {
 
   const model = buildAiModel(input);
   const periodLabel = formatPeriodLabel(edition);
+  const coverRepo = mostActiveRepo(activity);
+  const repos = knownRepos(activity);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -108,6 +111,7 @@ export async function POST(request: Request) {
         dateLabel: periodLabel,
         dateShortLabel: periodLabelShort(edition),
         weather: editionWeather(edition),
+        coverImage: coverRepo ? repoImageUrl(coverRepo) : null,
         warnings,
       });
 
@@ -125,9 +129,17 @@ export async function POST(request: Request) {
         const total = outline.sections.length + (starsArticle ? 1 : 0) + (numbersArticle ? 1 : 0);
         send("layout", { layout: pickLayoutForContent(total) });
 
+        // Each repo's card appears at most once on the page — the cover
+        // already shows the most active one, and two sections about the
+        // same repo shouldn't repeat the same picture.
+        const pictured = new Set<string>(coverRepo ? [coverRepo] : []);
+
         for (let index = 0; index < outline.sections.length; index += 1) {
           const section = outline.sections[index];
-          send("section-start", { index, heading: section.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: section.brief });
+          const repo = resolveRepo(section.repo, repos);
+          const imageUrl = repo && !pictured.has(repo) ? repoImageUrl(repo) : null;
+          if (repo) pictured.add(repo);
+          send("section-start", { index, heading: section.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: section.brief, imageUrl });
           try {
             await writeSection(
               { heading: section.heading, brief: section.brief, lengthTier: section.lengthTier, premise: outline.premise, periodLabel, sourceText, model },

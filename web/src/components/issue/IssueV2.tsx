@@ -12,6 +12,7 @@
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
+import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -37,6 +38,8 @@ export default function IssueV2({
                 {article.category}
               </span>
             </div>
+
+            <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
 
             <a href={articleHref()}>
               <h2
