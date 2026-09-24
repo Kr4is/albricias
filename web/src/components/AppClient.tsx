@@ -105,32 +105,44 @@ export default function AppClient() {
   // would read localStorage during the client's hydration pass too, which
   // mismatches the server-rendered (always-blank) markup — the effect is
   // the correct tool here, not a lint false-negative.
+  //
+  // `loaded` gates the save effect below until this one has actually run:
+  // without it, both effects fire in the same pass on mount, and the save
+  // effect's closure still has the *pre-load* default state (its setState
+  // calls haven't been applied to a new render yet) — it would overwrite
+  // whatever this effect just read with those defaults, before the loaded
+  // values ever reach the screen.
+  const [loaded, setLoaded] = useState(false);
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as Partial<SavedForm>;
-      if (saved.githubUsername) setGithubUsername(saved.githubUsername);
-      if (saved.period && PERIODS.some((p) => p.id === saved.period)) setPeriod(saved.period);
-      if (saved.llmProvider && PROVIDERS.some((p) => p.id === saved.llmProvider)) setLlmProvider(saved.llmProvider);
-      if (saved.llmApiKey) setLlmApiKey(saved.llmApiKey);
-      if (saved.llmModel) setLlmModel(saved.llmModel);
-      if (saved.llmBaseUrl) setLlmBaseUrl(saved.llmBaseUrl);
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<SavedForm>;
+        if (saved.githubUsername) setGithubUsername(saved.githubUsername);
+        if (saved.period && PERIODS.some((p) => p.id === saved.period)) setPeriod(saved.period);
+        if (saved.llmProvider && PROVIDERS.some((p) => p.id === saved.llmProvider)) setLlmProvider(saved.llmProvider);
+        if (saved.llmApiKey) setLlmApiKey(saved.llmApiKey);
+        if (saved.llmModel) setLlmModel(saved.llmModel);
+        if (saved.llmBaseUrl) setLlmBaseUrl(saved.llmBaseUrl);
+      }
     } catch {
       // Private browsing, blocked storage, malformed JSON — just start blank.
     }
+    setLoaded(true);
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
+    if (!loaded) return;
     try {
       const toSave: SavedForm = { githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch {
       // Storage unavailable — the form still works, it just won't be remembered.
     }
-  }, [githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl]);
+  }, [loaded, githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl]);
 
   const needsGateway = llmProvider === "litellm";
 
