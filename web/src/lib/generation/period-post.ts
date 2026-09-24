@@ -59,16 +59,33 @@ const CHART_CLAUSE =
   "and leave it out entirely when there is nothing quantitative worth " +
   "plotting.";
 
+/**
+ * What the material is — shared by both prompts. The dossier arrives as
+ * JSON (`@/lib/generation/dossier`), so the writers get the facts as fields
+ * rather than prose to parse back, and the counts are already done.
+ */
+const MATERIAL_GUIDE =
+  "The material is a JSON dossier of everything recorded in the period. " +
+  "`overview` has the period, the totals, the rhythm of the work " +
+  "(`activeDays`, `longestStreak`, `busiestDay`, `busiestWeekday`, " +
+  "`weekendShare`, `commitsByTimeOfDay`, `busiestHour` — in the author's own " +
+  "timezone), the mix of `commitTypes`, `languages`, and a `timeline` of " +
+  "activity per day or week. `repos` are the repositories worked in, busiest " +
+  "first: what each one is (`about`), whether it is the user's own or a " +
+  "`contribution` to someone else's, whether it was `createdThisPeriod`, its " +
+  "counts, and its releases, pull requests, reviews, issues and every " +
+  "commit in order (conventional-commit `type` and `scope`, `subject`, and a " +
+  "`body` excerpt for the commits that say most). `stars` are other " +
+  "people's repositories the user starred — what caught their eye, not work " +
+  "they did — and `gists` their gists. Every figure is already counted: use " +
+  "them as they are, never recount or estimate.";
+
 export const PERIOD_POST_OUTLINE_SYSTEM =
   "You are the outline editor for ¡Albricias!'s correspondent desk. You do " +
   "not write prose — you plan one short front page about a GitHub user's " +
   "activity over a period, which someone else will write one section at a " +
-  "time from the material given to you. The material is a dossier of " +
-  "everything recorded in the period: an overview (counts, active days, " +
-  "languages), a dossier per repository worked in (what the repository is, " +
-  "then its releases with notes, pull requests with their state, issues, " +
-  "reviews and commit messages), the repositories starred (what each one " +
-  "is — other people's projects that caught the user's eye), and gists. " +
+  "time from the material given to you. " +
+  MATERIAL_GUIDE +
   "The user prompt also states the period being covered and exactly how " +
   "many sections to propose — follow that range precisely.\n\n" +
   "Read the material once, then reply with exactly this shape, nothing else:\n" +
@@ -112,8 +129,8 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "only a few sections, give those few room — lean toward medium and long " +
   "rather than short, since a front page with little to cover should cover " +
   "it in depth, not in fragments; still never stretch a section past what " +
-  "its material supports. Write REPO exactly as the repository appears in " +
-  "the material (owner/name); omit the REPO line for a section that is not " +
+  "its material supports. Write REPO exactly as a repository's `name` (or a " +
+  "star's `repo`) appears in the material (owner/name); omit the REPO line for a section that is not " +
   "mainly about one repository, such as an overview of the whole period. " +
   "Ground every section in what the material " +
   "actually records — never plan a section around activity the period did " +
@@ -134,7 +151,11 @@ export const PERIOD_POST_SECTION_SYSTEM =
   "target length, and the period's recorded material. Write only this " +
   "section's body: no headline, no re-introduction of the period, no " +
   "summary or conclusion — those belong to other parts of the post you are " +
-  "not writing. Write about what happened, naming the actual repositories, " +
+  "not writing. " +
+  MATERIAL_GUIDE +
+  " Its `elsewhere` list names the rest of the period's activity, for a " +
+  "passing mention at most — you have no detail on it, so never describe it. " +
+  "Write about what happened, naming the actual repositories, " +
   "commits, releases and figures the material records; never invent an " +
   "event, a number, or a motive it does not state, and prefer saying the " +
   "period was quiet to filling it out. Starred repositories are other " +
@@ -151,7 +172,7 @@ export function buildOutlinePrompt(input: { periodLabel: string; cadence: Cadenc
   return (
     `The period being covered is ${input.periodLabel}.\n\n` +
     `Propose between ${minSections} and ${maxSections} sections for this outline.\n\n` +
-    `Material:\n${input.sourceText}\n`
+    `Material (JSON):\n${input.sourceText}\n`
   );
 }
 
@@ -168,7 +189,7 @@ export function buildSectionPrompt(input: {
     `The post's overall premise: ${input.premise}\n\n` +
     `Write the section titled "${input.heading}". ${input.brief}\n\n` +
     `This section is a ${input.lengthTier} item — aim for ${LENGTH_BANDS[input.lengthTier]}, and no more.\n\n` +
-    `The period's material:\n${input.sourceText}\n`
+    `This section's material (JSON):\n${input.sourceText}\n`
   );
 }
 

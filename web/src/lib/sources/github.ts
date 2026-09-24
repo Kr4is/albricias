@@ -20,6 +20,9 @@ import {
 
 const GITHUB_API = "https://api.github.com";
 
+/** Repositories whose releases are looked up at once. */
+const RELEASE_LOOKUPS = 6;
+
 /** Statuses that mean "no (more) results" rather than a failure. */
 const IGNORED_STATUSES = [404, 422];
 
@@ -103,233 +106,257 @@ export async function fetchGithubActivity({
   const endDate = isoDate(new Date(periodEnd.getTime() - 86_400_000));
 
   const octokit = new Octokit({ auth: token });
-  const activities: ActivityItem[] = [];
+  /**
+   * One event type's fetch, run alongside the others: whatever it pushed
+   * before failing is kept, and the failure reported, never thrown.
+   */
+  const collect = async (what: string, run: (activities: ActivityItem[]) => Promise<void>): Promise<ActivityItem[]> => {
+    const activities: ActivityItem[] = [];
+    try {
+      await run(activities);
+    } catch (error) {
+      sectionFailed(what, error);
+    }
+    return activities;
+  };
+  // Every event type in parallel — they're independent requests, and one
+  // after another they took ~20s for a busy month.
+  const jobs: Promise<ActivityItem[]>[] = [];
 
   // ---------------------------------------------------------------------
   // Commits (search API)
   // ---------------------------------------------------------------------
-  try {
-    const q = `author:${username} author-date:${startDate}..${endDate}`;
-    const pages = octokit.paginate.iterator("GET /search/commits", {
-      q,
-      per_page: 100,
-    });
-    for await (const c of paginateItems(pages)) {
-      activities.push({
-        source: "github",
-        eventType: "commit",
-        repo: c.repository?.full_name ?? "unknown",
-        title: (c.commit?.message ?? "").split("\n")[0].slice(0, 200),
-        url: c.html_url ?? null,
-        timestamp: parseTimestamp(c.commit?.author?.date),
-        raw: c,
+  jobs.push(
+    collect("Commits", async (activities) => {
+      const q = `author:${username} author-date:${startDate}..${endDate}`;
+      const pages = octokit.paginate.iterator("GET /search/commits", {
+        q,
+        per_page: 100,
       });
-    }
-  } catch (error) {
-    sectionFailed("Commits", error);
-  }
+      for await (const c of paginateItems(pages)) {
+        activities.push({
+          source: "github",
+          eventType: "commit",
+          repo: c.repository?.full_name ?? "unknown",
+          title: (c.commit?.message ?? "").split("\n")[0].slice(0, 200),
+          url: c.html_url ?? null,
+          timestamp: parseTimestamp(c.commit?.author?.date),
+          raw: c,
+        });
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // Pull Requests opened (search API)
   // ---------------------------------------------------------------------
-  try {
-    const q = `author:${username} type:pr created:${startDate}..${endDate}`;
-    const pages = octokit.paginate.iterator("GET /search/issues", {
-      q,
-      per_page: 100,
-    });
-    for await (const pr of paginateItems(pages)) {
-      activities.push({
-        source: "github",
-        eventType: "pr",
-        repo: repoFromUrl(pr.repository_url ?? ""),
-        title: (pr.title ?? "").slice(0, 200),
-        url: pr.html_url ?? null,
-        timestamp: parseTimestamp(pr.created_at),
-        raw: pr,
+  jobs.push(
+    collect("PRs", async (activities) => {
+      const q = `author:${username} type:pr created:${startDate}..${endDate}`;
+      const pages = octokit.paginate.iterator("GET /search/issues", {
+        q,
+        per_page: 100,
       });
-    }
-  } catch (error) {
-    sectionFailed("PRs", error);
-  }
+      for await (const pr of paginateItems(pages)) {
+        activities.push({
+          source: "github",
+          eventType: "pr",
+          repo: repoFromUrl(pr.repository_url ?? ""),
+          title: (pr.title ?? "").slice(0, 200),
+          url: pr.html_url ?? null,
+          timestamp: parseTimestamp(pr.created_at),
+          raw: pr,
+        });
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // PR reviews submitted (search API)
   // ---------------------------------------------------------------------
-  try {
-    const q = `reviewed-by:${username} type:pr updated:${startDate}..${endDate}`;
-    const pages = octokit.paginate.iterator("GET /search/issues", {
-      q,
-      per_page: 100,
-    });
-    for await (const pr of paginateItems(pages)) {
-      activities.push({
-        source: "github",
-        eventType: "review",
-        repo: repoFromUrl(pr.repository_url ?? ""),
-        title: (pr.title ?? "").slice(0, 200),
-        url: pr.html_url ?? null,
-        timestamp: parseTimestamp(pr.updated_at),
-        raw: pr,
+  jobs.push(
+    collect("PR reviews", async (activities) => {
+      const q = `reviewed-by:${username} type:pr updated:${startDate}..${endDate}`;
+      const pages = octokit.paginate.iterator("GET /search/issues", {
+        q,
+        per_page: 100,
       });
-    }
-  } catch (error) {
-    sectionFailed("PR reviews", error);
-  }
+      for await (const pr of paginateItems(pages)) {
+        activities.push({
+          source: "github",
+          eventType: "review",
+          repo: repoFromUrl(pr.repository_url ?? ""),
+          title: (pr.title ?? "").slice(0, 200),
+          url: pr.html_url ?? null,
+          timestamp: parseTimestamp(pr.updated_at),
+          raw: pr,
+        });
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // Issues created (search API)
   // ---------------------------------------------------------------------
-  try {
-    const q = `author:${username} type:issue created:${startDate}..${endDate}`;
-    const pages = octokit.paginate.iterator("GET /search/issues", {
-      q,
-      per_page: 100,
-    });
-    for await (const iss of paginateItems(pages)) {
-      activities.push({
-        source: "github",
-        eventType: "issue",
-        repo: repoFromUrl(iss.repository_url ?? ""),
-        title: (iss.title ?? "").slice(0, 200),
-        url: iss.html_url ?? null,
-        timestamp: parseTimestamp(iss.created_at),
-        raw: iss,
+  jobs.push(
+    collect("Issues", async (activities) => {
+      const q = `author:${username} type:issue created:${startDate}..${endDate}`;
+      const pages = octokit.paginate.iterator("GET /search/issues", {
+        q,
+        per_page: 100,
       });
-    }
-  } catch (error) {
-    sectionFailed("Issues", error);
-  }
+      for await (const iss of paginateItems(pages)) {
+        activities.push({
+          source: "github",
+          eventType: "issue",
+          repo: repoFromUrl(iss.repository_url ?? ""),
+          title: (iss.title ?? "").slice(0, 200),
+          url: iss.html_url ?? null,
+          timestamp: parseTimestamp(iss.created_at),
+          raw: iss,
+        });
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // Releases published across the user's repos
   // ---------------------------------------------------------------------
-  try {
-    const repoPages = octokit.paginate.iterator("GET /users/{username}/repos", {
-      username,
-      per_page: 100,
-      sort: "pushed",
-    });
-    for await (const repoObj of paginateItems(repoPages)) {
-      const repoName = repoObj.full_name ?? "";
-      const [owner, repo] = repoName.split("/");
-      if (!owner || !repo) continue;
-
-      const releasePages = octokit.paginate.iterator(
-        "GET /repos/{owner}/{repo}/releases",
-        { owner, repo, per_page: 20 },
-      );
-      for await (const rel of paginateItems(releasePages)) {
-        const publishedAt = parseTimestamp(rel.published_at);
-        if (!inPeriod(publishedAt, period)) continue;
-        activities.push({
-          source: "github",
-          eventType: "release",
-          repo: repoName,
-          title: (rel.name || rel.tag_name || "").slice(0, 200),
-          url: rel.html_url ?? null,
-          timestamp: publishedAt,
-          raw: rel,
-        });
+  jobs.push(
+    collect("Releases", async (activities) => {
+      const repoPages = octokit.paginate.iterator("GET /users/{username}/repos", {
+        username,
+        per_page: 100,
+        sort: "pushed",
+      });
+      const repos: string[] = [];
+      for await (const repoObj of paginateItems(repoPages)) {
+        if (repoObj.full_name?.includes("/")) repos.push(repoObj.full_name);
       }
-    }
-  } catch (error) {
-    sectionFailed("Releases", error);
-  }
+      // One request per repository — RELEASE_LOOKUPS at a time, not one by one.
+      for (let i = 0; i < repos.length; i += RELEASE_LOOKUPS) {
+        await Promise.all(
+          repos.slice(i, i + RELEASE_LOOKUPS).map(async (repoName) => {
+            const [owner, repo] = repoName.split("/");
+            const releasePages = octokit.paginate.iterator(
+              "GET /repos/{owner}/{repo}/releases",
+              { owner, repo, per_page: 20 },
+            );
+            for await (const rel of paginateItems(releasePages)) {
+              const publishedAt = parseTimestamp(rel.published_at);
+              // Newest first: once past the period there's nothing left in it.
+              if (beforePeriod(publishedAt, period)) break;
+              if (!inPeriod(publishedAt, period)) continue;
+              activities.push({
+                source: "github",
+                eventType: "release",
+                repo: repoName,
+                title: (rel.name || rel.tag_name || "").slice(0, 200),
+                url: rel.html_url ?? null,
+                timestamp: publishedAt,
+                raw: rel,
+              });
+            }
+          }),
+        );
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // Repositories created during the period (username's public repos)
   // ---------------------------------------------------------------------
-  try {
-    const pages = octokit.paginate.iterator("GET /users/{username}/repos", {
-      username,
-      per_page: 100,
-      sort: "created",
-      direction: "desc",
-    });
-    for await (const repoObj of paginateItems(pages)) {
-      const createdAt = parseTimestamp(repoObj.created_at);
-      if (!inPeriod(createdAt, period)) {
-        // Sorted newest-first: once we pass the period there is nothing left.
-        if (beforePeriod(createdAt, period)) break;
-        continue;
-      }
-      const repoName = repoObj.full_name ?? "";
-      const description = (repoObj.description || "New repository").slice(0, 200);
-      activities.push({
-        source: "github",
-        eventType: "repo_created",
-        repo: repoName,
-        title: `${repoName}: ${description}`,
-        url: repoObj.html_url ?? null,
-        timestamp: createdAt,
-        raw: repoObj,
+  jobs.push(
+    collect("Repos-created", async (activities) => {
+      const pages = octokit.paginate.iterator("GET /users/{username}/repos", {
+        username,
+        per_page: 100,
+        sort: "created",
+        direction: "desc",
       });
-    }
-  } catch (error) {
-    sectionFailed("Repos-created", error);
-  }
+      for await (const repoObj of paginateItems(pages)) {
+        const createdAt = parseTimestamp(repoObj.created_at);
+        if (!inPeriod(createdAt, period)) {
+          // Sorted newest-first: once we pass the period there is nothing left.
+          if (beforePeriod(createdAt, period)) break;
+          continue;
+        }
+        const repoName = repoObj.full_name ?? "";
+        const description = (repoObj.description || "New repository").slice(0, 200);
+        activities.push({
+          source: "github",
+          eventType: "repo_created",
+          repo: repoName,
+          title: `${repoName}: ${description}`,
+          url: repoObj.html_url ?? null,
+          timestamp: createdAt,
+          raw: repoObj,
+        });
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // Starred repositories (`starred_at` inside the period)
   // ---------------------------------------------------------------------
-  try {
-    // `octokit.paginate` cannot carry a per-request Accept header, and the
-    // `starred_at` field only exists under the star media type — so this one
-    // endpoint is paged by hand.
-    for await (const item of iterateStarred(octokit, username)) {
-      const starredAt = parseTimestamp(item.starred_at);
-      if (!starredAt) continue;
-      // Stars come back newest-first; stop once we go past the period.
-      if (beforePeriod(starredAt, period)) break;
-      if (!inPeriod(starredAt, period)) continue;
+  jobs.push(
+    collect("Starred repos", async (activities) => {
+      // `octokit.paginate` cannot carry a per-request Accept header, and the
+      // `starred_at` field only exists under the star media type — so this one
+      // endpoint is paged by hand.
+      for await (const item of iterateStarred(octokit, username)) {
+        const starredAt = parseTimestamp(item.starred_at);
+        if (!starredAt) continue;
+        // Stars come back newest-first; stop once we go past the period.
+        if (beforePeriod(starredAt, period)) break;
+        if (!inPeriod(starredAt, period)) continue;
 
-      const repoObj = item.repo ?? {};
-      const repoName = repoObj.full_name ?? "";
-      const description = (repoObj.description || "").slice(0, 150);
-      const title = description ? `${repoName} — ${description}` : repoName;
-      activities.push({
-        source: "github",
-        eventType: "star",
-        repo: repoName,
-        title: title.slice(0, 200),
-        url: repoObj.html_url ?? null,
-        timestamp: starredAt,
-        raw: repoObj,
-      });
-    }
-  } catch (error) {
-    sectionFailed("Starred repos", error);
-  }
+        const repoObj = item.repo ?? {};
+        const repoName = repoObj.full_name ?? "";
+        const description = (repoObj.description || "").slice(0, 150);
+        const title = description ? `${repoName} — ${description}` : repoName;
+        activities.push({
+          source: "github",
+          eventType: "star",
+          repo: repoName,
+          title: title.slice(0, 200),
+          url: repoObj.html_url ?? null,
+          timestamp: starredAt,
+          raw: repoObj,
+        });
+      }
+    }),
+  );
 
   // ---------------------------------------------------------------------
   // Gists created during the period
   // ---------------------------------------------------------------------
-  try {
-    const pages = octokit.paginate.iterator("GET /users/{username}/gists", {
-      username,
-      per_page: 100,
-    });
-    for await (const gist of paginateItems(pages)) {
-      const createdAt = parseTimestamp(gist.created_at);
-      if (!createdAt) continue;
-      if (beforePeriod(createdAt, period)) break;
-      if (!inPeriod(createdAt, period)) continue;
-      activities.push({
-        source: "github",
-        eventType: "gist",
-        repo: null,
-        title: (gist.description || "Untitled gist").slice(0, 200),
-        url: gist.html_url ?? null,
-        timestamp: createdAt,
-        raw: gist,
+  jobs.push(
+    collect("Gists", async (activities) => {
+      const pages = octokit.paginate.iterator("GET /users/{username}/gists", {
+        username,
+        per_page: 100,
       });
-    }
-  } catch (error) {
-    sectionFailed("Gists", error);
-  }
+      for await (const gist of paginateItems(pages)) {
+        const createdAt = parseTimestamp(gist.created_at);
+        if (!createdAt) continue;
+        if (beforePeriod(createdAt, period)) break;
+        if (!inPeriod(createdAt, period)) continue;
+        activities.push({
+          source: "github",
+          eventType: "gist",
+          repo: null,
+          title: (gist.description || "Untitled gist").slice(0, 200),
+          url: gist.html_url ?? null,
+          timestamp: createdAt,
+          raw: gist,
+        });
+      }
+    }),
+  );
 
-  return activities;
+  // Concatenated in the fixed order above, whatever order they finish in.
+  return (await Promise.all(jobs)).flat();
 }
 
 /**

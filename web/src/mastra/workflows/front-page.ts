@@ -4,6 +4,7 @@
  *   gather → plan → foreach(write-section, SECTION_CONCURRENCY) → assemble
  *
  *   gather         GitHub activity + repo details → the period's dossier
+ *                  (typed JSON, `@/lib/generation/dossier`)
  *   plan           the outline editor's headline, premise and briefs; each
  *                  brief's REPO checked against the repos really touched
  *   write-section  one correspondent call per brief, streamed token by token
@@ -41,7 +42,7 @@ import {
   createLeadingHeadingFilter,
   parseOutline,
 } from "@/lib/generation/period-post";
-import { researchPeriod } from "@/lib/generation/research";
+import { buildDossier, dossierRepos, dossierSchema, dossierText, sliceDossier } from "@/lib/generation/dossier";
 import { pickLayoutForContent } from "@/lib/layout";
 import { repoImageUrl, resolveRepo } from "@/lib/repo-image";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
@@ -74,12 +75,8 @@ const inputSchema = z.object({
 const gatheredSchema = z.object({
   periodLabel: z.string(),
   cadence: cadenceSchema,
-  /** The whole dossier — what the outline editor reads. */
-  dossier: z.string(),
-  /** Per repo (canonical `owner/name`), the dossier narrowed to it — what a section about that repo reads. */
-  repoDossiers: z.record(z.string(), z.string()),
-  /** Every repo the period touched — the only names a REPO line may resolve to. */
-  knownRepos: z.array(z.string()),
+  /** Everything the period recorded, typed — what the outline editor reads, and each section a slice of. */
+  dossier: dossierSchema,
   numbersArticle: articleSchema.nullable(),
   starsArticle: articleSchema.nullable(),
   /** Starred repos by popularity — the stars box takes the first card no section used. */
@@ -95,7 +92,8 @@ const sectionBriefSchema = z.object({
   imageUrl: z.string().nullable(),
   premise: z.string(),
   periodLabel: z.string(),
-  sourceText: z.string(),
+  /** The repos the section is about — it reads the dossier sliced to these, or all of it when empty. */
+  repos: z.array(z.string()),
 });
 
 const planSchema = z.object({
@@ -214,15 +212,18 @@ const gather = createStep({
 
     await out.write({ event: "status", data: { message: "Reading up on the repositories…" } });
     const details = await fetchRepoDetails(activity, token);
-    const research = researchPeriod(activity, details);
+    const dossier = buildDossier(activity, details, {
+      username: inputData.githubUsername,
+      periodLabel,
+      cadence: inputData.period,
+      periodStart,
+      periodEnd,
+    });
 
-    const knownRepos = [...new Set(activity.map((item) => item.repo).filter((repo): repo is string => Boolean(repo?.includes("/"))))];
     return {
       periodLabel,
       cadence: inputData.period,
-      dossier: research.text,
-      repoDossiers: Object.fromEntries(knownRepos.map((repo) => [repo, research.forRepo(repo)])),
-      knownRepos,
+      dossier,
       numbersArticle: buildByTheNumbersArticle(activity),
       starsArticle: buildStarsArticle(activity, details),
       starCandidates: starImageCandidates(activity, details),
@@ -240,7 +241,7 @@ const plan = createStep({
     await out.write({ event: "status", data: { message: "Planning the front page…" } });
 
     const editor = mastra.getAgent("outlineEditor");
-    const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: inputData.dossier });
+    const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: dossierText(inputData.dossier) });
     let reply = await streamAgent(editor, prompt, requestContext);
     if (isUnusable(reply)) {
       console.warn(`[front-page] outline truncated/empty (finishReason: ${reply.finishReason}) — retrying once`);
@@ -262,7 +263,7 @@ const plan = createStep({
     const title = outline.title || inputData.periodLabel;
 
     // Each repo's card appears at most once on the page.
-    const repos = new Map(inputData.knownRepos.map((repo) => [repo.toLowerCase(), repo]));
+    const repos = new Map(dossierRepos(inputData.dossier).map((repo) => [repo.toLowerCase(), repo]));
     const pictured = new Set<string>();
     const sections = outline.sections.map((section, index) => {
       const repo = resolveRepo(section.repo, repos);
@@ -277,9 +278,9 @@ const plan = createStep({
         imageUrl,
         premise: outline.premise,
         periodLabel: inputData.periodLabel,
-        // A section about one repo reads that repo's dossier (plus an index
-        // of the rest) — focused, and a fraction of the tokens.
-        sourceText: (repo && inputData.repoDossiers[repo]) || inputData.dossier,
+        // What the section reads: the dossier sliced to these repos
+        // (`write-section`), or all of it when empty.
+        repos: repo ? [repo] : [],
       };
     });
 
@@ -294,9 +295,10 @@ const writeSection = createStep({
   description: "Have the correspondent write one section, streaming it to the page as it's written.",
   inputSchema: sectionBriefSchema,
   outputSchema: sectionResultSchema,
-  execute: async ({ inputData, mastra, requestContext, writer }) => {
+  execute: async ({ inputData, mastra, requestContext, writer, getStepResult }) => {
     const out = page(writer);
     const { index } = inputData;
+    const sourceText = dossierText(sliceDossier(getStepResult(gather).dossier, inputData.repos));
     await out.write({
       event: "section-start",
       data: { index, heading: inputData.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: inputData.brief, imageUrl: inputData.imageUrl },
@@ -310,7 +312,7 @@ const writeSection = createStep({
         await out.write({ event: "section-delta", data: { index, delta } });
       };
       try {
-        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt(inputData), requestContext, (delta) =>
+        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt({ ...inputData, sourceText }), requestContext, (delta) =>
           send(headings.push(delta)),
         );
         await send(headings.flush());

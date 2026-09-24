@@ -30,15 +30,20 @@ puts the visitor's model (their provider + BYO key, built by
 (`src/mastra/workflows/front-page.ts`):
 
 1. **gather** — the user's GitHub activity for the period
-   (`src/lib/sources/github.ts`, on the server's `GITHUB_TOKEN`), plus what
-   each repo touched *is* (description, language, stars, topics), laid out
-   as a dossier for the writers (`src/lib/generation/research.ts`).
+   (`src/lib/sources/github.ts`, on the server's `GITHUB_TOKEN`, every event
+   type fetched in parallel), plus what each repo touched *is*
+   (description, language, stars, topics), built into a typed JSON dossier
+   (`src/lib/generation/dossier.ts`): every commit in order with its
+   conventional-commit type and local hour, PRs, issues, releases, stars,
+   and the facts worth a headline already counted — streaks, busiest day
+   and hour, commit mix, the week-by-week arc, new repos, contributions to
+   other people's.
 2. **plan** — the `outline-editor` agent reads the dossier and plans the
    page: headline, premise, one brief per section, each naming the repo
    it's about. Names are checked against the repos really touched; a
    section about a real repo gets that repo's GitHub card as its picture.
 3. **write-section** (one per brief, one at a time) — the `correspondent`
-   agent writes it, from that repo's part of the dossier.
+   agent writes it, from the dossier sliced to the repos it's about.
 4. **assemble** — two boxes computed without any model: the repos starred
    this period, and the numbers (`src/lib/generation/deterministic-articles.ts`).
 

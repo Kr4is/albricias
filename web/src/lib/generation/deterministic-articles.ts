@@ -9,7 +9,7 @@ import type { ArticleChartSpec } from "@/lib/article-chart";
 import type { RepoDetails } from "@/lib/sources/github";
 import type { ActivityItem } from "@/lib/sources/types";
 import type { IssueArticle } from "@/components/issue/types";
-import { describeRepo } from "@/lib/generation/research";
+import { describeRepo } from "@/lib/generation/dossier";
 
 /** Sentinel ids distinct from sections' `index`-based ids (0, 1, 2, ...). */
 const STARS_ARTICLE_ID = -1;
