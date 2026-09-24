@@ -20,13 +20,32 @@ interface IssueMeta {
 const PROVIDERS: { id: AiProviderId; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "gemini", label: "Google Gemini" },
-  { id: "ollama", label: "Ollama (local)" },
-  { id: "litellm", label: "LiteLLM / OpenAI-compatible" },
+  { id: "litellm", label: "LLM Gateway" },
+];
+
+const PERIODS: { id: Period; label: string }[] = [
+  { id: "daily", label: "Daily" },
+  { id: "weekly", label: "Weekly" },
+  { id: "monthly", label: "Monthly" },
+];
+
+/** One label per `IssueV*`, from each file's own one-line self-description. */
+const LAYOUT_OPTIONS: { id: LayoutIndex; label: string }[] = [
+  { id: 1, label: "3-Column" },
+  { id: 2, label: "Dispatches" },
+  { id: 3, label: "Hero" },
+  { id: 4, label: "Asymmetric" },
+  { id: 5, label: "Editorial" },
+  { id: 6, label: "Broadside" },
 ];
 
 const INPUT_CLASS =
   "w-full border border-stone-300 bg-white px-3 py-2 font-body text-sm focus:outline-none focus:border-ink";
 const LABEL_CLASS = "font-sans text-[11px] font-bold uppercase tracking-widest text-stone-600 block mb-1";
+const PILL_BASE =
+  "px-4 py-2 font-sans text-xs font-bold uppercase tracking-widest border transition-colors";
+const PILL_ACTIVE = "bg-ink text-white border-ink";
+const PILL_INACTIVE = "bg-white text-ink border-stone-300 hover:border-ink";
 
 /** One `event: ...\ndata: ...` block, as `/api/generate` writes it (`sseEvent()` in the route). */
 function parseSseMessage(raw: string): { event: string; data: unknown } | null {
@@ -63,9 +82,7 @@ export default function AppClient() {
   const [llmModel, setLlmModel] = useState("");
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
 
-  const needsModel = llmProvider === "ollama" || llmProvider === "litellm";
-  const needsBaseUrl = llmProvider === "ollama" || llmProvider === "litellm";
-  const needsKey = llmProvider !== "ollama";
+  const needsGateway = llmProvider === "litellm";
 
   function reset() {
     setPhase("config");
@@ -124,10 +141,11 @@ export default function AppClient() {
           if (!message) continue;
 
           if (message.event === "meta") {
-            const data = message.data as IssueMeta & { layout: LayoutIndex; warnings: string[] };
+            const data = message.data as IssueMeta & { warnings: string[] };
             setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, dateShortLabel: data.dateShortLabel, weather: data.weather });
-            setLayout(data.layout);
             setWarnings(data.warnings ?? []);
+          } else if (message.event === "layout") {
+            setLayout((message.data as { layout: LayoutIndex }).layout);
           } else if (message.event === "status") {
             setStatusMessage((message.data as { message: string }).message);
           } else if (message.event === "section-start") {
@@ -171,17 +189,35 @@ export default function AppClient() {
   if (phase === "result" && issueMeta && layout) {
     return (
       <div>
-        <div className="mb-6 no-print text-center">
+        <div className="mb-6 no-print flex flex-col items-center gap-4">
           {finished ? (
             <>
-              <button
-                onClick={reset}
-                className="font-sans text-xs font-bold uppercase tracking-widest text-ink border border-ink px-4 py-2 hover:bg-ink hover:text-white transition-colors"
-              >
-                ← Generate Another Edition
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  onClick={reset}
+                  className="font-sans text-xs font-bold uppercase tracking-widest text-ink border border-ink px-4 py-2 hover:bg-ink hover:text-white transition-colors"
+                >
+                  ← Generate Another Edition
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-400 mr-1">
+                  Layout
+                </span>
+                {LAYOUT_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setLayout(option.id)}
+                    className={`px-3 py-1.5 font-sans text-[10px] font-bold uppercase tracking-widest border transition-colors ${
+                      layout === option.id ? PILL_ACTIVE : PILL_INACTIVE
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               {warnings.length > 0 && (
-                <p className="font-body text-xs text-stone-500 italic mt-3">
+                <p className="font-body text-xs text-stone-500 italic text-center">
                   Some activity couldn&apos;t be fetched: {warnings.join(" ")}
                 </p>
               )}
@@ -203,57 +239,80 @@ export default function AppClient() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-lg mx-auto py-12">
-      <h1 className="font-headline text-3xl font-bold text-center mb-2">Print Your Edition</h1>
-      <p className="font-body text-sm text-stone-600 text-center mb-10">
+    <form onSubmit={handleSubmit} className="py-12">
+      <h1 className="font-headline text-3xl md:text-4xl font-bold text-center mb-2">Print Your Edition</h1>
+      <p className="font-body text-sm text-stone-600 text-center mb-12">
         Your GitHub activity, set in vintage type.
       </p>
 
-      <div className="flex flex-col gap-5">
-        <div>
-          <label className={LABEL_CLASS} htmlFor="githubUsername">GitHub Username</label>
-          <input
-            id="githubUsername"
-            className={INPUT_CLASS}
-            value={githubUsername}
-            onChange={(e) => setGithubUsername(e.target.value)}
-            placeholder="octocat"
-            required
-          />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-5xl mx-auto">
+        <div className="flex flex-col justify-center gap-8 lg:border-r lg:border-stone-300 lg:pr-12">
+          <div>
+            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-500">Notice</span>
+            <h2 className="font-headline text-2xl font-bold mt-1 mb-3">What Happens Next</h2>
+            <p className="font-body text-sm text-stone-600 leading-relaxed">
+              We fetch <strong>{githubUsername || "your"}</strong>&apos;s public GitHub
+              activity for the {period} period, hand it to your chosen AI, and
+              set it in type — live, on this page. Your API key is used only
+              for this one request and is never stored.
+            </p>
+          </div>
+          <div className="border-t border-stone-300 pt-6">
+            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-500">This Edition</span>
+            <p className="font-headline text-2xl mt-2">
+              {githubUsername ? `${githubUsername}'s ${period} edition` : "Awaiting a byline…"}
+            </p>
+          </div>
         </div>
 
-        <div>
-          <label className={LABEL_CLASS} htmlFor="period">Period</label>
-          <select
-            id="period"
-            className={INPUT_CLASS}
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as Period)}
-          >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-        </div>
+        <div className="flex flex-col gap-6 max-w-md">
+          <div>
+            <label className={LABEL_CLASS} htmlFor="githubUsername">GitHub Username</label>
+            <input
+              id="githubUsername"
+              className={INPUT_CLASS}
+              value={githubUsername}
+              onChange={(e) => setGithubUsername(e.target.value)}
+              placeholder="octocat"
+              required
+            />
+          </div>
 
-        <div className="border-t border-stone-300 pt-5">
-          <label className={LABEL_CLASS} htmlFor="llmProvider">LLM Provider</label>
-          <select
-            id="llmProvider"
-            className={INPUT_CLASS}
-            value={llmProvider}
-            onChange={(e) => setLlmProvider(e.target.value as AiProviderId)}
-          >
-            {PROVIDERS.map((provider) => (
-              <option key={provider.id} value={provider.id}>{provider.label}</option>
-            ))}
-          </select>
-          <p className="font-body text-xs text-stone-500 mt-1">
-            Your API key is used only for this generation and is never stored.
-          </p>
-        </div>
+          <div>
+            <span className={LABEL_CLASS}>Period</span>
+            <div className="flex gap-2">
+              {PERIODS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setPeriod(option.id)}
+                  className={`${PILL_BASE} flex-1 ${period === option.id ? PILL_ACTIVE : PILL_INACTIVE}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {needsKey && (
+          <div className="border-t border-stone-300 pt-6">
+            <span className={LABEL_CLASS}>LLM Provider</span>
+            <div className="flex gap-2 mb-2">
+              {PROVIDERS.map((provider) => (
+                <button
+                  key={provider.id}
+                  type="button"
+                  onClick={() => setLlmProvider(provider.id)}
+                  className={`${PILL_BASE} flex-1 ${llmProvider === provider.id ? PILL_ACTIVE : PILL_INACTIVE}`}
+                >
+                  {provider.label}
+                </button>
+              ))}
+            </div>
+            <p className="font-body text-xs text-stone-500">
+              Your API key is used only for this generation and is never stored.
+            </p>
+          </div>
+
           <div>
             <label className={LABEL_CLASS} htmlFor="llmApiKey">API Key</label>
             <input
@@ -262,47 +321,47 @@ export default function AppClient() {
               className={INPUT_CLASS}
               value={llmApiKey}
               onChange={(e) => setLlmApiKey(e.target.value)}
-              required={needsKey}
+              required
             />
           </div>
-        )}
 
-        <div>
-          <label className={LABEL_CLASS} htmlFor="llmModel">
-            Model {needsModel ? "" : "(optional)"}
-          </label>
-          <input
-            id="llmModel"
-            className={INPUT_CLASS}
-            value={llmModel}
-            onChange={(e) => setLlmModel(e.target.value)}
-            placeholder={llmProvider === "openai" ? "gpt-4o-mini" : llmProvider === "gemini" ? "gemini-2.0-flash" : "llama3.1"}
-            required={needsModel}
-          />
-        </div>
-
-        {needsBaseUrl && (
           <div>
-            <label className={LABEL_CLASS} htmlFor="llmBaseUrl">Base URL</label>
+            <label className={LABEL_CLASS} htmlFor="llmModel">
+              Model {needsGateway ? "" : "(optional)"}
+            </label>
             <input
-              id="llmBaseUrl"
+              id="llmModel"
               className={INPUT_CLASS}
-              value={llmBaseUrl}
-              onChange={(e) => setLlmBaseUrl(e.target.value)}
-              placeholder={llmProvider === "ollama" ? "http://localhost:11434/v1" : "https://your-litellm-proxy/v1"}
-              required={llmProvider === "litellm"}
+              value={llmModel}
+              onChange={(e) => setLlmModel(e.target.value)}
+              placeholder={llmProvider === "openai" ? "gpt-4o-mini" : llmProvider === "gemini" ? "gemini-2.0-flash" : "llama3.1"}
+              required={needsGateway}
             />
           </div>
-        )}
 
-        {error && <p className="font-body text-sm text-red-800">{error}</p>}
+          {needsGateway && (
+            <div>
+              <label className={LABEL_CLASS} htmlFor="llmBaseUrl">Base URL</label>
+              <input
+                id="llmBaseUrl"
+                className={INPUT_CLASS}
+                value={llmBaseUrl}
+                onChange={(e) => setLlmBaseUrl(e.target.value)}
+                placeholder="https://your-llm-gateway/v1"
+                required
+              />
+            </div>
+          )}
 
-        <button
-          type="submit"
-          className="font-sans text-sm font-bold uppercase tracking-widest text-white bg-ink px-6 py-3 hover:opacity-85 transition-opacity mt-2"
-        >
-          Print My Edition
-        </button>
+          {error && <p className="font-body text-sm text-red-800">{error}</p>}
+
+          <button
+            type="submit"
+            className="font-sans text-sm font-bold uppercase tracking-widest text-white bg-ink px-6 py-3 hover:opacity-85 transition-opacity mt-2"
+          >
+            Print My Edition
+          </button>
+        </div>
       </div>
     </form>
   );

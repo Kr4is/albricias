@@ -1,47 +1,39 @@
 /**
- * Front-page layout selection (`issue_v1` … `issue_v6`).
+ * Front-page layout selection (`IssueV1` … `IssueV6`).
  *
- * Originally a deterministic rotation ported from `layout_index` in
- * `app/helpers.py:19-21` (`(edition.month % 5) + 1`) — every edition from the
- * same calendar month, any year, always rendered identically. Replaced with a
- * random pick made once at generation time and persisted on
- * `Edition.layoutVariant`, so a real newspaper's front page varies edition to
- * edition rather than repeating on a fixed yearly cycle, while still staying
- * stable across reloads (it's read from the DB, not re-rolled per request).
- *
- * The old month-based formula lives on as {@link layoutIndex}'s fallback for
- * editions created before `layoutVariant` existed, so an already-published
- * archive doesn't change its look retroactively — pinned to
- * {@link LEGACY_LAYOUT_COUNT} (5) rather than the live {@link LAYOUT_COUNT}
- * specifically so adding V6 didn't reshuffle which layout every pre-existing
- * edition falls back to.
+ * Each layout has a real structural sweet spot for how many articles it
+ * takes to fill without empty grid tracks — a 4-column dispatch grid with
+ * 1 article looks broken, a lead-only layout is fine with just 1. Picking
+ * randomly within the pool of layouts that actually suit the real article
+ * count avoids that, purely visually — no content is ever invented to
+ * "fill" a layout that doesn't fit what's there. The manual switcher in
+ * `AppClient.tsx` still offers all 6 unconditionally; this only decides
+ * the default a visitor sees first.
  */
 
-/** Number of broadsheet layout variants (`issue_v1` … `issue_v6`). */
+/** Number of broadsheet layout variants (`IssueV1` … `IssueV6`). */
 export const LAYOUT_COUNT = 6;
-
-/** The variant count the month-based fallback formula was defined against — never change this. */
-const LEGACY_LAYOUT_COUNT = 5;
 
 export type LayoutIndex = 1 | 2 | 3 | 4 | 5 | 6;
 
-/** Minimal shape needed to pick a layout — any Edition row satisfies it. */
-export interface EditionLayoutInput {
-  periodStart: Date;
-  layoutVariant?: number | null;
-}
-
-/** A fresh random layout pick — call once per edition, at generation time, and persist it. */
-export function randomLayoutIndex(): LayoutIndex {
-  return (Math.floor(Math.random() * LAYOUT_COUNT) + 1) as LayoutIndex;
-}
-
-/** Return the layout variant (1–6) an edition renders with. */
-export function layoutIndex(edition: EditionLayoutInput): LayoutIndex {
-  const stored = edition.layoutVariant;
-  if (stored && stored >= 1 && stored <= LAYOUT_COUNT) {
-    return stored as LayoutIndex;
-  }
-  const month = edition.periodStart.getUTCMonth() + 1; // 1-12
-  return ((month % LEGACY_LAYOUT_COUNT) + 1) as LayoutIndex;
+/**
+ * Layout pools by total article count (prose sections + deterministic
+ * stars/numbers articles), derived from reading each `IssueV*.tsx`:
+ *   - V1 (3-col + lead, round-robin split): needs lead + ≥3 secondary.
+ *   - V2 (4-col dispatch grid, no lead): needs ≥4 to fill the row.
+ *   - V3 (hero + `divide-x` 3-col grid): 1-2 "rest" leaves visible empty
+ *     divided tracks — safe only at total 1 (grid collapses) or ≥4.
+ *   - V4 (8/4 asymmetric, plain vertical sidebar list): safe at any total.
+ *   - V5 (2 half-width leads + 4-col bar): safe at total 2 (both halves
+ *     fill) or ≥6 (bar gets ≥4); 3-5 leaves the bar half-empty.
+ *   - V6 (broadside + plain numbered index): safe at any total.
+ */
+export function pickLayoutForContent(total: number): LayoutIndex {
+  const pool: LayoutIndex[] =
+    total <= 1 ? [3, 4, 6] :
+    total <= 3 ? [4, 6] :
+    total === 4 ? [1, 3, 4, 6] :
+    total <= 7 ? [1, 2, 4, 5] :
+    [1, 2, 5];
+  return pool[Math.floor(Math.random() * pool.length)];
 }

@@ -14,7 +14,7 @@ const STEPS = [
   },
   {
     title: "Bring your own AI",
-    body: "OpenAI, Gemini, a local Ollama, or any OpenAI-compatible endpoint. Your key, used once, never stored.",
+    body: "OpenAI, Gemini, or your own LLM gateway. Your key, used once, never stored.",
   },
   {
     title: "Watch it go to press",
@@ -25,8 +25,8 @@ const STEPS = [
 export default function LandingPage() {
   return (
     <NewspaperShell endpoint="home">
-      <div className="max-w-3xl mx-auto py-12 text-center">
-        <h1 className="font-headline text-4xl md:text-5xl font-bold leading-tight mb-6">
+      <div className="max-w-2xl mx-auto py-12 text-center">
+        <h1 className="font-headline text-4xl md:text-6xl font-bold leading-tight mb-6">
           Your GitHub activity, printed like it mattered.
         </h1>
         <p className="font-body text-lg text-stone-700 leading-relaxed mb-10 max-w-xl mx-auto">
@@ -42,9 +42,9 @@ export default function LandingPage() {
         </a>
       </div>
 
-      <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-8 py-12 border-t border-ink border-double">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-stone-300 py-12 border-t border-ink border-double">
         {STEPS.map((step, index) => (
-          <div key={step.title} className="flex gap-4">
+          <div key={step.title} className="flex gap-4 lg:px-8 first:pl-0 last:pr-0">
             <span className="font-headline text-3xl font-bold text-stone-300 leading-none">
               {String(index + 1).padStart(2, "0")}
             </span>

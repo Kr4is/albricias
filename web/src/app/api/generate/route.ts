@@ -16,7 +16,7 @@ import { dayBounds, defaultEditionVol, periodBoundsForDate } from "@/lib/cadence
 import { editionWeather, periodLabel as formatPeriodLabel, periodLabelShort } from "@/lib/edition-helpers";
 import { buildAiModel } from "@/lib/ai/resolve";
 import { fetchGithubActivity } from "@/lib/sources/github";
-import { randomLayoutIndex } from "@/lib/layout";
+import { pickLayoutForContent } from "@/lib/layout";
 import { buildOutline, researchPeriod, writeSection } from "@/lib/generation/period-post";
 import { buildByTheNumbersArticle, buildStarsArticle } from "@/lib/generation/deterministic-articles";
 import type { IssueArticle } from "@/components/issue/types";
@@ -29,7 +29,6 @@ const baseFields = {
 const requestSchema = z.discriminatedUnion("llmProvider", [
   z.object({ ...baseFields, llmProvider: z.literal("openai"), llmApiKey: z.string().min(1), llmModel: z.string().optional() }),
   z.object({ ...baseFields, llmProvider: z.literal("gemini"), llmApiKey: z.string().min(1), llmModel: z.string().optional() }),
-  z.object({ ...baseFields, llmProvider: z.literal("ollama"), llmApiKey: z.string().optional(), llmModel: z.string().min(1), llmBaseUrl: z.string().optional() }),
   z.object({ ...baseFields, llmProvider: z.literal("litellm"), llmApiKey: z.string().min(1), llmModel: z.string().min(1), llmBaseUrl: z.string().min(1) }),
 ]);
 
@@ -112,7 +111,6 @@ export async function POST(request: Request) {
         dateLabel: periodLabel,
         dateShortLabel: periodLabelShort(edition),
         weather: editionWeather(edition),
-        layout: randomLayoutIndex(),
         warnings,
       });
 
@@ -120,6 +118,15 @@ export async function POST(request: Request) {
         send("status", { message: "Planning the front page…" });
         const sourceText = researchPeriod(activity);
         const outline = await buildOutline({ periodLabel, cadence: input.period, sourceText, model });
+
+        // Computed now (cheap, pure) so the total article count is known
+        // before picking a layout — only their *emission* waits until
+        // after the prose sections (below), so the AI's own headline
+        // stays the front page's lead.
+        const starsArticle = buildStarsArticle(activity);
+        const numbersArticle = buildByTheNumbersArticle(activity);
+        const total = outline.sections.length + (starsArticle ? 1 : 0) + (numbersArticle ? 1 : 0);
+        send("layout", { layout: pickLayoutForContent(total) });
 
         for (let index = 0; index < outline.sections.length; index += 1) {
           const section = outline.sections[index];
@@ -139,9 +146,7 @@ export async function POST(request: Request) {
         // Sent after the prose sections, so the AI's own headline section
         // stays `articles[0]` (the front page's lead) — these two are
         // sidebar material, never the lead story.
-        const starsArticle = buildStarsArticle(activity);
         if (starsArticle) sendWholeArticle(starsArticle);
-        const numbersArticle = buildByTheNumbersArticle(activity);
         if (numbersArticle) sendWholeArticle(numbersArticle);
 
         send("done", { title: outline.title });

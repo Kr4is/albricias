@@ -1,5 +1,5 @@
 /**
- * The broadsheet page frame — the `max-w-[1400px]` sheet, the masthead, and `<main>`.
+ * The broadsheet page frame — the `max-w-[1600px]` sheet, the masthead, and `<main>`.
  */
 
 import Header from "@/components/Header";
@@ -14,7 +14,7 @@ export default function NewspaperShell({
   ...header
 }: NewspaperShellProps) {
   return (
-    <div className="max-w-[1400px] mx-auto bg-paper shadow-2xl min-h-screen flex flex-col border-x border-stone-200 print:shadow-none print:border-none print:max-w-none">
+    <div className="max-w-[1600px] mx-auto bg-paper shadow-2xl min-h-screen flex flex-col border-x border-stone-200 print:shadow-none print:border-none print:max-w-none">
       <Header {...header} />
       <main className="flex-grow px-6 sm:px-8 lg:px-10 py-6 print:px-0">
         {children}
