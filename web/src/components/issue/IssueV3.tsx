@@ -14,7 +14,7 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV3({
   articles,
-  streamingArticleId,
+  streamingArticleIds,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
   const rest = articles.slice(1);
@@ -40,7 +40,7 @@ export default function IssueV3({
             <div className="issue-flow columns-1 md:columns-2 lg:columns-3 gap-10">
               <ArticleImage src={main.imageUrl} alt={main.title} eager className="mb-4" />
               <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed justified-text" />
-              {main.id === streamingArticleId && <span className="typing-cursor" />}
+              {streamingArticleIds?.has(main.id) && <span className="typing-cursor" />}
             </div>
           </div>
         )}
@@ -56,7 +56,7 @@ export default function IssueV3({
                 </h3>
               </a>
               <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text text-stone-600" />
-              {article.id === streamingArticleId && <span className="typing-cursor" />}
+              {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
             </article>
           ))}
         </div>

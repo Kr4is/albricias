@@ -22,8 +22,8 @@ export interface IssueView {
 export interface IssueLayoutProps {
   issue: IssueView;
   articles: IssueArticle[];
-  /** The article currently receiving live text deltas, if any — shows a blinking cursor after its body. */
-  streamingArticleId?: number | null;
+  /** The articles currently receiving live text deltas — each shows a blinking cursor after its body. */
+  streamingArticleIds?: ReadonlySet<number>;
   /**
    * How many secondary stories sit above the fold, in the side rails beside
    * the lead (V1, V4) — the rest run in a balanced band below. `null`/absent

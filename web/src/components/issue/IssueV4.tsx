@@ -18,7 +18,7 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 export default function IssueV4({
   issue,
   articles,
-  streamingArticleId,
+  streamingArticleIds,
   fold,
 }: IssueLayoutProps) {
   const main = articles.length > 0 ? articles[0] : null;
@@ -52,7 +52,7 @@ export default function IssueV4({
                 <ArticleImage src={main.imageUrl} alt={main.title} eager className="mb-6" />
 
                 <ArticleBody html={renderMarkdown(main.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text drop-cap" />
-                {main.id === streamingArticleId && <span className="typing-cursor" />}
+                {streamingArticleIds?.has(main.id) && <span className="typing-cursor" />}
               </article>
             )}
           </div>
@@ -75,7 +75,7 @@ export default function IssueV4({
                     </h3>
                   </a>
                   <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text text-stone-600" />
-                  {article.id === streamingArticleId && <span className="typing-cursor" />}
+                  {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
                 </article>
                 {index !== above.length - 1 && <div data-rail-rule className="w-12 h-px bg-stone-300"></div>}
               </Fragment>
@@ -83,7 +83,7 @@ export default function IssueV4({
           </div>
         </div>
 
-        <BelowFold articles={below} streamingArticleId={streamingArticleId} />
+        <BelowFold articles={below} streamingArticleIds={streamingArticleIds} />
       </div>
     </>
   );

@@ -67,6 +67,16 @@ const PILL_BASE =
 const PILL_ACTIVE = "bg-ink text-white border-ink";
 const PILL_INACTIVE = "bg-white text-ink border-stone-300 hover:border-ink";
 
+/**
+ * Where an article sits on the page: written sections by their outline
+ * index (they can start out of order when several are written at once —
+ * the first is always the lead), then the computed boxes, whose ids are
+ * negative (-1 stars, -2 numbers).
+ */
+function readingOrder(id: number): number {
+  return id >= 0 ? id : 1_000_000 - id;
+}
+
 /** One `event: ...\ndata: ...` block, as `/api/generate` writes it (`sseEvent()` in the route). */
 function parseSseMessage(raw: string): { event: string; data: unknown } | null {
   let event = "message";
@@ -92,7 +102,7 @@ export default function AppClient() {
   const [placement, setPlacement] = useState<FoldPlan | null>(null);
   const [title, setTitle] = useState("");
   const [articles, setArticles] = useState<IssueArticle[]>([]);
-  const [streamingId, setStreamingId] = useState<number | null>(null);
+  const [streamingIds, setStreamingIds] = useState<ReadonlySet<number>>(new Set());
   const [warnings, setWarnings] = useState<string[]>([]);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +180,7 @@ export default function AppClient() {
     setPlacement(null);
     setTitle("");
     setArticles([]);
-    setStreamingId(null);
+    setStreamingIds(new Set());
     setWarnings([]);
     setFinished(false);
   }
@@ -229,11 +239,13 @@ export default function AppClient() {
             setStatusMessage((message.data as { message: string }).message);
           } else if (message.event === "section-start") {
             const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string; imageUrl?: string | null };
-            setArticles((prev) => [
-              ...prev,
-              { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, imageUrl: data.imageUrl ?? null },
-            ]);
-            setStreamingId(data.index);
+            setArticles((prev) =>
+              [
+                ...prev,
+                { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, imageUrl: data.imageUrl ?? null },
+              ].sort((a, b) => readingOrder(a.id) - readingOrder(b.id)),
+            );
+            setStreamingIds((prev) => new Set(prev).add(data.index));
             if (!sawFirstSection) {
               sawFirstSection = true;
               setPhase("result");
@@ -243,7 +255,11 @@ export default function AppClient() {
             setArticles((prev) => prev.map((a) => (a.id === data.index ? { ...a, content: a.content + data.delta } : a)));
           } else if (message.event === "section-end") {
             const data = message.data as { index: number; failed?: boolean };
-            setStreamingId((current) => (current === data.index ? null : current));
+            setStreamingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(data.index);
+              return next;
+            });
             if (data.failed) setArticles((prev) => prev.filter((a) => a.id !== data.index));
           } else if (message.event === "done") {
             setTitle((message.data as { title: string }).title);
@@ -322,7 +338,7 @@ export default function AppClient() {
             layout={layout}
             issue={{ dateLabel: issueMeta.dateLabel }}
             articles={articles}
-            streamingArticleId={streamingId}
+            streamingArticleIds={streamingIds}
             fold={placement?.fold ?? null}
             leftRailIds={placement?.left ?? null}
           />

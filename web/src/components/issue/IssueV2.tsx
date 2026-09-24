@@ -16,7 +16,7 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV2({
   articles,
-  streamingArticleId,
+  streamingArticleIds,
 }: IssueLayoutProps) {
   return (
     <>
@@ -47,7 +47,7 @@ export default function IssueV2({
             </a>
 
             <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body leading-snug text-ink-light justified-text" />
-            {article.id === streamingArticleId && <span className="typing-cursor" />}
+            {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
           </article>
         ))}
       </div>

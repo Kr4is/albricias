@@ -13,11 +13,11 @@ import type { IssueArticle } from "@/components/issue/types";
 
 export default function BelowFold({
   articles,
-  streamingArticleId,
+  streamingArticleIds,
   wide = false,
 }: {
   articles: IssueArticle[];
-  streamingArticleId?: number | null;
+  streamingArticleIds?: ReadonlySet<number>;
   /** Four columns on desktop instead of three. */
   wide?: boolean;
 }) {
@@ -42,7 +42,7 @@ export default function BelowFold({
               </h3>
             </a>
             <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light justified-text" />
-            {article.id === streamingArticleId && <span className="typing-cursor" />}
+            {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
           </article>
         ))}
       </div>

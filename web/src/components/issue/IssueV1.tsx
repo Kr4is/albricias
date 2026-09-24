@@ -28,12 +28,12 @@ import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
 function Rail({
   articles,
   order,
-  streamingArticleId,
+  streamingArticleIds,
 }: {
   articles: IssueArticle[];
   /** Every above-fold story, in reading order — each story's position in it is its `data-order`. */
   order: IssueArticle[];
-  streamingArticleId?: number | null;
+  streamingArticleIds?: ReadonlySet<number>;
 }) {
   return articles.map((article, index) => (
     <Fragment key={article.id}>
@@ -59,7 +59,7 @@ function Rail({
         </a>
 
         <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text" />
-        {article.id === streamingArticleId && <span className="typing-cursor" />}
+        {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
       </article>
       {index !== articles.length - 1 && <div data-rail-rule className="w-16 h-px bg-stone-200 mx-auto"></div>}
     </Fragment>
@@ -69,7 +69,7 @@ function Rail({
 export default function IssueV1({
   issue,
   articles,
-  streamingArticleId,
+  streamingArticleIds,
   fold,
   leftRailIds,
 }: IssueLayoutProps) {
@@ -88,7 +88,7 @@ export default function IssueV1({
         <div data-balance-group className="grid grid-cols-12 gap-6 lg:gap-8 relative">
           {/* Column 1: Left rail */}
           <div data-balance-col data-fold-rail className="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col gap-8">
-            <Rail articles={leftColumn} order={above} streamingArticleId={streamingArticleId} />
+            <Rail articles={leftColumn} order={above} streamingArticleIds={streamingArticleIds} />
           </div>
 
           {/* Column 2: Center (Lead) */}
@@ -115,18 +115,18 @@ export default function IssueV1({
                 <ArticleImage src={mainArticle.imageUrl} alt={mainArticle.title} eager className="mb-5" />
 
                 <ArticleBody html={renderMarkdown(mainArticle.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
-                {mainArticle.id === streamingArticleId && <span className="typing-cursor" />}
+                {streamingArticleIds?.has(mainArticle.id) && <span className="typing-cursor" />}
               </article>
             )}
           </div>
 
           {/* Column 3: Right rail */}
           <div data-balance-col data-fold-rail className="col-span-12 lg:col-span-3 lg:pl-6 flex flex-col gap-8">
-            <Rail articles={rightColumn} order={above} streamingArticleId={streamingArticleId} />
+            <Rail articles={rightColumn} order={above} streamingArticleIds={streamingArticleIds} />
           </div>
         </div>
 
-        <BelowFold articles={below} streamingArticleId={streamingArticleId} wide />
+        <BelowFold articles={below} streamingArticleIds={streamingArticleIds} wide />
       </div>
     </>
   );

@@ -14,7 +14,7 @@ import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV5({
   articles,
-  streamingArticleId,
+  streamingArticleIds,
 }: IssueLayoutProps) {
   const leads = articles.slice(0, 2);
   const rest = articles.slice(2);
@@ -40,7 +40,7 @@ export default function IssueV5({
                 </h2>
               </a>
               <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink justified-text" />
-              {article.id === streamingArticleId && <span className="typing-cursor" />}
+              {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
             </article>
           ))}
         </div>
@@ -65,7 +65,7 @@ export default function IssueV5({
                     </h4>
                   </a>
                   <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-500 leading-snug" />
-                  {article.id === streamingArticleId && <span className="typing-cursor" />}
+                  {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
                 </article>
               ))}
             </div>

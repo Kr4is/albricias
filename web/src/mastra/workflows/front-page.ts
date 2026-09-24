@@ -1,7 +1,7 @@
 /**
  * The front page, as a Mastra workflow:
  *
- *   gather → plan → foreach(write-section, concurrency 1) → assemble
+ *   gather → plan → foreach(write-section, SECTION_CONCURRENCY) → assemble
  *
  *   gather         GitHub activity + repo details → the period's dossier
  *   plan           the outline editor's headline, premise and briefs; each
@@ -17,9 +17,12 @@
  * page has always spoken: `meta`, `status`, `layout`, `section-start`,
  * `section-delta`, `section-end`, `done`.
  *
- * Sections run one at a time: the self-hosted model behind a LiteLLM proxy
- * this was built against drops connections under concurrent load, and the
- * page reads top to bottom anyway.
+ * Sections are written `SECTION_CONCURRENCY` at a time (2 unless
+ * `ALBRICIAS_SECTION_CONCURRENCY` says otherwise): one at a time a busy
+ * week took minutes, but some self-hosted gateways drop connections under
+ * concurrent load — set it to 1 for those. A section whose call fails
+ * before writing anything is retried once. The page puts sections in
+ * outline order however they finish.
  */
 
 import type { Agent } from "@mastra/core/agent";
@@ -42,6 +45,9 @@ import { researchPeriod } from "@/lib/generation/research";
 import { pickLayoutForContent } from "@/lib/layout";
 import { repoImageUrl, resolveRepo } from "@/lib/repo-image";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
+
+/** How many sections are written at once — see the header. */
+const SECTION_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.ALBRICIAS_SECTION_CONCURRENCY) || 2));
 
 // ---------------------------------------------------------------------------
 // Schemas — what Studio shows as each step's input and output
@@ -295,18 +301,41 @@ const writeSection = createStep({
       event: "section-start",
       data: { index, heading: inputData.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: inputData.brief, imageUrl: inputData.imageUrl },
     });
-    try {
-      // No retry on truncation: by the time it's detected the partial text
-      // is already on the page. The section is dropped instead.
+    const attempt = async () => {
       const headings = createLeadingHeadingFilter();
+      let sent = false;
       const send = async (delta: string) => {
-        if (delta) await out.write({ event: "section-delta", data: { index, delta } });
+        if (!delta) return;
+        sent = true;
+        await out.write({ event: "section-delta", data: { index, delta } });
       };
-      const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt(inputData), requestContext, (delta) =>
-        send(headings.push(delta)),
-      );
-      await send(headings.flush());
-      if (isUnusable(reply)) throw new Error(`truncated/empty (finishReason: ${reply.finishReason})`);
+      try {
+        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt(inputData), requestContext, (delta) =>
+          send(headings.push(delta)),
+        );
+        await send(headings.flush());
+        return { reply, sent };
+      } catch (error) {
+        throw Object.assign(error instanceof Error ? error : new Error(String(error)), { sent });
+      }
+    };
+
+    try {
+      let result;
+      try {
+        result = await attempt();
+      } catch (error) {
+        // A call that failed before writing a word (a gateway refusing or
+        // dropping a connection under concurrent load, typically) is safe to
+        // retry once — nothing of it is on the page yet. One that failed
+        // midway isn't: the partial text is already showing.
+        if ((error as { sent?: boolean }).sent) throw error;
+        console.warn(`[front-page] section "${inputData.heading}" failed before any text — retrying once: ${(error as Error).message}`);
+        result = await attempt();
+      }
+      // No retry on truncation either: by the time it's detected the text is
+      // already on the page. The section is dropped instead.
+      if (isUnusable(result.reply)) throw new Error(`truncated/empty (finishReason: ${result.reply.finishReason})`);
       await out.write({ event: "section-end", data: { index } });
       return { index, ok: true };
     } catch (error) {
@@ -371,6 +400,6 @@ export const frontPageWorkflow = createWorkflow({
   .then(gather)
   .then(plan)
   .map(async ({ inputData }) => inputData.sections)
-  .foreach(writeSection, { concurrency: 1 })
+  .foreach(writeSection, { concurrency: SECTION_CONCURRENCY })
   .then(assemble)
   .commit();
