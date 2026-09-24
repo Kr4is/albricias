@@ -11,24 +11,29 @@ generation is a single request, and the LLM key you provide is used only for
 that call.
 
 The app lives under [`web/`](web/): Next.js (App Router) + React + TypeScript,
-with [Mastra](https://mastra.ai) agents/workflows for the generation
-pipeline.
+with a [Mastra](https://mastra.ai) workflow and agents for the generation
+pipeline — inspectable locally in Mastra Studio (`npm run mastra`).
 
 ## Features
 
 - **Any public GitHub user** — no login, no OAuth, just a username.
 - **Daily, weekly, or monthly** front pages.
-- **Bring your own AI** — OpenAI, Google Gemini, a local Ollama, or any
-  OpenAI-compatible endpoint (e.g. a LiteLLM proxy). The key travels only
-  for the duration of one request.
-- **Vintage design** — six rotating front-page layout variants, unchanged
-  from the original single-tenant version.
+- **Bring your own AI** — OpenAI, Google Gemini, or any OpenAI-compatible
+  gateway (LiteLLM, Ollama, vLLM…). The key travels only for the duration
+  of one request.
+- **Real material** — commit messages, pull requests and their state,
+  release notes, issues, and what every repo touched or starred actually
+  is, with each repo's GitHub card as its picture.
+- **Vintage design** — six front-page layouts whose columns always end on
+  the same line; export the page as a PNG to copy, download or share.
 
 ## Getting started
 
 See [`web/README.md`](web/README.md) for setup and running the app locally.
-The only environment variable this app reads is `GITHUB_TOKEN` — a
-server-held token used for every visitor's read-only GitHub activity lookup.
+The one environment variable the app needs is `GITHUB_TOKEN` (in
+`web/.env`) — a server-held token used for every visitor's read-only
+GitHub activity lookup. The rest of `web/.env.example` is local-only
+Mastra Studio configuration.
 
 ## Docker
 
@@ -46,7 +51,7 @@ albricias/
 │   ├── src/app/            Routes: landing (/), generator (/app), API (/api/generate)
 │   ├── src/components/     React components, incl. the 6 vintage front-page layouts
 │   ├── src/lib/            GitHub fetch, period math, markdown/chart rendering
-│   └── src/mastra/         Mastra agents & the period-post generation workflow
-├── docker-compose.yml
-└── .env.example
+│   ├── src/mastra/         Mastra agents & the front-page generation workflow
+│   └── .env.example
+└── docker-compose.yml
 ```
