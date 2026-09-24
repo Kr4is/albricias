@@ -3,7 +3,7 @@
  * `npx tsx scripts/check-deterministic-articles.ts`.
  */
 import assert from "node:assert/strict";
-import { buildStarsArticle, buildByTheNumbersArticle } from "../src/lib/generation/deterministic-articles";
+import { buildStarsArticle, buildByTheNumbersArticle, starImageCandidates } from "../src/lib/generation/deterministic-articles";
 import { parseArticleChartSpec } from "../src/lib/article-chart";
 import type { RepoDetails } from "../src/lib/sources/github";
 import type { ActivityItem } from "../src/lib/sources/types";
@@ -22,7 +22,7 @@ function details(fullName: string, overrides: Partial<RepoDetails> = {}): [strin
 // No stars -> null.
 assert.equal(buildStarsArticle([activity({ eventType: "commit" })], new Map()), null);
 
-// Stars -> one line per star with what the repo is; pictured with the most-starred card not already used.
+// Stars -> one line per star with what the repo is; picture candidates most-starred first.
 {
   const stars = [
     activity({ eventType: "star", repo: "acme/small", url: "https://github.com/acme/small" }),
@@ -34,13 +34,14 @@ assert.equal(buildStarsArticle([activity({ eventType: "commit" })], new Map()), 
     details("acme/big", { stars: 1200 }),
     details("acme/biggest", { stars: 90_000 }),
   ]);
-  const article = buildStarsArticle(stars, known, new Set(["acme/biggest"]));
+  const article = buildStarsArticle(stars, known);
   assert.ok(article);
   const lines = article!.content.split("\n");
   assert.equal(lines.length, 3);
   assert.equal(lines[0], "- **[acme/small](https://github.com/acme/small)** — A small tool *(Rust, ★ 40)*");
   assert.equal(lines[1], "- **acme/big** *(★ 1.2k)*");
-  assert.equal(article!.imageUrl, "https://opengraph.githubassets.com/1/acme/big");
+  assert.equal(article!.imageUrl, null);
+  assert.deepEqual(starImageCandidates(stars, known), ["acme/biggest", "acme/big", "acme/small"]);
   assert.equal(article!.deck, "3 repositories starred this period.");
 }
 

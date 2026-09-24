@@ -2,9 +2,6 @@
 .env
 .envrc
 
-# Docker volume (SQLite DB + uploads, when using docker-compose)
-instance/
-
 # OS / editor
 .DS_Store
 .idea/
@@ -15,5 +12,5 @@ instance/
 
 .omc/
 
-# The Next.js app manages its own ignores (node_modules, .next, *.db, etc.)
+# The Next.js app manages its own ignores (node_modules, .next, mastra.db, etc.)
 # — see web/.gitignore.

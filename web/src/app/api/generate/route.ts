@@ -1,28 +1,28 @@
 /**
- * The whole self-serve pipeline, one request: fetch a GitHub user's activity
- * for a period, write a front page about it, return it — as Server-Sent
- * Events. Each section streams live (token by token) as the model writes
- * it, both because generation is several sequential LLM calls that can run
- * for a minute or more (streaming keeps the connection visibly alive) and
- * so the client can show the text being written in place.
+ * The whole self-serve pipeline, one request: run the `front-page` Mastra
+ * workflow (`@/mastra/workflows/front-page`) for a GitHub user and period,
+ * and relay it to the page as Server-Sent Events. Each section streams
+ * live, token by token, as the correspondent writes it — generation is
+ * several sequential model calls that can run for minutes, and the page
+ * shows the text being written in place.
  *
- * Nothing is persisted — the LLM key travels only for the duration of this
- * call.
+ * The workflow's steps narrate themselves as `{ event, data }` chunks
+ * (`workflow-step-output` in the run's stream); this route forwards each
+ * as one SSE `event: <event>` unchanged, and turns a failed run into an
+ * `error` event.
+ *
+ * Nothing is persisted in production — the visitor's LLM key travels only
+ * in this run's request context. (Locally, runs are also traced into
+ * `mastra.db` for Mastra Studio; see `@/mastra`.)
  */
 
+import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
 
-import { dayBounds, defaultEditionVol, periodBoundsForDate } from "@/lib/cadence";
-import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
 import { buildAiModel } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
-import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
-import { pickLayoutForContent } from "@/lib/layout";
-import { knownRepos, repoImageUrl, resolveRepo } from "@/lib/repo-image";
-import { buildOutline, writeSection } from "@/lib/generation/period-post";
-import { researchPeriod } from "@/lib/generation/research";
-import { buildByTheNumbersArticle, buildStarsArticle } from "@/lib/generation/deterministic-articles";
-import type { IssueArticle } from "@/components/issue/types";
+import { mastra } from "@/mastra";
+import { MODEL_KEY } from "@/mastra/model";
 
 const baseFields = {
   githubUsername: z.string().trim().min(1).max(100),
@@ -35,14 +35,6 @@ const requestSchema = z.discriminatedUnion("llmProvider", [
   z.object({ ...baseFields, llmProvider: z.literal("litellm"), llmApiKey: z.string().min(1), llmModel: z.string().min(1), llmBaseUrl: z.string().min(1) }),
 ]);
 
-function periodBoundsFor(period: "daily" | "weekly" | "monthly") {
-  if (period === "daily") {
-    // "Today" is always near-empty this early in the day — yesterday has a full day of activity.
-    return dayBounds(new Date(Date.now() - 24 * 60 * 60 * 1000));
-  }
-  return periodBoundsForDate(period, new Date());
-}
-
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache, no-transform",
@@ -53,41 +45,48 @@ function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/** A step's `writer.write({ event, data })`, as it comes out of the run's stream. */
+function pageEvent(chunk: { type: string; payload?: unknown }): { event: string; data: unknown } | null {
+  if (chunk.type !== "workflow-step-output") return null;
+  const output = (chunk.payload as { output?: unknown } | undefined)?.output;
+  if (!output || typeof output !== "object" || typeof (output as { event?: unknown }).event !== "string") return null;
+  return output as { event: string; data: unknown };
+}
+
+/**
+ * A failed run's error, for the visitor. Mastra hands it back serialized —
+ * `{ message, name, … }`, not an `Error` — and the step already worded the
+ * message (`describeAiError`), so it's used as is.
+ */
+function runErrorMessage(error: unknown): string {
+  if (error instanceof Error) return describeAiError(error);
+  if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message;
+  }
+  return typeof error === "string" && error ? error : "Generation failed.";
+}
+
 export async function POST(request: Request) {
   const body = requestSchema.safeParse(await request.json().catch(() => null));
   if (!body.success) {
     return Response.json({ error: "Invalid request.", details: body.error.flatten() }, { status: 400 });
   }
   const input = body.data;
-
-  const githubToken = process.env.GITHUB_TOKEN;
-  if (!githubToken) {
+  if (!process.env.GITHUB_TOKEN) {
     return Response.json({ error: "Server is missing GITHUB_TOKEN." }, { status: 500 });
   }
 
-  const { periodStart, periodEnd } = periodBoundsFor(input.period);
-  const edition = { cadence: input.period, periodStart, periodEnd };
+  const requestContext = new RequestContext();
+  requestContext.set(MODEL_KEY, buildAiModel(input));
 
-  const warnings: string[] = [];
-  const activity = await fetchGithubActivity({
-    username: input.githubUsername,
-    token: githubToken,
-    periodStart,
-    periodEnd,
-    onWarning: (message) => warnings.push(message),
+  const run = await mastra.getWorkflow("frontPage").createRun();
+  // A visitor who leaves mid-edition shouldn't keep spending their tokens.
+  // (Also fires once a finished run's connection closes — harmless then.)
+  request.signal.addEventListener("abort", () => {
+    run.cancel().catch(() => {});
   });
-  if (activity.length === 0) {
-    return Response.json(
-      { error: `No public GitHub activity found for "${input.githubUsername}" in that period.` },
-      { status: 404 },
-    );
-  }
 
-  const model = buildAiModel(input);
-  const periodLabel = formatPeriodLabel(edition);
-  const repos = knownRepos(activity);
   const encoder = new TextEncoder();
-
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
@@ -99,74 +98,27 @@ export async function POST(request: Request) {
           closed = true;
         }
       };
-      /** A whole, already-known article (the deterministic ones) — sent through the same three events a streamed section uses. */
-      const sendWholeArticle = (article: IssueArticle) => {
-        send("section-start", { index: article.id, heading: article.title, category: article.category, author: article.author, deck: article.deck, imageUrl: article.imageUrl ?? null });
-        send("section-delta", { index: article.id, delta: article.content });
-        send("section-end", { index: article.id });
-      };
-
-      send("meta", {
-        vol: defaultEditionVol(edition),
-        dateLabel: periodLabel,
-        weather: editionWeather(edition),
-        warnings,
-      });
 
       try {
-        send("status", { message: "Reading up on the repositories…" });
-        const details = await fetchRepoDetails(activity, githubToken);
-        const research = researchPeriod(activity, details);
-
-        send("status", { message: "Planning the front page…" });
-        const outline = await buildOutline({ periodLabel, cadence: input.period, sourceText: research.text, model });
-
-        // Computed now (cheap, pure) so the total article count is known
-        // before picking a layout — only their *emission* waits until
-        // after the prose sections (below), so the AI's own headline
-        // stays the front page's lead.
-        // The stars box itself is built after the sections, once it knows
-        // which repos' cards they already used.
-        const hasStars = activity.some((item) => item.eventType === "star");
-        const numbersArticle = buildByTheNumbersArticle(activity);
-        const total = outline.sections.length + (hasStars ? 1 : 0) + (numbersArticle ? 1 : 0);
-        send("layout", { layout: pickLayoutForContent(total) });
-
-        // Each repo's card appears at most once on the page — two sections
-        // about the same repo shouldn't repeat the same picture.
-        const pictured = new Set<string>();
-
-        for (let index = 0; index < outline.sections.length; index += 1) {
-          const section = outline.sections[index];
-          const repo = resolveRepo(section.repo, repos);
-          const imageUrl = repo && !pictured.has(repo) ? repoImageUrl(repo) : null;
-          if (repo) pictured.add(repo);
-          send("section-start", { index, heading: section.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: section.brief, imageUrl });
-          try {
-            // A section about one repo gets that repo's dossier (plus an
-            // index of the rest) — focused, and a fraction of the tokens.
-            const sourceText = repo ? research.forRepo(repo) : research.text;
-            await writeSection(
-              { heading: section.heading, brief: section.brief, lengthTier: section.lengthTier, premise: outline.premise, periodLabel, sourceText, model },
-              (delta) => send("section-delta", { index, delta }),
-            );
-            send("section-end", { index });
-          } catch (error) {
-            console.error(`[period-post] section "${section.heading}" failed:`, error);
-            send("section-end", { index, failed: true });
-          }
+        const output = run.stream({
+          inputData: { githubUsername: input.githubUsername, period: input.period },
+          requestContext,
+          tracingOptions: { metadata: { githubUsername: input.githubUsername, period: input.period } },
+        });
+        for await (const chunk of output.fullStream) {
+          const event = pageEvent(chunk);
+          if (event) send(event.event, event.data);
         }
-
-        // Sent after the prose sections, so the AI's own headline section
-        // stays `articles[0]` (the front page's lead) — these two are
-        // sidebar material, never the lead story.
-        const starsArticle = buildStarsArticle(activity, details, pictured);
-        if (starsArticle) sendWholeArticle(starsArticle);
-        if (numbersArticle) sendWholeArticle(numbersArticle);
-
-        send("done", { title: outline.title });
+        const result = await output.result;
+        if (result.status === "failed") {
+          const error = (result as { error?: unknown }).error;
+          console.error(`[front-page] run failed for "${input.githubUsername}" (${input.period}):`, error);
+          send("error", { error: runErrorMessage(error) });
+        } else if (result.status !== "success") {
+          send("error", { error: `Generation stopped (${result.status}).` });
+        }
       } catch (error) {
-        console.error(`[period-post] generation failed for "${input.githubUsername}" (${input.period}):`, error);
+        console.error(`[front-page] run crashed for "${input.githubUsername}" (${input.period}):`, error);
         send("error", { error: describeAiError(error) });
       } finally {
         if (!closed) {

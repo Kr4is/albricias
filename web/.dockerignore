@@ -2,9 +2,12 @@
 node_modules
 .next
 .env
-.env.local
-dev.db
-dev.db-journal
-src/generated
+.env.*
+!.env.example
 npm-debug.log*
 .DS_Store
+# Local-only Mastra Studio build and the traces it and `next dev` write —
+# never part of an image.
+.mastra
+src/mastra/public
+mastra.db*

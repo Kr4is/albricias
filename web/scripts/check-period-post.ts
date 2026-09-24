@@ -4,7 +4,7 @@
  * exercise it. `npx tsx scripts/check-period-post.ts`.
  */
 import assert from "node:assert/strict";
-import { parseOutline } from "../src/lib/generation/period-post";
+import { createLeadingHeadingFilter, parseOutline } from "../src/lib/generation/period-post";
 
 // Well-formed reply, all three LENGTH tiers present.
 {
@@ -39,6 +39,21 @@ import { parseOutline } from "../src/lib/generation/period-post";
 {
   const outline = parseOutline("Just some unstructured prose with no headings.");
   assert.equal(outline.sections.length, 0);
+}
+
+
+// Leading-heading filter: drops an echoed heading from a stream, however it's chunked.
+{
+  const run = (chunks: string[]) => {
+    const filter = createLeadingHeadingFilter();
+    return chunks.map((c) => filter.push(c)).join("") + filter.flush();
+  };
+  assert.equal(run(["## The Par", "ser\n\nIt was", " a week."]), "It was a week.");
+  assert.equal(run(["# Title\nBody"]), "Body");
+  assert.equal(run(["It was ", "a week.\n\nMore."]), "It was a week.\n\nMore.");
+  assert.equal(run(["#hashtag is not a heading"]), "#hashtag is not a heading");
+  assert.equal(run(["## Only a heading"]), "");
+  assert.equal(run(["x".repeat(250), " tail"]), "x".repeat(250) + " tail");
 }
 
 console.log("period-post self-check: OK");

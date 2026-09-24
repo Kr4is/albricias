@@ -31,6 +31,9 @@ export function buildAiModel(input: BuildAiModelInput): LanguageModel {
     case "gemini":
       return createGoogleGenerativeAI({ apiKey: input.llmApiKey })(input.llmModel || DEFAULT_GEMINI_MODEL);
     case "litellm":
-      return createOpenAI({ apiKey: input.llmApiKey, baseURL: input.llmBaseUrl })(input.llmModel!);
+      // `.chat()`: OpenAI-compatible gateways (LiteLLM, Ollama, vLLM…) speak
+      // Chat Completions; the SDK's default for `openai(...)` is the newer
+      // Responses API, which most of them don't implement.
+      return createOpenAI({ apiKey: input.llmApiKey, baseURL: input.llmBaseUrl }).chat(input.llmModel!);
   }
 }

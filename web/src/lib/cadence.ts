@@ -42,7 +42,7 @@ function isoWeekPeriodBounds(year: number, week: number): PeriodBounds {
 }
 
 /** Bounds of the single UTC calendar day containing `date` — `[00:00 UTC that day, 00:00 UTC the next day)`. */
-export function dayBounds(date: Date): PeriodBounds {
+function dayBounds(date: Date): PeriodBounds {
   const periodStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const periodEnd = new Date(periodStart);
   periodEnd.setUTCDate(periodStart.getUTCDate() + 1);
@@ -50,7 +50,7 @@ export function dayBounds(date: Date): PeriodBounds {
 }
 
 /** Bounds of the period containing `date`, under `cadence`. */
-export function periodBoundsForDate(cadence: Cadence, date: Date): PeriodBounds {
+function periodBoundsForDate(cadence: Cadence, date: Date): PeriodBounds {
   if (cadence === CADENCE_WEEKLY) {
     const { year, week } = isoWeek(date);
     return isoWeekPeriodBounds(year, week);
@@ -79,4 +79,14 @@ export function defaultEditionVol(period: EditionPeriod): string {
   const year = period.periodStart.getUTCFullYear();
   const month = period.periodStart.getUTCMonth() + 1;
   return `VOL. ${year} NO. ${month}`;
+}
+
+/**
+ * The period an edition requested `now` covers. Weekly and monthly: the
+ * current week/month. Daily: *yesterday* — "today" is always near-empty
+ * this early in the day, yesterday has a full day of activity.
+ */
+export function editionBounds(cadence: Cadence, now: Date = new Date()): PeriodBounds {
+  if (cadence === CADENCE_DAILY) return dayBounds(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  return periodBoundsForDate(cadence, now);
 }

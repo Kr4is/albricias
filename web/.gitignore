@@ -17,9 +17,11 @@
 /.next/
 /out/
 
-# mastra dev/studio build cache (`npm run mastra`) — local-only, no storage
-# adapter configured, so nothing in here is meant to persist anyway
+# Mastra Studio's build cache (`npm run mastra`), and the local store it
+# and `next dev` trace runs into — local-only, never committed
 /.mastra/
+/src/mastra/public/
+/mastra.db*
 
 # production
 /build

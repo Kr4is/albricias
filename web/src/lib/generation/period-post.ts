@@ -1,26 +1,14 @@
 /**
- * Period-post generation — outline → per-section drafts, plain async
- * functions calling the Vercel AI SDK directly (no workflow framework).
- *
- * Given one already-fetched batch of GitHub activity for a period, produces
- * the sections of a front page. Nothing here reads or writes anything —
- * this is a one-shot, in-memory pipeline with no cross-run history.
- *
- * Both the outline and each section use `streamText`, not `generateText` —
- * a blocking call sits silent until the whole response is ready, which is
- * exactly what trips a reverse proxy's idle/response timeout in front of a
- * slow self-hosted model. The outline's stream is drained internally and
- * never shown (it's control syntax — headline/premise/section briefs in a
- * fixed format, not prose anyone should watch typed out); each section's
- * stream is forwarded live via `onDelta`, so the caller (the SSE route) can
- * show it being written token by token.
+ * The period post's words: the paper's voice, the two prompts (outline
+ * editor, section correspondent), and the parser for the outline's reply.
+ * Pure — no model calls; the `front-page` Mastra workflow
+ * (`@/mastra/workflows/front-page`) runs the agents that use these.
  */
 
-import { streamText, type LanguageModel } from "ai";
-import { describeAiError } from "@/lib/ai/error";
+import type { Cadence } from "@/lib/edition-helpers";
 
 /** Verbatim voice of the whole paper. */
-export const NEWSPAPER_PERSONA =
+const NEWSPAPER_PERSONA =
   "You are the chief editor of ¡Albricias!, a whimsical vintage newspaper " +
   "published in the style of early 20th-century broadsheets. " +
   "Your writing is eloquent, slightly dramatic, and uses the grandiloquent " +
@@ -28,9 +16,9 @@ export const NEWSPAPER_PERSONA =
   "in the actual material provided. " +
   "Use markdown for formatting.";
 
-const DEFAULT_TEMPERATURE = 0.8;
+/** The paper's house temperature — a little flair, not invention. */
+export const DEFAULT_TEMPERATURE = 0.8;
 
-type Cadence = "daily" | "weekly" | "monthly";
 export type LengthTier = "short" | "medium" | "long";
 
 /**
@@ -233,164 +221,41 @@ export function parseOutline(raw: string): ParsedOutline {
   return { title, premise, sections: sections.filter((section) => section.heading) };
 }
 
-/** Strip a leading Markdown heading line (any level, any text) plus one following blank line, if present. */
-export function stripLeadingHeadingLine(markdown: string): string {
-  const trimmed = markdown.trim();
-  const lines = trimmed.split("\n");
-  const first = lines[0]?.trim() ?? "";
-
-  if (!/^#{1,6}\s+\S/.test(first)) return trimmed;
-
-  let rest = lines.slice(1);
-  if (rest[0]?.trim() === "") rest = rest.slice(1);
-
-  return rest.join("\n").trim();
-}
-
-// ---------------------------------------------------------------------------
-// Outline + sections
-// ---------------------------------------------------------------------------
-
-interface TextResult {
-  text: string;
-  finishReason: string;
-}
-
-/** A response too broken to use: cut off mid-generation, or nothing at all. */
-function isUnusable(result: TextResult): boolean {
-  return result.finishReason === "length" || !result.text.trim();
-}
-
-export async function buildOutline(input: {
-  periodLabel: string;
-  cadence: Cadence;
-  sourceText: string;
-  model: LanguageModel;
-}): Promise<ParsedOutline> {
-  const prompt = buildOutlinePrompt(input);
-  // maxRetries: 0 — the AI SDK's own retry wrapper (3 attempts by default)
-  // both adds several seconds of backoff before a real failure surfaces and
-  // discards the underlying error's detail (statusCode, response body) when
-  // it gives up, leaving only a bare, sometimes-empty message. This call
-  // already has its own retry-once for the specific "truncated/empty"
-  // failure mode just below; a hard API error (bad key, network) should
-  // surface immediately, with its real detail intact.
-  //
-  // streamText, not generateText — even though nothing here is forwarded to
-  // the client (the outline is control syntax, not prose anyone should
-  // watch typed out). A *blocking* call sits silent until the whole
-  // response is ready; behind a reverse proxy in front of a slow
-  // self-hosted model (Cloudflare, in front of a LiteLLM gateway, most
-  // concretely) that silence is exactly what trips its idle/response
-  // timeout (a 524). A streamed call keeps bytes flowing the moment the
-  // model emits its first token, which keeps the proxy from ever seeing a
-  // silent connection — same reason `writeSection` below streams.
-  const call = async (): Promise<TextResult> => {
-    // `onError` is a side channel for the *real* underlying error — when a
-    // request fails before any chunk arrives, the SDK's own `text`/
-    // `finishReason` promises can reject with a generic
-    // "No output generated" instead of the actual cause. Prefer whatever
-    // `onError` captured, when it did.
-    let capturedError: unknown;
-    const { textStream, text, finishReason } = streamText({
-      model: input.model,
-      system: PERIOD_POST_OUTLINE_SYSTEM,
-      prompt,
-      temperature: DEFAULT_TEMPERATURE,
-      maxRetries: 0,
-      onError: ({ error }) => {
-        capturedError = error;
-      },
-    });
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- draining only, deltas aren't shown
-      for await (const _delta of textStream) {
-        // Discarded — consuming the stream is what keeps the connection alive.
-      }
-      return { text: await text, finishReason: await finishReason };
-    } catch (error) {
-      throw capturedError ?? error;
-    }
-  };
-
-  let result = await call();
-  if (isUnusable(result)) {
-    console.warn(`[period-post] outline truncated/empty (finishReason: ${result.finishReason}) — retrying once`);
-    result = await call();
-  }
-  if (isUnusable(result)) {
-    throw new Error(
-      `The outline call returned a truncated/empty response twice in a row (finishReason: ${result.finishReason}). ` +
-        "The provider may be enforcing its own token ceiling, or the model may be failing silently.",
-    );
-  }
-
-  const outline = parseOutline(result.text);
-  // A weak model (small local Ollama models in particular) can produce real
-  // prose while still missing the exact "## heading" / "BRIEF:" shape this
-  // parses for — falling back to one section over the whole period, rather
-  // than failing the entire generation, degrades gracefully instead of
-  // punishing the visitor for a model they chose that can write but can't
-  // follow a structured multi-field format.
-  if (outline.sections.length === 0) {
-    outline.sections = [{ heading: outline.title || input.periodLabel, brief: "Cover the period's activity as a whole.", lengthTier: "medium" }];
-  }
-  if (!outline.title) outline.title = input.periodLabel;
-  return outline;
-}
+/** A first line this long without a newline can't be a heading echo — stop holding it back. */
+const MAX_HEADING_PEEK = 200;
 
 /**
- * Write one section, forwarding live text deltas to `onDelta` as they arrive.
- *
- * No retry on truncation here (unlike the outline call): by the time a
- * truncated/empty response is detected, partial text has already been
- * streamed to the client — a silent retry would either leave stale text on
- * screen or need a new "restart this section" signal, not worth it for one
- * call. Throws instead; the caller drops the section (see the route).
- * `ponytail: no retry on streamed truncation — revisit only if it turns out common enough to need a section-restart event.`
+ * A section writer sometimes opens by repeating its own heading as a
+ * Markdown heading, though told not to — and the heading is already on
+ * the page. This drops such a first line (plus one blank line after it)
+ * from the *stream*, since the page shows the deltas as they arrive:
+ * `push` each delta and forward what it returns, then forward `flush()`
+ * at the end. Only the opening line is ever held back, and only until it
+ * ends (or runs past `MAX_HEADING_PEEK` characters).
  */
-export async function writeSection(
-  input: {
-    heading: string;
-    brief: string;
-    lengthTier: LengthTier;
-    premise: string;
-    periodLabel: string;
-    sourceText: string;
-    model: LanguageModel;
-  },
-  onDelta: (delta: string) => void,
-): Promise<string> {
-  const prompt = buildSectionPrompt(input);
-  // maxRetries: 0 — see the same note on the outline call above; a failure
-  // here should surface immediately with its real detail, not after several
-  // seconds of silent backoff. `onError` — same reason as the outline call:
-  // a side channel for the real error, since a failure before any chunk can
-  // otherwise surface via `text`/`finishReason` as a generic
-  // "No output generated" instead of the actual cause.
-  let capturedError: unknown;
-  const { textStream, text, finishReason } = streamText({
-    model: input.model,
-    system: PERIOD_POST_SECTION_SYSTEM,
-    prompt,
-    temperature: DEFAULT_TEMPERATURE,
-    maxRetries: 0,
-    onError: ({ error }) => {
-      capturedError = error;
+export function createLeadingHeadingFilter() {
+  let buffer = "";
+  let decided = false;
+
+  const decide = (final: boolean): string => {
+    const lead = buffer.replace(/^\s+/, "");
+    const newline = lead.indexOf("\n");
+    if (newline === -1 && !final && lead.length < MAX_HEADING_PEEK) return "";
+    decided = true;
+    const first = newline === -1 ? lead : lead.slice(0, newline);
+    if (!/^#{1,6}\s+\S/.test(first.trim())) return buffer;
+    if (newline === -1) return "";
+    return lead.slice(newline + 1).replace(/^[ \t]*\n/, "");
+  };
+
+  return {
+    push(delta: string): string {
+      if (decided) return delta;
+      buffer += delta;
+      return decide(false);
     },
-  });
-
-  let finalText: string;
-  let reason: string;
-  try {
-    for await (const delta of textStream) onDelta(delta);
-    [finalText, reason] = await Promise.all([text, finishReason]);
-  } catch (error) {
-    throw new Error(`Section "${input.heading}" stream failed: ${describeAiError(capturedError ?? error)}`);
-  }
-
-  if (reason === "length" || !finalText.trim()) {
-    throw new Error(`Section "${input.heading}" truncated/empty (finishReason: ${reason}).`);
-  }
-  return stripLeadingHeadingLine(finalText);
+    flush(): string {
+      return decided ? "" : decide(true);
+    },
+  };
 }

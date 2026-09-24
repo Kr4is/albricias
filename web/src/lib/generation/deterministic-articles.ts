@@ -6,7 +6,6 @@
  */
 
 import type { ArticleChartSpec } from "@/lib/article-chart";
-import { repoImageUrl } from "@/lib/repo-image";
 import type { RepoDetails } from "@/lib/sources/github";
 import type { ActivityItem } from "@/lib/sources/types";
 import type { IssueArticle } from "@/components/issue/types";
@@ -19,31 +18,32 @@ const NUMBERS_ARTICLE_ID = -2;
 /** Starred repos listed in the box at most — the rest are counted, not dropped silently. */
 const MAX_STARS_SHOWN = 12;
 
+/** Starred repos, most popular first — the order the stars box's picture is chosen in. */
+export function starImageCandidates(activity: ActivityItem[], details: Map<string, RepoDetails>): string[] {
+  return activity
+    .filter((item) => item.eventType === "star" && item.repo)
+    .map((item) => ({ repo: item.repo!, stars: details.get(item.repo!.toLowerCase())?.stars ?? -1 }))
+    .sort((a, b) => b.stars - a.stars)
+    .map(({ repo }) => repo);
+}
+
 /**
  * A boxed list of the repositories starred during the period — each with
- * what it is (description, language, stars) — pictured with the most
- * popular one's card. `null` if none were starred. `pictured` is the set
- * of repos already shown elsewhere on the page, so a card never repeats.
+ * what it is (description, language, stars). `null` if none were starred.
+ * Its picture is chosen later, once the page knows which repos' cards the
+ * sections already used (`starImageCandidates`).
  */
-export function buildStarsArticle(
-  activity: ActivityItem[],
-  details: Map<string, RepoDetails>,
-  pictured: Set<string> = new Set(),
-): IssueArticle | null {
+export function buildStarsArticle(activity: ActivityItem[], details: Map<string, RepoDetails>): IssueArticle | null {
   const stars = activity.filter((item) => item.eventType === "star" && item.repo);
   if (stars.length === 0) return null;
 
-  const entries = stars.map((item) => ({ item, details: details.get(item.repo!.toLowerCase()) }));
-  const lines = entries.slice(0, MAX_STARS_SHOWN).map(({ item, details: d }) => {
+  const lines = stars.slice(0, MAX_STARS_SHOWN).map((item) => {
+    const d = details.get(item.repo!.toLowerCase());
     const link = item.url ? `[${item.repo}](${item.url})` : item.repo;
     const facts = describeRepo(d ? { ...d, topics: [] } : undefined);
     return `- **${link}**${d?.description ? ` — ${d.description}` : ""}${facts ? ` *(${facts})*` : ""}`;
   });
   if (stars.length > MAX_STARS_SHOWN) lines.push(`- …and ${stars.length - MAX_STARS_SHOWN} more.`);
-
-  const popular = [...entries]
-    .filter(({ item }) => !pictured.has(item.repo!))
-    .sort((a, b) => (b.details?.stars ?? -1) - (a.details?.stars ?? -1))[0];
 
   return {
     id: STARS_ARTICLE_ID,
@@ -52,7 +52,7 @@ export function buildStarsArticle(
     author: null,
     deck: `${stars.length} ${stars.length === 1 ? "repository" : "repositories"} starred this period.`,
     content: lines.join("\n"),
-    imageUrl: popular ? repoImageUrl(popular.item.repo!) : null,
+    imageUrl: null,
   };
 }
 
