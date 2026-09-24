@@ -7,6 +7,7 @@ import ExportActions from "@/components/ExportActions";
 import { usePageFill } from "@/components/usePageFill";
 import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
+import type { FoldPlan } from "@/lib/balance";
 import type { AiProviderId } from "@/lib/ai/resolve";
 
 type Period = "daily" | "weekly" | "monthly";
@@ -90,6 +91,7 @@ export default function AppClient() {
   const [issueMeta, setIssueMeta] = useState<IssueMeta | null>(null);
   const [layout, setLayout] = useState<LayoutIndex | null>(null);
   const [layoutPickedByHand, setLayoutPickedByHand] = useState(false);
+  const [placement, setPlacement] = useState<FoldPlan | null>(null);
   const [title, setTitle] = useState("");
   const [articles, setArticles] = useState<IssueArticle[]>([]);
   const [streamingId, setStreamingId] = useState<number | null>(null);
@@ -158,6 +160,7 @@ export default function AppClient() {
     total: articles.length,
     allowRepick: !layoutPickedByHand,
     onRepick: setLayout,
+    onPlacement: setPlacement,
   });
 
   function reset() {
@@ -166,6 +169,7 @@ export default function AppClient() {
     setIssueMeta(null);
     setLayout(null);
     setLayoutPickedByHand(false);
+    setPlacement(null);
     setTitle("");
     setArticles([]);
     setStreamingId(null);
@@ -282,7 +286,7 @@ export default function AppClient() {
                 filename={`albricias-${githubUsername.replace(/[^A-Za-z0-9-]/g, "") || "edition"}-${period}.png`}
                 title={title ? `¡Albricias! — ${title}` : "¡Albricias!"}
                 edition={issueMeta}
-                version={`${layout}:${articles.length}`}
+                version={`${layout}:${articles.length}:${placement?.fold}:${placement?.left?.join(",")}`}
               />
               <div className="flex flex-wrap items-center justify-center gap-1.5">
                 <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-400 mr-1">
@@ -321,6 +325,8 @@ export default function AppClient() {
             issue={{ id: 0, title, status: "published", ...issueMeta }}
             articles={articles}
             streamingArticleId={streamingId}
+            fold={placement?.fold ?? null}
+            leftRailIds={placement?.left ?? null}
           />
         </div>
       </div>

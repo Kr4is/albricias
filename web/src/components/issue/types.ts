@@ -30,4 +30,13 @@ export interface IssueLayoutProps {
   articles: IssueArticle[];
   /** The article currently receiving live text deltas, if any — shows a blinking cursor after its body. */
   streamingArticleId?: number | null;
+  /**
+   * How many secondary stories sit above the fold, in the side rails beside
+   * the lead (V1, V4) — the rest run in a balanced band below. `null`/absent
+   * means all of them; `usePageFill` lowers it one story at a time while a
+   * rail runs longer than the lead.
+   */
+  fold?: number | null;
+  /** V1 only: ids of the above-fold stories on the left rail (the rest go right), as measured by `planFold`. */
+  leftRailIds?: number[] | null;
 }

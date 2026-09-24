@@ -5,6 +5,12 @@
  * field is now the edition's own cover art (see `IssueCoverBanner`, rendered
  * once for every layout). The hero and the stream below it carry each
  * story's own `imageUrl` instead, when it has one (`ArticleImage`).
+ *
+ * The hero's copy runs in its own balanced multi-column flow with its
+ * picture at the head of the first column, and the stream below is one
+ * too, so every column on the page ends level. (An earlier version set the
+ * picture beside the copy stretched to its height — a long story cropped
+ * the card to a sliver.)
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
@@ -41,20 +47,18 @@ export default function IssueV3({
                 {main.title}
               </h1>
             </a>
-            <div className={main.imageUrl ? "lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-8 lg:items-start" : ""}>
-              <div>
-                <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed border-l-4 border-stone-300 pl-4 italic max-w-3xl" />
-                {main.id === streamingArticleId && <span className="typing-cursor" />}
-              </div>
-              <ArticleImage src={main.imageUrl} alt={main.title} eager className="mt-6 lg:mt-0" />
+            <div className="issue-flow columns-1 md:columns-2 lg:columns-3 gap-10">
+              <ArticleImage src={main.imageUrl} alt={main.title} eager className="mb-4" />
+              <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed justified-text" />
+              {main.id === streamingArticleId && <span className="typing-cursor" />}
             </div>
           </div>
         )}
 
         {/* LOWER GRID (3 Columns) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 divide-x divide-stone-300">
-          {rest.map((article, index) => (
-            <article key={article.id} className={index !== 0 ? "pl-8" : ""}>
+        <div className="issue-flow columns-1 md:columns-3 gap-16">
+          {rest.map((article) => (
+            <article key={article.id} className="mb-8 last:mb-0">
               <ArticleImage src={article.imageUrl} alt={article.title} className="mb-3" />
               <a href={articleHref()}>
                 <h3 className="font-headline text-xl font-bold mb-2 hover:underline">

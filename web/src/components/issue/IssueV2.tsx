@@ -8,6 +8,11 @@
  * column gap, and can't drift out of alignment with the content), and the
  * kicker/hairline treatment matches V1's side columns instead of a card
  * background, so the two read as the same paper's typography.
+ *
+ * The four columns are one CSS multi-column flow (`.issue-flow`), not a
+ * grid of fixed cells: copy runs from the foot of one column to the head
+ * of the next, so all four end on the same line however long each item is
+ * — a grid left each column as short as its own story.
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
@@ -29,9 +34,9 @@ export default function IssueV2({
       <div className="border-b-4 border-black mb-6"></div>
 
       {/* V2: DISPATCHES (4 ruled columns) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-stone-300">
+      <div className="issue-flow columns-1 sm:columns-2 lg:columns-4 gap-12">
         {articles.map((article, index) => (
-          <article key={article.id} className="lg:px-6 first:pl-0 last:pr-0 mb-8 lg:mb-0">
+          <article key={article.id} className="mb-8 last:mb-0">
             <div className="flex items-center gap-2 mb-2 border-b border-stone-300 pb-1">
               {index < 2 && <span className="inline-block w-2 h-2 bg-ink"></span>}
               <span className="font-sans text-[9px] font-bold uppercase tracking-widest text-stone-600">

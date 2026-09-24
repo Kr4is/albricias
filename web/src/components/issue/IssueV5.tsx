@@ -2,6 +2,10 @@
  * V5 — editorial grid: two half-page leads over a four-column brief bar.
  * Ported from `app/templates/issue_v5.html`; each story carries its own
  * `imageUrl` photo when it has one (`ArticleImage`), same as every layout.
+ *
+ * Both tiers are balanced multi-column flows: the two leads run on from
+ * one half into the other rather than each stopping at its own length,
+ * and the brief bar likewise, so every column ends on the same line.
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
@@ -26,9 +30,9 @@ export default function IssueV5({
       {/* V5: EDITORIAL GRID */}
       <div className="flex flex-col gap-10">
         {/* TOP SECTION: TWO LEADS (Half and Half) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 border-b-2 border-black pb-10">
+        <div className="issue-flow columns-1 md:columns-2 gap-10 border-b-2 border-black pb-10">
           {leads.map((article) => (
-            <article key={article.id} className="flex flex-col">
+            <article key={article.id} className="mb-8 last:mb-0">
               <div className="mb-2">
                 <span className="font-sans text-[10px] font-bold uppercase tracking-widest bg-stone-100 px-1">
                   {article.category}
@@ -46,28 +50,32 @@ export default function IssueV5({
           ))}
         </div>
 
-        {/* MIDDLE DIVIDER */}
-        <div className="relative text-center -mt-14">
-          <span className="bg-stone-50 px-4 font-sans text-xs font-bold uppercase tracking-widest text-stone-500">
-            More News
-          </span>
-        </div>
+        {rest.length > 0 && (
+          <>
+            {/* MIDDLE DIVIDER */}
+            <div className="relative text-center -mt-14">
+              <span className="bg-paper px-4 font-sans text-xs font-bold uppercase tracking-widest text-stone-500">
+                More News
+              </span>
+            </div>
 
-        {/* BOTTOM SECTION: 4 COLUMNS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {rest.map((article) => (
-            <article key={article.id} className="border-t border-stone-300 pt-4">
-              <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
-              <a href={articleHref()}>
-                <h4 className="font-headline text-lg font-bold leading-tight mb-2 hover:text-stone-600 transition-colors">
-                  {article.title}
-                </h4>
-              </a>
-              <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-500 leading-snug" />
-              {article.id === streamingArticleId && <span className="typing-cursor" />}
-            </article>
-          ))}
-        </div>
+            {/* BOTTOM SECTION: 4 COLUMNS */}
+            <div className="issue-flow columns-1 sm:columns-2 lg:columns-4 gap-8 border-t border-stone-300 pt-4">
+              {rest.map((article) => (
+                <article key={article.id} className="mb-6 last:mb-0">
+                  <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+                  <a href={articleHref()}>
+                    <h4 className="font-headline text-lg font-bold leading-tight mb-2 hover:text-stone-600 transition-colors">
+                      {article.title}
+                    </h4>
+                  </a>
+                  <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-500 leading-snug" />
+                  {article.id === streamingArticleId && <span className="typing-cursor" />}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
     </>

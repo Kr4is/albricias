@@ -1,16 +1,22 @@
 /**
  * V1 — three-column front page with a centred lead story.
- * Ported from `app/templates/issue_v1.html`, markup and classes unchanged.
+ * Ported from `app/templates/issue_v1.html`.
  *
- * The Jinja template distributes the non-lead articles round-robin across the
- * three columns with `[0::3]`, `[1::3]` and `[2::3]`; `everyThird` below is the
- * same slice. The hairline `<div>`s between articles are siblings of the
- * `<article>` elements in the original too — they participate in the
- * `article:nth-child()` animation delays in style.css, so their position in the
- * DOM matters.
+ * The lead holds the centre; the secondary stories sit on the two side
+ * rails, but only as many as fit beside the lead — the `fold`. The rest
+ * run below in a balanced band (`BelowFold`). Which story goes on which
+ * rail is measured (`leftRailIds`, from `planFold`), falling back to a
+ * rough-length deal (`dealIntoTwo`) before the first measurement; the
+ * balancer then levels the three columns so they end on the same line.
+ * Both rails share one story style (`Rail`) — the original's different
+ * right-rail type made a story's height depend on its side. The original's round-robin
+ * split and centre stream under the lead are gone: they left columns
+ * ending hundreds of pixels apart.
  */
 
 import { Fragment } from "react";
+import BelowFold from "@/components/issue/BelowFold";
+import { cutAtFold, dealIntoTwo } from "@/components/issue/fold";
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
@@ -18,145 +24,115 @@ import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
 
-/** Python's `seq[start::3]`. */
-function everyThird(articles: IssueArticle[], start: number): IssueArticle[] {
-  return articles.filter((_, index) => index % 3 === start);
+/**
+ * One side rail's stories. Both rails share this markup, so a story is the
+ * same height in either — what lets the balancer measure each story once
+ * and work out the best split between the rails (`planFold`).
+ */
+function Rail({
+  articles,
+  order,
+  streamingArticleId,
+}: {
+  articles: IssueArticle[];
+  /** Every above-fold story, in reading order — each story's position in it is its `data-order`. */
+  order: IssueArticle[];
+  streamingArticleId?: number | null;
+}) {
+  return articles.map((article, index) => (
+    <Fragment key={article.id}>
+      <article data-story={article.id} data-order={order.indexOf(article)}>
+        {/* Meta / Category */}
+        <div className="flex items-center justify-between mb-1 border-b border-stone-300 pb-1">
+          <span className="font-sans text-[9px] font-bold uppercase tracking-widest text-stone-600">
+            {article.category}
+          </span>
+          {article.author && (
+            <span className="font-sans text-[9px] uppercase text-stone-400">
+              {article.author}
+            </span>
+          )}
+        </div>
+
+        <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+
+        <a href={articleHref()}>
+          <h2 className="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
+            {article.title}
+          </h2>
+        </a>
+
+        <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text" />
+        {article.id === streamingArticleId && <span className="typing-cursor" />}
+      </article>
+      {index !== articles.length - 1 && <div data-rail-rule className="w-16 h-px bg-stone-200 mx-auto"></div>}
+    </Fragment>
+  ));
 }
 
 export default function IssueV1({
   issue,
   articles,
   streamingArticleId,
+  fold,
+  leftRailIds,
 }: IssueLayoutProps) {
   const mainArticle = articles.length > 0 ? articles[0] : null;
-  const otherArticles = articles.slice(1);
-
-  const leftColumn = everyThird(otherArticles, 0);
-  const centerColumn = everyThird(otherArticles, 1);
-  const rightColumn = everyThird(otherArticles, 2);
+  const rest = articles.slice(1);
+  const { above, below } = cutAtFold(rest, fold);
+  const [leftColumn, rightColumn] = leftRailIds
+    ? [above.filter((a) => leftRailIds.includes(a.id)), above.filter((a) => !leftRailIds.includes(a.id))]
+    : dealIntoTwo(above);
 
   return (
     <>
       <IssueCoverBanner issue={issue} />
 
-      {/* Main Grid Layout */}
-      <div className="grid grid-cols-12 gap-6 lg:gap-8 relative">
-        {/* Column 1: Left Stream (approx 1/3 of remainder) */}
-        <div className="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col gap-8">
-          {leftColumn.map((article, index) => (
-            <Fragment key={article.id}>
+      <div data-fold-group data-fold={above.length}>
+        {/* Main Grid Layout */}
+        <div data-balance-group className="grid grid-cols-12 gap-6 lg:gap-8 relative">
+          {/* Column 1: Left rail */}
+          <div data-balance-col data-fold-rail className="col-span-12 lg:col-span-3 lg:border-r lg:border-stone-300 lg:pr-6 flex flex-col gap-8">
+            <Rail articles={leftColumn} order={above} streamingArticleId={streamingArticleId} />
+          </div>
+
+          {/* Column 2: Center (Lead) */}
+          <div data-balance-col data-fold-main className="order-first lg:order-none col-span-12 lg:col-span-6 lg:border-r lg:border-stone-300 lg:px-6 flex flex-col">
+            {/* LEAD ARTICLE */}
+            {mainArticle && (
               <article>
-                {/* Meta / Category */}
-                <div className="flex items-center justify-between mb-1 border-b border-stone-300 pb-1">
-                  <span className="font-sans text-[9px] font-bold uppercase tracking-widest text-stone-600">
-                    {article.category}
-                  </span>
-                  {article.author && (
-                    <span className="font-sans text-[9px] uppercase text-stone-400">
-                      {article.author}
-                    </span>
-                  )}
-                </div>
-
-                <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
-
                 <a href={articleHref()}>
-                  <h2 className="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
-                    {article.title}
+                  <h2 className="font-headline text-5xl md:text-7xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 transition-opacity">
+                    {mainArticle.title}
                   </h2>
                 </a>
 
-                <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text" />
-                {article.id === streamingArticleId && <span className="typing-cursor" />}
+                <div className="border-y border-ink py-1 mb-5 flex justify-between items-center">
+                  <h4 className="font-sans text-[10px] font-bold uppercase tracking-widest flex-1 text-center">
+                    {mainArticle.category}
+                  </h4>
+                  <span className="w-px h-3 bg-ink mx-2"></span>
+                  <h4 className="font-sans text-[10px] font-bold uppercase tracking-widest flex-1 text-center">
+                    {issue.dateLabel}
+                  </h4>
+                </div>
+
+                <ArticleImage src={mainArticle.imageUrl} alt={mainArticle.title} eager className="mb-5" />
+
+                <ArticleBody html={renderMarkdown(mainArticle.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
+                {mainArticle.id === streamingArticleId && <span className="typing-cursor" />}
               </article>
-              {index !== leftColumn.length - 1 && (
-                <div className="w-16 h-px bg-stone-200 mx-auto"></div>
-              )}
-            </Fragment>
-          ))}
-        </div>
+            )}
+          </div>
 
-        {/* Column 2: Center (Lead + Stream) */}
-        <div className="col-span-12 lg:col-span-6 lg:border-r lg:border-stone-300 lg:px-6 flex flex-col">
-          {/* LEAD ARTICLE */}
-          {mainArticle && (
-            <article className="mb-12 border-b-4 border-double border-stone-300 pb-8">
-              <a href={articleHref()}>
-                <h2 className="font-headline text-5xl md:text-7xl font-black uppercase tracking-tight leading-none mb-4 text-center hover:opacity-80 transition-opacity">
-                  {mainArticle.title}
-                </h2>
-              </a>
-
-              <div className="border-y border-ink py-1 mb-5 flex justify-between items-center">
-                <h4 className="font-sans text-[10px] font-bold uppercase tracking-widest flex-1 text-center">
-                  {mainArticle.category}
-                </h4>
-                <span className="w-px h-3 bg-ink mx-2"></span>
-                <h4 className="font-sans text-[10px] font-bold uppercase tracking-widest flex-1 text-center">
-                  {issue.dateLabel}
-                </h4>
-              </div>
-
-              <ArticleImage src={mainArticle.imageUrl} alt={mainArticle.title} eager className="mb-5" />
-
-              <ArticleBody html={renderMarkdown(mainArticle.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
-              {mainArticle.id === streamingArticleId && <span className="typing-cursor" />}
-            </article>
-          )}
-
-          {/* SECONDARY STREAM (Center Bottom) */}
-          <div className="flex flex-col gap-8">
-            {centerColumn.map((article, index) => (
-              <Fragment key={article.id}>
-                <article>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="inline-block w-2 h-2 bg-ink"></span>
-                    <span className="font-sans text-[10px] font-bold uppercase tracking-widest">
-                      {article.category}
-                    </span>
-                  </div>
-                  <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
-                  <a href={articleHref()}>
-                    <h2 className="font-headline text-2xl font-bold leading-tight mb-2 hover:underline">
-                      {article.title}
-                    </h2>
-                  </a>
-                  <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light" />
-                  {article.id === streamingArticleId && <span className="typing-cursor" />}
-                </article>
-                {index !== centerColumn.length - 1 && (
-                  <div className="border-t border-dotted border-stone-300 w-full"></div>
-                )}
-              </Fragment>
-            ))}
+          {/* Column 3: Right rail */}
+          <div data-balance-col data-fold-rail className="col-span-12 lg:col-span-3 lg:pl-6 flex flex-col gap-8">
+            <Rail articles={rightColumn} order={above} streamingArticleId={streamingArticleId} />
           </div>
         </div>
 
-        {/* Column 3: Right Stream (approx 1/3 of remainder) */}
-        <div className="col-span-12 lg:col-span-3 lg:pl-6 flex flex-col gap-8">
-          {rightColumn.map((article) => (
-            <Fragment key={article.id}>
-              <article>
-                <div className="mb-1">
-                  <span className="font-sans text-[9px] font-bold uppercase tracking-widest bg-stone-100 px-1">
-                    {article.category}
-                  </span>
-                </div>
-                <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
-                <a href={articleHref()}>
-                  <h3 className="font-headline text-lg font-bold leading-tight mb-2 hover:opacity-70">
-                    {article.title}
-                  </h3>
-                </a>
-                <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text leading-snug text-stone-600" />
-                {article.id === streamingArticleId && <span className="typing-cursor" />}
-              </article>
-              <div className="w-full border-t border-stone-200"></div>
-            </Fragment>
-          ))}
-        </div>
+        <BelowFold articles={below} streamingArticleId={streamingArticleId} wide />
       </div>
-
     </>
   );
 }

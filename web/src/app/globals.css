@@ -340,26 +340,97 @@ article:nth-child(5) { animation-delay: 0.5s; }
  * renders short. Only the three body sizes the layouts actually use are
  * scaled; a body with its own `leading-*` keeps that (unitless, so it scales
  * with the font), one without gets Tailwind's default line-height scaled
- * along with it so the text doesn't crowd.
+ * along with it so the text doesn't crowd. `--col-scale` is the same knob
+ * per column, set by the column balancer (`balanceColumns`).
  * ------------------------------------------------------------------------- */
 .issue-page {
   --issue-scale: 1;
 }
 .issue-page .article-body.text-xs {
-  font-size: calc(0.75rem * var(--issue-scale));
+  font-size: calc(0.75rem * var(--issue-scale) * var(--col-scale, 1));
 }
 .issue-page .article-body.text-sm {
-  font-size: calc(0.875rem * var(--issue-scale));
+  font-size: calc(0.875rem * var(--issue-scale) * var(--col-scale, 1));
 }
 .issue-page .article-body.text-base {
-  font-size: calc(1rem * var(--issue-scale));
+  font-size: calc(1rem * var(--issue-scale) * var(--col-scale, 1));
 }
 .issue-page .article-body.text-xs:not([class*="leading-"]) {
-  line-height: calc(1rem * var(--issue-scale));
+  line-height: calc(1rem * var(--issue-scale) * var(--col-scale, 1));
 }
 .issue-page .article-body.text-sm:not([class*="leading-"]) {
-  line-height: calc(1.25rem * var(--issue-scale));
+  line-height: calc(1.25rem * var(--issue-scale) * var(--col-scale, 1));
 }
 .issue-page .article-body.text-base:not([class*="leading-"]) {
-  line-height: calc(1.5rem * var(--issue-scale));
+  line-height: calc(1.5rem * var(--issue-scale) * var(--col-scale, 1));
+}
+
+/* Paragraphs inside an article body — several layouts had none, so
+   consecutive paragraphs ran together. `:where` keeps this at zero
+   specificity, so a layout's own `space-y-*` still wins. */
+.article-body :where(p + p) {
+  margin-top: 0.6em;
+}
+
+/* -------------------------------------------------------------------------
+ * Balanced flows — a run of articles set in CSS multi-columns, the way a
+ * newspaper runs copy: text continues from the foot of one column to the
+ * head of the next, and `column-fill: balance` makes every column end at
+ * the same line. Headlines never strand at a column foot, and pictures and
+ * charts never split across two columns.
+ * ------------------------------------------------------------------------- */
+.issue-flow {
+  column-fill: balance;
+  column-rule: 1px solid #d6d3cd;
+}
+.issue-flow > * {
+  break-inside: auto;
+}
+/* No entrance animation inside a flow: the stagger's `fadeIn` holds a
+   `transform` on each article (`forwards`), and Chromium doesn't paint a
+   transformed box that fragments across columns — whole stories and
+   pictures went missing. */
+.issue-flow article {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+.issue-flow :where(h1, h2, h3, h4) {
+  break-after: avoid;
+  break-inside: avoid;
+}
+.issue-flow :where(figure, .article-chart, canvas, li) {
+  break-inside: avoid;
+}
+/* A kicker or picture stays with the headline under it. */
+.issue-flow > article > :first-child,
+.issue-flow figure {
+  break-after: avoid;
+}
+
+/* -------------------------------------------------------------------------
+ * Column balancing (`balanceColumns` in src/lib/balance.ts) — a column the
+ * balancer marks `data-spread` shares out whatever height it still lacks
+ * as space between its stories (`data-spread-inner`: between one story's
+ * paragraphs), so its last line lands level with its neighbours'.
+ * ------------------------------------------------------------------------- */
+[data-balance-col][data-spread] {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+/* A column holding a single story spreads between its paragraphs instead. */
+[data-balance-col][data-spread-inner],
+[data-balance-col][data-spread-inner] > article {
+  display: flex;
+  flex-direction: column;
+}
+[data-balance-col][data-spread-inner] > article {
+  flex-grow: 1;
+}
+[data-balance-col][data-spread-inner] > article > .article-body {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
