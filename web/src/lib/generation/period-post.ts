@@ -34,9 +34,14 @@ const DEFAULT_TEMPERATURE = 0.8;
 type Cadence = "daily" | "weekly" | "monthly";
 export type LengthTier = "short" | "medium" | "long";
 
-/** How many sections a period's material may support — a quiet period should still propose fewer. */
+/**
+ * How many sections a period's material may support — a quiet period should
+ * still propose fewer. Daily floors at 2, not 1: a lead plus the
+ * deterministic asides alone reads as a thin page, and even one day's
+ * activity can almost always be sliced into two honest angles.
+ */
 const SECTION_RANGE: Record<Cadence, readonly [number, number]> = {
-  daily: [1, 4],
+  daily: [2, 4],
   weekly: [3, 6],
   monthly: [5, 9],
 };
@@ -117,7 +122,11 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "section's BRIEF, since each section is written independently by someone " +
   "who sees only its own brief. Vary each section's LENGTH deliberately — a " +
   "real newspaper mixes short items with long features; do not mark every " +
-  "section the same length. Write REPO exactly as the repository appears in " +
+  "section the same length. When the material is thin and the outline has " +
+  "only a few sections, give those few room — lean toward medium and long " +
+  "rather than short, since a front page with little to cover should cover " +
+  "it in depth, not in fragments; still never stretch a section past what " +
+  "its material supports. Write REPO exactly as the repository appears in " +
   "the material (owner/name); omit the REPO line for a section that is not " +
   "mainly about one repository, such as an overview of the whole period. " +
   "Ground every section in what the material " +
