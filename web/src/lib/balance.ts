@@ -21,7 +21,7 @@
  */
 
 /** Two columns within this many px count as level — about one line of body type. */
-export const LEVEL_TOLERANCE_PX = 24;
+const LEVEL_TOLERANCE_PX = 24;
 /** Most a short column's type may grow to catch up — beyond this the size difference shows. */
 const MAX_COL_SCALE = 1.15;
 /** Extra space between one story's paragraphs past this reads as holes in the text — leave the column short instead. */
@@ -30,7 +30,7 @@ const MAX_PARAGRAPH_GAP_PX = 40;
 export const MAX_SPREAD_GAP_PX = 140;
 
 /** Height from a column's top to the bottom of its last child — its content, not its (grid-stretched) box. */
-export function contentHeight(col: HTMLElement): number {
+function contentHeight(col: HTMLElement): number {
   const top = col.getBoundingClientRect().top;
   let bottom = top;
   for (const child of col.children) {

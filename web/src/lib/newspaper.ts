@@ -1,4 +1,4 @@
-/** Masthead branding — fixed, since there's no per-instance admin config anymore. */
+/** Masthead branding. */
 
 export interface NewspaperConfig {
   name: string;

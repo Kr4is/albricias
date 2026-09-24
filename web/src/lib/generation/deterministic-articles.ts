@@ -13,8 +13,8 @@ import type { IssueArticle } from "@/components/issue/types";
 import { describeRepo } from "@/lib/generation/research";
 
 /** Sentinel ids distinct from sections' `index`-based ids (0, 1, 2, ...). */
-export const STARS_ARTICLE_ID = -1;
-export const NUMBERS_ARTICLE_ID = -2;
+const STARS_ARTICLE_ID = -1;
+const NUMBERS_ARTICLE_ID = -2;
 
 /** Starred repos listed in the box at most — the rest are counted, not dropped silently. */
 const MAX_STARS_SHOWN = 12;

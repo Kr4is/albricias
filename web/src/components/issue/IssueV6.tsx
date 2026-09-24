@@ -2,17 +2,10 @@
  * V6 — broadside: one story runs the whole width of the page under a giant
  * banner headline, the way a special edition leads with a single story
  * instead of splitting the front page into competing columns. Everything
- * else on the front page is relegated to a dense, single-column index below
- * — numbered dispatches with a one-line teaser each, not another grid.
- *
- * New with this pass (no Flask/Jinja original to port) — added alongside a
- * general front-page polish pass specifically because the other five
- * layouts are all variations on "several columns of roughly equal weight";
- * this is the one front page that says the month had one big thing to lead
- * with.
+ * else is a dense, single-column numbered index below. The layout with no
+ * side-by-side columns — the fallback when a page is too thin to fill them.
  */
 
-import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
@@ -29,7 +22,6 @@ export default function IssueV6({
 
   return (
     <>
-      <IssueCoverBanner issue={issue} />
 
       {/* V6: BROADSIDE */}
       {main && (

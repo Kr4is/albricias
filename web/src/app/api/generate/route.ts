@@ -13,7 +13,7 @@
 import { z } from "zod";
 
 import { dayBounds, defaultEditionVol, periodBoundsForDate } from "@/lib/cadence";
-import { editionWeather, periodLabel as formatPeriodLabel, periodLabelShort } from "@/lib/edition-helpers";
+import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
 import { buildAiModel } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
@@ -109,11 +109,7 @@ export async function POST(request: Request) {
       send("meta", {
         vol: defaultEditionVol(edition),
         dateLabel: periodLabel,
-        dateShortLabel: periodLabelShort(edition),
         weather: editionWeather(edition),
-        // No cover: a banner of the busiest repo's card said nothing a story
-        // didn't — pictures belong only to the stories about their repo.
-        coverImage: null,
         warnings,
       });
 

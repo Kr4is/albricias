@@ -11,9 +11,6 @@
  * the default a visitor sees first.
  */
 
-/** Number of broadsheet layout variants (`IssueV1` … `IssueV6`). */
-export const LAYOUT_COUNT = 6;
-
 export type LayoutIndex = 1 | 2 | 3 | 4 | 5 | 6;
 
 /**

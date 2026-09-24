@@ -3,24 +3,16 @@
    one-shot CSS animations that only replay on a full document load, which
    next/link's client-side navigation would skip. */
 /**
- * The broadsheet masthead. Stateless — no session, no archive, no admin nav:
- * the site is just the landing page and the generator.
+ * The broadsheet masthead, with today's date and the site's two links
+ * (the landing page and the generator).
  */
 
 import { newspaperConfig } from "@/lib/newspaper";
-
-/** Header-facing view of a generated issue — the three fields the masthead reads. */
-export interface EditionHeaderInfo {
-  vol: string;
-  dateLabel: string;
-  weather: string;
-}
 
 export type Endpoint = "home" | "app";
 
 export interface HeaderProps {
   endpoint: Endpoint;
-  issue?: EditionHeaderInfo | null;
 }
 
 const NAV_LINK =
@@ -57,7 +49,7 @@ function longDate(now: Date): string {
   return `${WEEKDAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${day}, ${now.getFullYear()}`;
 }
 
-export default async function Header({ endpoint, issue }: HeaderProps) {
+export default async function Header({ endpoint }: HeaderProps) {
   const newspaper = await newspaperConfig();
   const now = new Date();
 
@@ -66,16 +58,12 @@ export default async function Header({ endpoint, issue }: HeaderProps) {
       {/* Top Meta Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 items-center py-2 border-b border-ink border-double text-[10px] sm:text-xs font-sans font-bold uppercase tracking-widest gap-y-2 md:gap-y-0">
         <div className="text-center md:text-left order-2 md:order-1">
-          {issue ? (
-            <span>{issue.vol}</span>
-          ) : (
-            <span>
-              VOL. {now.getFullYear()} . NO. {now.getMonth() + 1}
-            </span>
-          )}
+          <span>
+            VOL. {now.getFullYear()} . NO. {now.getMonth() + 1}
+          </span>
         </div>
         <div className="text-center order-1 md:order-2">
-          <span>{issue ? issue.dateLabel : longDate(now)}</span>
+          <span>{longDate(now)}</span>
         </div>
         <div className="flex justify-center md:justify-end gap-6 no-print order-3">
           <a
@@ -109,10 +97,10 @@ export default async function Header({ endpoint, issue }: HeaderProps) {
             &quot;{newspaper.tagline}&quot;
           </div>
           <div className="text-center">
-            {issue ? "Your Edition" : "Late City Edition"}
+            Late City Edition
           </div>
           <div className="text-right">
-            {issue ? issue.weather : newspaper.metadataRight}
+            {newspaper.metadataRight}
           </div>
         </div>
       </div>

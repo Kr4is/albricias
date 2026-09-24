@@ -1,11 +1,9 @@
 "use client";
 
 /**
- * Thin client wrapper around an article body's already-rendered HTML
- * (`renderMarkdown()` stays server-side — only the chart-drawing needs a
- * browser). Owns the one ref `ArticleCharts` needs to scope its DOM search
- * to this article, so the two call sites (the public article page and the
- * admin preview) don't each have to wire that up themselves.
+ * An article body's rendered HTML, plus the charts drawn into it. Owns the
+ * ref `ArticleCharts` needs to scope its DOM search to this article, and
+ * marks the first letter for a `drop-cap` body.
  */
 
 import { useRef } from "react";

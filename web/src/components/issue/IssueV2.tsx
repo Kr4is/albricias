@@ -1,21 +1,13 @@
 /**
  * V2 — dispatches: four ruled columns of brief items, the "quick reads" page
- * a real broadsheet runs alongside its feature front pages. Reworked from
- * the original port (`app/templates/issue_v2.html`), which rendered four
- * uniform bg-tinted "cards" with absolutely-positioned divider lines — closer
- * to a modern dashboard grid than a newspaper page. `divide-x` on the grid
- * itself replaces the floating dividers (the rule now sits exactly on the
- * column gap, and can't drift out of alignment with the content), and the
- * kicker/hairline treatment matches V1's side columns instead of a card
- * background, so the two read as the same paper's typography.
+ * a real broadsheet runs alongside its feature front pages, with the same
+ * kicker/hairline treatment as V1's rails.
  *
  * The four columns are one CSS multi-column flow (`.issue-flow`), not a
  * grid of fixed cells: copy runs from the foot of one column to the head
- * of the next, so all four end on the same line however long each item is
- * — a grid left each column as short as its own story.
+ * of the next, so all four end on the same line however long each item is.
  */
 
-import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
@@ -23,13 +15,11 @@ import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV2({
-  issue,
   articles,
   streamingArticleId,
 }: IssueLayoutProps) {
   return (
     <>
-      <IssueCoverBanner issue={issue} />
 
       <div className="border-b-4 border-black mb-6"></div>
 

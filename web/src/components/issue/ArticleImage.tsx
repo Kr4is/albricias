@@ -1,9 +1,9 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 /**
- * An article's own photo — the same vintage treatment as `IssueCoverBanner`
- * (grayscale until hovered, bordered print plate), sized by the slot each
- * `IssueV*` layout puts it in. A failed load (the OG endpoint 404s for a
+ * An article's own photo — GitHub's preview card for the repo it's about —
+ * in the paper's vintage treatment (grayscale until hovered, bordered print
+ * plate), sized by the slot each `IssueV*` layout puts it in. A failed load (the OG endpoint 404s for a
  * private or renamed repo, or its rate limit runs out) removes the figure
  * entirely rather than leaving a broken-image icon on the page.
  *

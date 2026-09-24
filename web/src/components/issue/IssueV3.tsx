@@ -1,19 +1,11 @@
 /**
- * V3 — hero layout: full-width lead over a three-column stream.
- * Ported from `app/templates/issue_v3.html`. The hero's image column was
- * originally `issue.coverImage` treated as the lead story's own photo; that
- * field is now the edition's own cover art (see `IssueCoverBanner`, rendered
- * once for every layout). The hero and the stream below it carry each
- * story's own `imageUrl` instead, when it has one (`ArticleImage`).
+ * V3 — hero layout: a full-width lead over a three-column stream.
  *
  * The hero's copy runs in its own balanced multi-column flow with its
  * picture at the head of the first column, and the stream below is one
- * too, so every column on the page ends level. (An earlier version set the
- * picture beside the copy stretched to its height — a long story cropped
- * the card to a sliver.)
+ * too, so every column on the page ends level.
  */
 
-import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
@@ -21,7 +13,6 @@ import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV3({
-  issue,
   articles,
   streamingArticleId,
 }: IssueLayoutProps) {
@@ -30,7 +21,6 @@ export default function IssueV3({
 
   return (
     <>
-      <IssueCoverBanner issue={issue} />
 
       {/* V3: HERO LAYOUT */}
       <div className="flex flex-col gap-8">

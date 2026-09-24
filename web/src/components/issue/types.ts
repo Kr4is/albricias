@@ -12,16 +12,10 @@ export interface IssueArticle {
   imageUrl?: string | null;
 }
 
-/** A generated issue as the issue layouts and masthead render it. */
+/** What the issue layouts show of the edition itself. */
 export interface IssueView {
-  id: number;
-  title: string;
-  status: string;
-  vol: string;
-  coverImage: string | null;
+  /** The period, as the layouts' kicker lines print it — e.g. `"Week of March 3, 2026"`. */
   dateLabel: string;
-  dateShortLabel: string;
-  weather: string;
 }
 
 /** Props every `IssueV*` layout takes. */

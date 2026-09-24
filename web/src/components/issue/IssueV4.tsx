@@ -1,15 +1,5 @@
 /**
  * V4 — asymmetric: an 8-column feature beside a 4-column "In Brief" rail.
- * Ported from `app/templates/issue_v4.html`. Two deviations from the
- * original: the sidebar used the class `active-text`, a typo for
- * `justified-text` that no stylesheet ever defined, so its excerpts rendered
- * ragged while every other column on the front page was justified — fixed
- * since this pass is specifically about the front page reading as a properly
- * finished vintage layout. And the feature's own image slot (originally
- * `issue.coverImage` treated as this one story's photo) is gone — that field
- * is now the edition's own cover art, rendered once for every layout by
- * `IssueCoverBanner` above. Each story's own photo comes from its
- * `imageUrl` instead (`ArticleImage`).
  *
  * The rail holds only as many briefs as fit beside the feature (the
  * `fold`); the rest run below in a balanced band (`BelowFold`), and the
@@ -19,7 +9,6 @@
 import { Fragment } from "react";
 import BelowFold from "@/components/issue/BelowFold";
 import { cutAtFold } from "@/components/issue/fold";
-import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
@@ -37,7 +26,6 @@ export default function IssueV4({
 
   return (
     <>
-      <IssueCoverBanner issue={issue} />
 
       <div data-fold-group data-fold={above.length}>
         {/* V4: ASYMMETRIC LAYOUT */}

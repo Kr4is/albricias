@@ -1,15 +1,11 @@
 /**
- * GitHub activity source.
- *
- * Ported from `app/services/github.py` (`fetch_monthly_activity`), generalised
- * from a fixed `(year, month)` to an arbitrary half-open `[periodStart,
- * periodEnd)` range so weekly and monthly editions share one code path.
- *
- * Fetches the same eight event types as the Python original, in the same order:
+ * GitHub activity source: everything a user did in a half-open
+ * `[periodStart, periodEnd)` range, as `ActivityItem`s —
  *   commit, pr, review, issue, release, repo_created, star, gist
+ * — plus `fetchRepoDetails` for what each repo touched *is*.
  *
- * Every block keeps the original per-endpoint try/catch so one failing endpoint
- * never aborts the whole fetch (mirrored in `admin.py`'s non-fatal warnings).
+ * Every event type is fetched in its own try/catch, so one failing endpoint
+ * never aborts the whole fetch; it's reported through `onWarning` instead.
  */
 
 import { Octokit, RequestError } from "octokit";
@@ -24,7 +20,7 @@ import {
 
 const GITHUB_API = "https://api.github.com";
 
-/** Statuses `_paginate` in the Python original swallowed silently. */
+/** Statuses that mean "no (more) results" rather than a failure. */
 const IGNORED_STATUSES = [404, 422];
 
 function isIgnorableError(error: unknown): boolean {
@@ -47,11 +43,11 @@ function repoFromUrl(repositoryUrl: string): string {
 }
 
 /**
- * Yield every item across all pages, tolerating the 404/422 responses the
- * Python `_paginate` helper treated as "no more results".
+ * Yield every item across all pages, treating a 404/422 as "no more
+ * results".
  *
  * Yielding item-by-item (rather than collecting) lets the callers that rely on
- * GitHub's newest-first ordering `break` out early, exactly like the original.
+ * GitHub's newest-first ordering `break` out early.
  */
 async function* paginateItems<T>(
   iterator: AsyncIterable<{ data: T[] }>,
@@ -68,21 +64,15 @@ async function* paginateItems<T>(
 }
 
 export interface GithubFetchOptions extends Period {
-  /** GitHub login whose activity is chronicled (`GITHUB_USERNAME`). */
+  /** GitHub login whose activity is chronicled. */
   username: string;
-  /** Personal access token (`GITHUB_TOKEN`). */
+  /** The server's personal access token (`GITHUB_TOKEN`). */
   token: string;
   /**
    * Called once per event-type section that failed, with a human-readable
-   * reason (e.g. `"Starred repos fetch failed: Bad credentials"`).
-   *
-   * Every section's failure is non-fatal by design (see this function's doc
-   * comment), which used to mean a failing section was only ever a server
-   * console line: a day whose star fetch failed came back as an empty — but
-   * indistinguishable-from-genuinely-empty — result. Callers that surface
-   * warnings to a human (`@/lib/generation/daily`'s per-day `messages`) pass
-   * this so "the fetch was incomplete" is visible rather than silent.
-   * Optional; failures are logged either way.
+   * reason (e.g. `"Starred repos fetch failed: Bad credentials"`) — so a
+   * section that failed isn't mistaken for one that was genuinely empty.
+   * Failures are logged either way.
    */
   onWarning?: (message: string) => void;
 }
@@ -92,7 +82,7 @@ export interface GithubFetchOptions extends Period {
  * periodEnd)`.
  *
  * Never throws for individual endpoint failures — they are logged, reported
- * through `onWarning` when given, and skipped, matching the Python original.
+ * through `onWarning` when given, and skipped.
  */
 export async function fetchGithubActivity({
   username,
@@ -286,7 +276,7 @@ export async function fetchGithubActivity({
   try {
     // `octokit.paginate` cannot carry a per-request Accept header, and the
     // `starred_at` field only exists under the star media type — so this one
-    // endpoint is paged by hand (Python's `_paginate_with_headers`).
+    // endpoint is paged by hand.
     for await (const item of iterateStarred(octokit, username)) {
       const starredAt = parseTimestamp(item.starred_at);
       if (!starredAt) continue;
@@ -359,8 +349,7 @@ const STARRED_PER_PAGE = 100;
 
 /**
  * Page `GET /users/{username}/starred` with the star media type so each item
- * carries `starred_at`. Stops on a short page, or on the 404/422 responses the
- * Python helper treated as "no more results".
+ * carries `starred_at`. Stops on a short page, or on a 404/422.
  */
 async function* iterateStarred(
   octokit: Octokit,
@@ -373,7 +362,7 @@ async function* iterateStarred(
         username,
         per_page: STARRED_PER_PAGE,
         page,
-        // Opt into the `starred_at` timestamps (Python's `_star_headers`).
+        // Opt into the `starred_at` timestamps.
         headers: { accept: "application/vnd.github.v3.star+json" },
       });
       items = response.data as unknown as StarredItem[];
@@ -411,7 +400,7 @@ export interface RepoDetails {
  * `GET /users/{u}/repos` and the starred listing all return. `null` when
  * `raw` isn't one (a commit or PR payload, say).
  */
-export function repoDetailsFromRaw(raw: unknown): RepoDetails | null {
+function repoDetailsFromRaw(raw: unknown): RepoDetails | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.full_name !== "string" || typeof r.stargazers_count !== "number") return null;

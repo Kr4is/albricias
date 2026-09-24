@@ -44,11 +44,11 @@ Chart.register(
   Tooltip,
 );
 
-/** Ink-on-paper palette, matching `globals.css`'s `.content-body` typography rather than Chart.js's default rainbow. */
+/** Ink-on-paper palette, matching `globals.css`'s `.article-body` typography rather than Chart.js's default rainbow. */
 const INK = "#1a1a1a";
 const INK_LIGHT = "#4a4a4a";
 const GRID = "#d6d3cd";
-/** Matches `.content-body .article-chart`'s `background` in `globals.css`, so doughnut slice gaps blend into the chart card rather than showing a mismatched seam. */
+/** Matches `.article-body .article-chart`'s `background` in `globals.css`, so doughnut slice gaps blend into the chart card rather than showing a mismatched seam. */
 const CHART_BG = "#fdfcf9";
 
 /**
@@ -56,7 +56,7 @@ const CHART_BG = "#fdfcf9";
  * distinguishable even in grayscale print, not just distinct in hue —
  * consecutive entries alternate dark/light rather than drifting monotonically.
  */
-export const ARTICLE_CHART_PALETTE = ["#1a1a1a", "#3b3269", "#8a3b2b", "#b8862e", "#4a5a4a", "#8a8478"];
+const ARTICLE_CHART_PALETTE = ["#1a1a1a", "#3b3269", "#8a3b2b", "#b8862e", "#4a5a4a", "#8a8478"];
 const PALETTE = ARTICLE_CHART_PALETTE;
 
 /** Cycled by dataset index on multi-series line charts so lines stay distinguishable without relying on color alone. */

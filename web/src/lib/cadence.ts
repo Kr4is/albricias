@@ -1,5 +1,5 @@
 /**
- * Period-bounds computation for daily/weekly/monthly generation.
+ * Period bounds and volume numbers for daily/weekly/monthly editions.
  *
  * `isoWeekPeriodBounds` is kept consistent with `isoWeek`/`editionWeather` in
  * `edition-helpers.ts` so the two files agree on what a "week" is.
@@ -11,16 +11,15 @@ import {
   type Cadence,
   type EditionPeriod,
   isoWeek,
-  periodLabel,
 } from "@/lib/edition-helpers";
 
-export interface PeriodBounds {
+interface PeriodBounds {
   periodStart: Date;
   periodEnd: Date;
 }
 
 /** Calendar-month bounds: `[first of month, first of next month)`, UTC. */
-export function monthPeriodBounds(year: number, month: number): PeriodBounds {
+function monthPeriodBounds(year: number, month: number): PeriodBounds {
   return {
     periodStart: new Date(Date.UTC(year, month - 1, 1)),
     periodEnd: new Date(Date.UTC(year, month, 1)),
@@ -28,7 +27,7 @@ export function monthPeriodBounds(year: number, month: number): PeriodBounds {
 }
 
 /** ISO-week bounds: `[Monday 00:00 UTC, next Monday)` for week-numbering `year`/`week`. */
-export function isoWeekPeriodBounds(year: number, week: number): PeriodBounds {
+function isoWeekPeriodBounds(year: number, week: number): PeriodBounds {
   // ISO week 1 is the week containing the year's first Thursday.
   const jan4 = new Date(Date.UTC(year, 0, 4));
   const jan4Weekday = (jan4.getUTCDay() + 6) % 7; // Monday = 0
@@ -59,19 +58,9 @@ export function periodBoundsForDate(cadence: Cadence, date: Date): PeriodBounds 
   return monthPeriodBounds(date.getUTCFullYear(), date.getUTCMonth() + 1);
 }
 
-/** Bounds of the current period ("now"), under `cadence`. */
-export function currentPeriodBounds(cadence: Cadence): PeriodBounds {
-  return periodBoundsForDate(cadence, new Date());
-}
-
-/** `Edition.title` equivalent for a not-yet-created edition — identical to `periodLabel`. */
-export function defaultEditionTitle(period: EditionPeriod): string {
-  return periodLabel(period);
-}
-
 /**
- * `Edition.vol` equivalent for a not-yet-created edition.
- * Monthly: `"VOL. 2026 NO. 3"`. Weekly: `"VOL. 2026 NO. W10"`.
+ * The masthead's volume line.
+ * Daily: `"VOL. 2026 NO. 267"` (day of year). Weekly: `"VOL. 2026 NO. W10"`. Monthly: `"VOL. 2026 NO. 3"`.
  */
 export function defaultEditionVol(period: EditionPeriod): string {
   if (period.cadence === CADENCE_DAILY) {

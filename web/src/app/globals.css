@@ -3,9 +3,8 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
- * Ported verbatim from `app/static/css/style.css` (the Flask app's only
- * stylesheet). Do not "improve" these rules — Phase 4's mandate is pixel
- * parity with the existing vintage-newspaper look.
+ * The paper: texture, drop cap, justified columns, entrance animation,
+ * print rules. Everything Tailwind's utilities don't express.
  * ------------------------------------------------------------------------- */
 
 /* Paper Texture Effect */
@@ -69,55 +68,8 @@ article:nth-child(3) { animation-delay: 0.3s; }
 article:nth-child(4) { animation-delay: 0.4s; }
 article:nth-child(5) { animation-delay: 0.5s; }
 
-/* ---------------------------------------------------------------------------
- * Disclosure (`@/components/admin/Disclosure`) open/close animation, and the
- * default cross-fade for View Transitions-driven refreshes. Plain CSS here
- * rather than Tailwind config, matching how `fadeIn` above already lives.
- *
- * Both are gated on `prefers-reduced-motion: no-preference` rather than
- * overridden afterwards, so "reduce" gets today's instant behaviour with no
- * half-applied styles.
- * ------------------------------------------------------------------------- */
-@media (prefers-reduced-motion: no-preference) {
-  /* `interpolate-size` is what makes the `auto` end-value interpolable;
-     `allow-discrete` keeps the content visible for the duration of the
-     closing animation instead of vanishing on frame one. */
-  .disclosure-anim {
-    interpolate-size: allow-keywords;
-  }
-  .disclosure-anim::details-content {
-    block-size: 0;
-    overflow: hidden;
-    transition:
-      block-size 200ms ease-out,
-      content-visibility 200ms ease-out allow-discrete;
-  }
-  .disclosure-anim[open]::details-content {
-    block-size: auto;
-  }
-
-  /* The UA's own root transition is already an opacity cross-fade; this only
-     shortens it to match the rest of the motion in the app. */
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 180ms;
-    animation-timing-function: ease-out;
-  }
-}
-
-/* Mobile Reponsiveness Improvements */
+/* Tighter grid gaps once the layouts stack on smaller screens. */
 @media (max-width: 1024px) {
-    .issue-card {
-        margin-bottom: 2rem;
-        border-bottom: 1px dashed #ccc;
-        padding-bottom: 2rem;
-    }
-
-    .issue-card:last-child {
-        border-bottom: none;
-    }
-
-    /* Better spacing on mobile */
     .grid-cols-12 {
         gap: 1.5rem;
     }
@@ -138,9 +90,6 @@ article:nth-child(5) { animation-delay: 0.5s; }
   }
   .no-print {
     display: none !important;
-  }
-  .print-break-inside-avoid {
-    break-inside: avoid;
   }
   .text-gray-500, .text-gray-400, .text-gray-600 {
     color: #333 !important;
@@ -170,36 +119,18 @@ article:nth-child(5) { animation-delay: 0.5s; }
 }
 
 /* ---------------------------------------------------------------------------
- * Ported from the inline <style> block at the bottom of
- * `app/templates/article.html:160-173`. The markdown renderer wraps content in
- * <p> tags; this forces the drop cap onto the first one.
- * ------------------------------------------------------------------------- */
-.first-p-drop-cap p:first-of-type::first-letter {
-    float: left;
-    font-family: 'Playfair Display', serif;
-    font-weight: 900;
-    font-size: 3.5rem;
-    line-height: 0.85;
-    margin-right: 0.5rem;
-    margin-top: 0.2rem;
-    color: var(--ink);
-}
-
-/* ---------------------------------------------------------------------------
- * Typography for markdown-rendered article bodies (`.content-body`, filled by
+ * Typography for markdown-rendered article bodies (`.article-body`, filled by
  * `renderMarkdown()` in `@/lib/markdown`). Tailwind's Preflight strips every
- * default heading/list/table/code style, so a `##` or `| table |` in
- * generated content rendered as same-size, unspaced text indistinguishable
- * from the surrounding prose. Hand-rolled to match the paper/ink palette
- * instead of the generic Tailwind Typography plugin, which brings its own
- * font stack and spacing that clash with the drop cap + justified,
- * two-column layout already in place.
+ * default heading/list/table/code style, so a `##` or a list in generated
+ * content would render as same-size, unmarked text indistinguishable from
+ * the prose around it. Sizes and spacing are in `em`, so they follow each
+ * layout's own body size (a rail's `text-xs`, a lead's `text-base`).
  *
- * The article body runs in a CSS multi-column layout (`md:columns-2`), so
- * every block-level addition here gets `break-inside: avoid` — otherwise a
- * heading, table, or code block can split across the column gap.
+ * Bodies run in multi-column layouts, so every block-level element here
+ * gets `break-inside: avoid` — otherwise a heading, table, or code block
+ * can split across the column gap.
  * ------------------------------------------------------------------------- */
-.content-body :where(h1, h2, h3, h4) {
+.article-body :where(h1, h2, h3, h4) {
   font-family: 'Playfair Display', serif;
   font-weight: 700;
   color: #1a1a1a;
@@ -207,61 +138,61 @@ article:nth-child(5) { animation-delay: 0.5s; }
   break-inside: avoid;
   line-height: 1.25;
 }
-.content-body :where(h1, h2) {
-  font-size: 1.5rem;
-  margin: 1.75rem 0 0.75rem;
+.article-body :where(h1, h2) {
+  font-size: 1.4em;
+  margin: 1.4em 0 0.6em;
   border-bottom: 1px solid #d6d3cd;
   padding-bottom: 0.35rem;
 }
-.content-body :where(h3, h4) {
-  font-size: 1.15rem;
-  margin: 1.5rem 0 0.5rem;
+.article-body :where(h3, h4) {
+  font-size: 1.15em;
+  margin: 1.2em 0 0.4em;
 }
 
-.content-body :where(ul, ol) {
-  margin: 0 0 1.25rem;
-  padding-left: 1.4rem;
+.article-body :where(ul, ol) {
+  margin: 0.6em 0;
+  padding-left: 1.4em;
 }
-.content-body :where(ul) {
+.article-body :where(ul) {
   list-style: disc;
 }
-.content-body :where(ol) {
+.article-body :where(ol) {
   list-style: decimal;
 }
-.content-body :where(li) {
-  margin-bottom: 0.35rem;
+.article-body :where(li) {
+  margin-bottom: 0.35em;
 }
-.content-body :where(li) > :where(ul, ol) {
-  margin-top: 0.35rem;
+.article-body :where(li) > :where(ul, ol) {
+  margin-top: 0.35em;
 }
 
-.content-body :where(blockquote) {
+.article-body :where(blockquote) {
   border-left: 3px solid #b8b2a4;
-  margin: 1.25rem 0;
-  padding: 0.1rem 0 0.1rem 1rem;
+  margin: 1em 0;
+  padding: 0.1em 0 0.1em 1em;
   font-style: italic;
   color: var(--ink-light, #4a4a4a);
   break-inside: avoid;
 }
 
-.content-body :where(hr) {
+.article-body :where(hr) {
   border: none;
   border-top: 1px dashed #c9c4b8;
-  margin: 2rem 0;
+  margin: 1.5em 0;
 }
 
-.content-body :where(a) {
+.article-body :where(a) {
   color: #1a1a1a;
   text-decoration: underline;
   text-decoration-color: #b8b2a4;
   text-underline-offset: 2px;
 }
 
-.content-body :where(strong) {
+.article-body :where(strong) {
   color: #1a1a1a;
 }
 
-.content-body :where(code) {
+.article-body :where(code) {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.85em;
   background: #ebe7dc;
@@ -269,7 +200,7 @@ article:nth-child(5) { animation-delay: 0.5s; }
   padding: 0.1em 0.35em;
 }
 
-.content-body :where(pre) {
+.article-body :where(pre) {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.55;
@@ -282,7 +213,7 @@ article:nth-child(5) { animation-delay: 0.5s; }
   overflow-x: auto;
   break-inside: avoid;
 }
-.content-body :where(pre code) {
+.article-body :where(pre code) {
   background: transparent;
   border: none;
   padding: 0;
@@ -290,7 +221,7 @@ article:nth-child(5) { animation-delay: 0.5s; }
   color: inherit;
 }
 
-.content-body :where(table) {
+.article-body :where(table) {
   display: block;
   max-width: 100%;
   overflow-x: auto;
@@ -300,12 +231,12 @@ article:nth-child(5) { animation-delay: 0.5s; }
   text-align: left;
   break-inside: avoid;
 }
-.content-body :where(th, td) {
+.article-body :where(th, td) {
   border: 1px solid #d6d3cd;
   padding: 0.45rem 0.65rem;
   vertical-align: top;
 }
-.content-body :where(thead th) {
+.article-body :where(thead th) {
   background: #ebe7dc;
   font-family: 'Playfair Display', serif;
   font-weight: 700;
@@ -314,16 +245,16 @@ article:nth-child(5) { animation-delay: 0.5s; }
   letter-spacing: 0.03em;
 }
 
-.content-body .article-chart {
+.article-body .article-chart {
   break-inside: avoid;
-  margin: 1.5rem 0;
-  padding: 1rem 0.75rem 0.5rem;
+  margin: 1rem 0;
+  padding: 0.75rem 0.5rem 0.4rem;
   border: 1px solid #d6d3cd;
   background: #fdfcf9;
-  height: 320px;
+  height: 240px;
 }
 
-.content-body :where(img) {
+.article-body :where(img) {
   display: block;
   width: 100%;
   height: auto;

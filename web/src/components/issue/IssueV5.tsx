@@ -1,14 +1,11 @@
 /**
  * V5 — editorial grid: two half-page leads over a four-column brief bar.
- * Ported from `app/templates/issue_v5.html`; each story carries its own
- * `imageUrl` photo when it has one (`ArticleImage`), same as every layout.
  *
  * Both tiers are balanced multi-column flows: the two leads run on from
  * one half into the other rather than each stopping at its own length,
  * and the brief bar likewise, so every column ends on the same line.
  */
 
-import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
@@ -16,7 +13,6 @@ import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV5({
-  issue,
   articles,
   streamingArticleId,
 }: IssueLayoutProps) {
@@ -25,7 +21,6 @@ export default function IssueV5({
 
   return (
     <>
-      <IssueCoverBanner issue={issue} />
 
       {/* V5: EDITORIAL GRID */}
       <div className="flex flex-col gap-10">

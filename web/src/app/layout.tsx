@@ -2,20 +2,14 @@
    Router's `_document`; in the App Router these links live in the root layout
    and are therefore shared by every page, which is what the rule asks for. */
 /**
- * Root document shell, ported from `app/templates/base.html`.
+ * Root document shell. The broadsheet frame, masthead and `<main>` live in
+ * `<NewspaperShell>`; this only loads the stylesheets.
  *
- * Everything inside `<body>` that base.html owned — the `max-w-[1400px]`
- * broadsheet wrapper, the header partial and `<main>` — lives in
- * `<NewspaperShell>` instead, because each page needs to feed the header its
- * own issue/article context (Jinja did that through globals).
- *
- * Tailwind arrives through the real PostCSS build rather than base.html's Play
- * CDN `<script>`; `tailwind.config.ts` reproduces the CDN's inline config
- * exactly. The Google Fonts and Material Icons links are kept verbatim so the
- * type renders identically — plus `crossOrigin="anonymous"`, which makes
- * their rules readable from script (Google sends `access-control-allow-origin:
- * *`): the PNG export reads them to embed the fonts, and without CORS the
- * browser blocks that read with a SecurityError on every export.
+ * The Google Fonts and Material Icons stylesheets load with
+ * `crossOrigin="anonymous"`, which makes their rules readable from script
+ * (Google sends `access-control-allow-origin: *`): the PNG export reads them
+ * to embed the fonts, and without CORS the browser blocks that read with a
+ * SecurityError on every export.
  */
 
 import type { Metadata } from "next";

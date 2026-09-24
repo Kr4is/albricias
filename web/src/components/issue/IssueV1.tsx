@@ -1,6 +1,5 @@
 /**
  * V1 — three-column front page with a centred lead story.
- * Ported from `app/templates/issue_v1.html`.
  *
  * The lead holds the centre; the secondary stories sit on the two side
  * rails, but only as many as fit beside the lead — the `fold`. The rest
@@ -8,16 +7,13 @@
  * rail is measured (`leftRailIds`, from `planFold`), falling back to a
  * rough-length deal (`dealIntoTwo`) before the first measurement; the
  * balancer then levels the three columns so they end on the same line.
- * Both rails share one story style (`Rail`) — the original's different
- * right-rail type made a story's height depend on its side. The original's round-robin
- * split and centre stream under the lead are gone: they left columns
- * ending hundreds of pixels apart.
+ * Both rails share one story style (`Rail`), so a story is the same height
+ * on either side.
  */
 
 import { Fragment } from "react";
 import BelowFold from "@/components/issue/BelowFold";
 import { cutAtFold, dealIntoTwo } from "@/components/issue/fold";
-import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
@@ -86,7 +82,6 @@ export default function IssueV1({
 
   return (
     <>
-      <IssueCoverBanner issue={issue} />
 
       <div data-fold-group data-fold={above.length}>
         {/* Main Grid Layout */}

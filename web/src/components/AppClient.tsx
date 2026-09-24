@@ -16,9 +16,7 @@ type Phase = "config" | "generating" | "result";
 interface IssueMeta {
   vol: string;
   dateLabel: string;
-  dateShortLabel: string;
   weather: string;
-  coverImage: string | null;
 }
 
 const PROVIDERS: { id: AiProviderId; label: string }[] = [
@@ -223,7 +221,7 @@ export default function AppClient() {
 
           if (message.event === "meta") {
             const data = message.data as IssueMeta & { warnings: string[] };
-            setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, dateShortLabel: data.dateShortLabel, weather: data.weather, coverImage: data.coverImage ?? null });
+            setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, weather: data.weather });
             setWarnings(data.warnings ?? []);
           } else if (message.event === "layout") {
             setLayout((message.data as { layout: LayoutIndex }).layout);
@@ -322,7 +320,7 @@ export default function AppClient() {
         <div ref={pageRef} className="issue-page">
           <IssueLayout
             layout={layout}
-            issue={{ id: 0, title, status: "published", ...issueMeta }}
+            issue={{ dateLabel: issueMeta.dateLabel }}
             articles={articles}
             streamingArticleId={streamingId}
             fold={placement?.fold ?? null}

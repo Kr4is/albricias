@@ -1,11 +1,6 @@
 /**
- * Picks the broadsheet variant for an edition, replacing Flask's
- * `template = f"issue_v{layout_index(edition)}.html"`
- * (`app/routes/public.py:72` and `:195`).
- *
- * Phase 3's admin preview route can render this same component with
- * `isPreview` set to get the toolbar, exactly as `admin.py` did by rendering
- * the same `issue_v*.html` templates.
+ * Renders an edition in one of the six broadsheet layouts (`IssueV1` …
+ * `IssueV6`), chosen by `layout`.
  */
 
 import IssueV1 from "@/components/issue/IssueV1";
