@@ -332,3 +332,33 @@ article:nth-child(5) { animation-delay: 0.5s; }
   padding: 4px;
   break-inside: avoid;
 }
+
+/* -------------------------------------------------------------------------
+ * Page fill (`usePageFill`) — `--issue-scale` on the issue wrapper enlarges
+ * every article body's type in small steps when a quiet period's page
+ * renders short. Only the three body sizes the layouts actually use are
+ * scaled; a body with its own `leading-*` keeps that (unitless, so it scales
+ * with the font), one without gets Tailwind's default line-height scaled
+ * along with it so the text doesn't crowd.
+ * ------------------------------------------------------------------------- */
+.issue-page {
+  --issue-scale: 1;
+}
+.issue-page .article-body.text-xs {
+  font-size: calc(0.75rem * var(--issue-scale));
+}
+.issue-page .article-body.text-sm {
+  font-size: calc(0.875rem * var(--issue-scale));
+}
+.issue-page .article-body.text-base {
+  font-size: calc(1rem * var(--issue-scale));
+}
+.issue-page .article-body.text-xs:not([class*="leading-"]) {
+  line-height: calc(1rem * var(--issue-scale));
+}
+.issue-page .article-body.text-sm:not([class*="leading-"]) {
+  line-height: calc(1.25rem * var(--issue-scale));
+}
+.issue-page .article-body.text-base:not([class*="leading-"]) {
+  line-height: calc(1.5rem * var(--issue-scale));
+}

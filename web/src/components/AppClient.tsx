@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import IssueLayout from "@/components/issue/IssueLayout";
 import GeneratingAnimation from "@/components/GeneratingAnimation";
+import { usePageFill } from "@/components/usePageFill";
 import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
 import type { AiProviderId } from "@/lib/ai/resolve";
@@ -87,6 +88,7 @@ export default function AppClient() {
   const [statusMessage, setStatusMessage] = useState("Fetching your activity…");
   const [issueMeta, setIssueMeta] = useState<IssueMeta | null>(null);
   const [layout, setLayout] = useState<LayoutIndex | null>(null);
+  const [layoutPickedByHand, setLayoutPickedByHand] = useState(false);
   const [title, setTitle] = useState("");
   const [articles, setArticles] = useState<IssueArticle[]>([]);
   const [streamingId, setStreamingId] = useState<number | null>(null);
@@ -147,11 +149,22 @@ export default function AppClient() {
 
   const needsGateway = llmProvider === "litellm";
 
+  const pageRef = useRef<HTMLDivElement>(null);
+  usePageFill({
+    ref: pageRef,
+    active: phase === "result" && finished,
+    layout,
+    total: articles.length,
+    allowRepick: !layoutPickedByHand,
+    onRepick: setLayout,
+  });
+
   function reset() {
     setPhase("config");
     setStatusMessage("Fetching your activity…");
     setIssueMeta(null);
     setLayout(null);
+    setLayoutPickedByHand(false);
     setTitle("");
     setArticles([]);
     setStreamingId(null);
@@ -270,7 +283,10 @@ export default function AppClient() {
                 {LAYOUT_OPTIONS.map((option) => (
                   <button
                     key={option.id}
-                    onClick={() => setLayout(option.id)}
+                    onClick={() => {
+                      setLayout(option.id);
+                      setLayoutPickedByHand(true);
+                    }}
                     className={`px-3 py-1.5 font-sans text-[10px] font-bold uppercase tracking-widest border transition-colors ${
                       layout === option.id ? PILL_ACTIVE : PILL_INACTIVE
                     }`}
@@ -291,12 +307,14 @@ export default function AppClient() {
             </p>
           )}
         </div>
-        <IssueLayout
-          layout={layout}
-          issue={{ id: 0, title, status: "published", ...issueMeta }}
-          articles={articles}
-          streamingArticleId={streamingId}
-        />
+        <div ref={pageRef} className="issue-page">
+          <IssueLayout
+            layout={layout}
+            issue={{ id: 0, title, status: "published", ...issueMeta }}
+            articles={articles}
+            streamingArticleId={streamingId}
+          />
+        </div>
       </div>
     );
   }

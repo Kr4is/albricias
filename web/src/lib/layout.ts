@@ -37,3 +37,20 @@ export function pickLayoutForContent(total: number): LayoutIndex {
     [1, 2, 5];
   return pool[Math.floor(Math.random() * pool.length)];
 }
+
+/**
+ * The most space-generous layouts that still suit `total` — what
+ * `usePageFill` falls back to when a page is short even at its largest type
+ * scale. V3 (full-width hero) and V6 (broadside) give the lead story the
+ * whole sheet; V3's divided stream only suits a total of 1 or ≥4 (see the
+ * pools above), V6 suits any.
+ */
+export function pickSpaciousLayout(total: number): LayoutIndex {
+  const pool: LayoutIndex[] = total === 1 || total >= 4 ? [3, 6] : [6];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** Whether `layout` is already one `pickSpaciousLayout` would choose from. */
+export function isSpaciousLayout(layout: LayoutIndex): boolean {
+  return layout === 3 || layout === 6;
+}

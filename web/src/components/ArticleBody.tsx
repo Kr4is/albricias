@@ -15,7 +15,7 @@ export default function ArticleBody({ html, className }: { html: string; classNa
   const ref = useRef<HTMLDivElement>(null);
   return (
     <>
-      <div ref={ref} className={className} dangerouslySetInnerHTML={{ __html: html }} />
+      <div ref={ref} className={`article-body ${className ?? ""}`} dangerouslySetInnerHTML={{ __html: html }} />
       <ArticleCharts containerRef={ref} />
     </>
   );
