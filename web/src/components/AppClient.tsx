@@ -281,6 +281,7 @@ export default function AppClient() {
                 targetRef={pageRef}
                 filename={`albricias-${githubUsername.replace(/[^A-Za-z0-9-]/g, "") || "edition"}-${period}.png`}
                 title={title ? `¡Albricias! — ${title}` : "¡Albricias!"}
+                edition={issueMeta}
                 version={`${layout}:${articles.length}`}
               />
               <div className="flex flex-wrap items-center justify-center gap-1.5">

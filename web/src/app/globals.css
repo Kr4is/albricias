@@ -15,7 +15,8 @@ body {
 }
 
 /* Custom Utilities */
-.drop-cap::first-letter {
+/* A real span (see `markDropCap` in ArticleBody), not `::first-letter`, so it survives the PNG export. */
+.drop-cap .drop-cap-letter {
   float: left;
   font-family: 'UnifrakturMaguntia', serif;
   font-size: 3.8rem;

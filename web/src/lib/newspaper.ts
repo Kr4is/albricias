@@ -7,7 +7,8 @@ export interface NewspaperConfig {
   metadataRight: string;
 }
 
-const NEWSPAPER_CONFIG: NewspaperConfig = {
+/** Also read directly by client components (the export masthead), which can't await. */
+export const NEWSPAPER_CONFIG: NewspaperConfig = {
   name: "¡Albricias!",
   tagline: "All the News That's Fit to Print",
   price: "Two Cents",
