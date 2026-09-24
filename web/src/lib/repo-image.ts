@@ -39,25 +39,3 @@ export function resolveRepo(name: string | undefined, repos: Map<string, string>
   const cleaned = name.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/[`*]/g, "").replace(/\/+$/, "");
   return repos.get(cleaned.toLowerCase()) ?? null;
 }
-
-/**
- * The repo the period did the most work in — stars excluded, since a
- * starred repo is someone else's work, not this user's activity. `null`
- * when nothing repo-scoped happened.
- */
-export function mostActiveRepo(activity: ActivityItem[]): string | null {
-  const counts = new Map<string, number>();
-  for (const item of activity) {
-    if (item.eventType === "star" || !item.repo || !item.repo.includes("/")) continue;
-    counts.set(item.repo, (counts.get(item.repo) ?? 0) + 1);
-  }
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [repo, count] of counts) {
-    if (count > bestCount) {
-      best = repo;
-      bestCount = count;
-    }
-  }
-  return best;
-}

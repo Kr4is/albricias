@@ -18,7 +18,6 @@
 
 import { streamText, type LanguageModel } from "ai";
 import { describeAiError } from "@/lib/ai/error";
-import type { ActivityItem } from "@/lib/sources/types";
 
 /** Verbatim voice of the whole paper. */
 export const NEWSPAPER_PERSONA =
@@ -53,14 +52,6 @@ const LENGTH_BANDS: Record<LengthTier, string> = {
   long: "roughly 350 to 600 words",
 };
 
-const MAX_ACTIVITIES_LISTED = 25;
-
-const MONTHS_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-] as const;
-
-
 /**
  * Shared chart clause — appended where a desk might plausibly have real,
  * countable numbers worth plotting. Renders via the `chart` fenced-code
@@ -84,9 +75,12 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "You are the outline editor for ¡Albricias!'s correspondent desk. You do " +
   "not write prose — you plan one short front page about a GitHub user's " +
   "activity over a period, which someone else will write one section at a " +
-  "time from the material given to you. The material arrives as a single " +
-  "labeled block, \"## Activity\", listing everything recorded in the " +
-  "period — commits, pull requests, issues, releases, stars, and so on. " +
+  "time from the material given to you. The material is a dossier of " +
+  "everything recorded in the period: an overview (counts, active days, " +
+  "languages), a dossier per repository worked in (what the repository is, " +
+  "then its releases with notes, pull requests with their state, issues, " +
+  "reviews and commit messages), the repositories starred (what each one " +
+  "is — other people's projects that caught the user's eye), and gists. " +
   "The user prompt also states the period being covered and exactly how " +
   "many sections to propose — follow that range precisely.\n\n" +
   "Read the material once, then reply with exactly this shape, nothing else:\n" +
@@ -115,9 +109,13 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "events, do not propose one section per item — group related activity by " +
   "theme or repository cluster and cover the most interesting handful in " +
   "depth rather than everything shallowly. A repository earns its own " +
-  "section when the period did real work in it or starred it with " +
-  "something substantial to say; everything smaller belongs inside another " +
-  "section as a passing mention, not a section of its own. Keep sections " +
+  "section when the period did real work in it; everything smaller belongs " +
+  "inside another section as a passing mention, not a section of its own. " +
+  "Starred repositories are worth a section of their own when there are " +
+  "several with something to say — what the user was reading about, what " +
+  "the projects are and do, any theme they share — with REPO set to the " +
+  "most notable of them; write about them as other people's work, never " +
+  "as the user's. Keep sections " +
   "non-overlapping: each repository or theme belongs to exactly one " +
   "section's BRIEF, since each section is written independently by someone " +
   "who sees only its own brief. Vary each section's LENGTH deliberately — a " +
@@ -151,45 +149,10 @@ export const PERIOD_POST_SECTION_SYSTEM =
   "not writing. Write about what happened, naming the actual repositories, " +
   "commits, releases and figures the material records; never invent an " +
   "event, a number, or a motive it does not state, and prefer saying the " +
-  "period was quiet to filling it out." +
+  "period was quiet to filling it out. Starred repositories are other " +
+  "people's projects the user starred: say what they are and do, from " +
+  "their descriptions, and never credit the user with building them." +
   CHART_CLAUSE;
-
-// ---------------------------------------------------------------------------
-// Research
-// ---------------------------------------------------------------------------
-
-/** `{ commit: 7, star: 2 }` → `"7 commit, 2 star"`, busiest kind first. */
-function countByEventType(activity: ActivityItem[]): string {
-  const counts = new Map<string, number>();
-  for (const item of activity) counts.set(item.eventType, (counts.get(item.eventType) ?? 0) + 1);
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([type, count]) => `${count} ${type}`)
-    .join(", ");
-}
-
-/** Up to `MAX_ACTIVITIES_LISTED` events as plain-text lines, newest material first. */
-function summariseActivity(activity: ActivityItem[]): string {
-  return activity
-    .slice(0, MAX_ACTIVITIES_LISTED)
-    .map((item) => {
-      const ts = item.timestamp
-        ? `${MONTHS_SHORT[item.timestamp.getUTCMonth()]} ${String(item.timestamp.getUTCDate()).padStart(2, "0")}`
-        : "";
-      return `- [${item.eventType || "?"}] ${item.repo ?? ""}: ${item.title ?? ""} (${ts}) ${item.url ?? ""}`;
-    })
-    .join("\n");
-}
-
-/** No LLM call, no network call — renders the already-fetched activity as one labeled source block. */
-export function researchPeriod(activity: ActivityItem[]): string {
-  if (activity.length === 0) {
-    throw new Error("No GitHub activity recorded for this period — there is nothing to write about.");
-  }
-  const repoCount = new Set(activity.map((item) => item.repo).filter(Boolean)).size;
-  const header = `${activity.length} recorded events across ${repoCount} repositories: ${countByEventType(activity)}.`;
-  return `## Activity\n\n${header}\n\n${summariseActivity(activity)}`;
-}
 
 // ---------------------------------------------------------------------------
 // Prompts + outline parsing

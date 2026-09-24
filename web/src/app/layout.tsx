@@ -12,7 +12,10 @@
  * Tailwind arrives through the real PostCSS build rather than base.html's Play
  * CDN `<script>`; `tailwind.config.ts` reproduces the CDN's inline config
  * exactly. The Google Fonts and Material Icons links are kept verbatim so the
- * type renders identically.
+ * type renders identically — plus `crossOrigin="anonymous"`, which makes
+ * their rules readable from script (Google sends `access-control-allow-origin:
+ * *`): the PNG export reads them to embed the fonts, and without CORS the
+ * browser blocks that read with a SecurityError on every export.
  */
 
 import type { Metadata } from "next";
@@ -34,10 +37,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <link
           href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400&family=Libre+Franklin:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap"
           rel="stylesheet"
+          crossOrigin="anonymous"
         />
         <link
           href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Symbols+Outlined"
           rel="stylesheet"
+          crossOrigin="anonymous"
         />
       </head>
       <body className="text-ink antialiased min-h-screen flex flex-col fade-in">

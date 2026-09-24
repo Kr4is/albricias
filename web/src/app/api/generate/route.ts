@@ -16,10 +16,11 @@ import { dayBounds, defaultEditionVol, periodBoundsForDate } from "@/lib/cadence
 import { editionWeather, periodLabel as formatPeriodLabel, periodLabelShort } from "@/lib/edition-helpers";
 import { buildAiModel } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
-import { fetchGithubActivity } from "@/lib/sources/github";
+import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
 import { pickLayoutForContent } from "@/lib/layout";
-import { knownRepos, mostActiveRepo, repoImageUrl, resolveRepo } from "@/lib/repo-image";
-import { buildOutline, researchPeriod, writeSection } from "@/lib/generation/period-post";
+import { knownRepos, repoImageUrl, resolveRepo } from "@/lib/repo-image";
+import { buildOutline, writeSection } from "@/lib/generation/period-post";
+import { researchPeriod } from "@/lib/generation/research";
 import { buildByTheNumbersArticle, buildStarsArticle } from "@/lib/generation/deterministic-articles";
 import type { IssueArticle } from "@/components/issue/types";
 
@@ -84,7 +85,6 @@ export async function POST(request: Request) {
 
   const model = buildAiModel(input);
   const periodLabel = formatPeriodLabel(edition);
-  const coverRepo = mostActiveRepo(activity);
   const repos = knownRepos(activity);
   const encoder = new TextEncoder();
 
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       };
       /** A whole, already-known article (the deterministic ones) — sent through the same three events a streamed section uses. */
       const sendWholeArticle = (article: IssueArticle) => {
-        send("section-start", { index: article.id, heading: article.title, category: article.category, author: article.author, deck: article.deck });
+        send("section-start", { index: article.id, heading: article.title, category: article.category, author: article.author, deck: article.deck, imageUrl: article.imageUrl ?? null });
         send("section-delta", { index: article.id, delta: article.content });
         send("section-end", { index: article.id });
       };
@@ -111,28 +111,34 @@ export async function POST(request: Request) {
         dateLabel: periodLabel,
         dateShortLabel: periodLabelShort(edition),
         weather: editionWeather(edition),
-        coverImage: coverRepo ? repoImageUrl(coverRepo) : null,
+        // No cover: a banner of the busiest repo's card said nothing a story
+        // didn't — pictures belong only to the stories about their repo.
+        coverImage: null,
         warnings,
       });
 
       try {
+        send("status", { message: "Reading up on the repositories…" });
+        const details = await fetchRepoDetails(activity, githubToken);
+        const research = researchPeriod(activity, details);
+
         send("status", { message: "Planning the front page…" });
-        const sourceText = researchPeriod(activity);
-        const outline = await buildOutline({ periodLabel, cadence: input.period, sourceText, model });
+        const outline = await buildOutline({ periodLabel, cadence: input.period, sourceText: research.text, model });
 
         // Computed now (cheap, pure) so the total article count is known
         // before picking a layout — only their *emission* waits until
         // after the prose sections (below), so the AI's own headline
         // stays the front page's lead.
-        const starsArticle = buildStarsArticle(activity);
+        // The stars box itself is built after the sections, once it knows
+        // which repos' cards they already used.
+        const hasStars = activity.some((item) => item.eventType === "star");
         const numbersArticle = buildByTheNumbersArticle(activity);
-        const total = outline.sections.length + (starsArticle ? 1 : 0) + (numbersArticle ? 1 : 0);
+        const total = outline.sections.length + (hasStars ? 1 : 0) + (numbersArticle ? 1 : 0);
         send("layout", { layout: pickLayoutForContent(total) });
 
-        // Each repo's card appears at most once on the page — the cover
-        // already shows the most active one, and two sections about the
-        // same repo shouldn't repeat the same picture.
-        const pictured = new Set<string>(coverRepo ? [coverRepo] : []);
+        // Each repo's card appears at most once on the page — two sections
+        // about the same repo shouldn't repeat the same picture.
+        const pictured = new Set<string>();
 
         for (let index = 0; index < outline.sections.length; index += 1) {
           const section = outline.sections[index];
@@ -141,6 +147,9 @@ export async function POST(request: Request) {
           if (repo) pictured.add(repo);
           send("section-start", { index, heading: section.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: section.brief, imageUrl });
           try {
+            // A section about one repo gets that repo's dossier (plus an
+            // index of the rest) — focused, and a fraction of the tokens.
+            const sourceText = repo ? research.forRepo(repo) : research.text;
             await writeSection(
               { heading: section.heading, brief: section.brief, lengthTier: section.lengthTier, premise: outline.premise, periodLabel, sourceText, model },
               (delta) => send("section-delta", { index, delta }),
@@ -155,6 +164,7 @@ export async function POST(request: Request) {
         // Sent after the prose sections, so the AI's own headline section
         // stays `articles[0]` (the front page's lead) — these two are
         // sidebar material, never the lead story.
+        const starsArticle = buildStarsArticle(activity, details, pictured);
         if (starsArticle) sendWholeArticle(starsArticle);
         if (numbersArticle) sendWholeArticle(numbersArticle);
 

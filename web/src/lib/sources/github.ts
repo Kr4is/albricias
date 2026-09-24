@@ -392,3 +392,86 @@ async function* iterateStarred(
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** What the front page can say about a repository beyond its name. */
+export interface RepoDetails {
+  fullName: string;
+  description: string | null;
+  language: string | null;
+  stars: number | null;
+  forks: number | null;
+  topics: string[];
+  isFork: boolean;
+  archived: boolean;
+  url: string | null;
+}
+
+/**
+ * `RepoDetails` from a full repository object — the shape `GET /repos/…`,
+ * `GET /users/{u}/repos` and the starred listing all return. `null` when
+ * `raw` isn't one (a commit or PR payload, say).
+ */
+export function repoDetailsFromRaw(raw: unknown): RepoDetails | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.full_name !== "string" || typeof r.stargazers_count !== "number") return null;
+  return {
+    fullName: r.full_name,
+    description: typeof r.description === "string" && r.description.trim() ? r.description.trim() : null,
+    language: typeof r.language === "string" ? r.language : null,
+    stars: r.stargazers_count,
+    forks: typeof r.forks_count === "number" ? r.forks_count : null,
+    topics: Array.isArray(r.topics) ? r.topics.filter((t): t is string => typeof t === "string") : [],
+    isFork: r.fork === true,
+    archived: r.archived === true,
+    url: typeof r.html_url === "string" ? r.html_url : null,
+  };
+}
+
+/** Repos looked up by `fetchRepoDetails` at most — one API call each, on the server's token. */
+const MAX_DETAIL_LOOKUPS = 10;
+
+/**
+ * Details for every repo the period touched: straight from the activity's
+ * own payloads where they already carry a full repository object (stars,
+ * repos created), plus one `GET /repos/{owner}/{repo}` for each of the
+ * `MAX_DETAIL_LOOKUPS` busiest repos that don't — commits, PRs and issues
+ * only name their repo. A failed lookup just leaves that repo without
+ * details; it never fails the edition.
+ */
+export async function fetchRepoDetails(
+  activity: ActivityItem[],
+  token: string,
+): Promise<Map<string, RepoDetails>> {
+  const details = new Map<string, RepoDetails>();
+  for (const item of activity) {
+    const found = repoDetailsFromRaw(item.raw);
+    if (found) details.set(found.fullName.toLowerCase(), found);
+  }
+
+  const counts = new Map<string, number>();
+  for (const item of activity) {
+    if (!item.repo || !item.repo.includes("/") || item.eventType === "star") continue;
+    counts.set(item.repo, (counts.get(item.repo) ?? 0) + 1);
+  }
+  const missing = [...counts.entries()]
+    .filter(([repo]) => !details.has(repo.toLowerCase()))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_DETAIL_LOOKUPS)
+    .map(([repo]) => repo);
+
+  const octokit = new Octokit({ auth: token });
+  await Promise.all(
+    missing.map(async (repo) => {
+      const [owner, name] = repo.split("/");
+      try {
+        const { data } = await octokit.request("GET /repos/{owner}/{repo}", { owner, repo: name });
+        const found = repoDetailsFromRaw(data);
+        if (found) details.set(repo.toLowerCase(), found);
+      } catch (error) {
+        console.warn(`[github] details for ${repo} unavailable: ${describe(error)}`);
+      }
+    }),
+  );
+  return details;
+}
