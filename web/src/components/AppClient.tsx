@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import IssueLayout from "@/components/issue/IssueLayout";
 import GeneratingAnimation from "@/components/GeneratingAnimation";
+import ExportActions from "@/components/ExportActions";
 import { usePageFill } from "@/components/usePageFill";
 import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
@@ -276,6 +277,12 @@ export default function AppClient() {
                   ← Generate Another Edition
                 </button>
               </div>
+              <ExportActions
+                targetRef={pageRef}
+                filename={`albricias-${githubUsername.replace(/[^A-Za-z0-9-]/g, "") || "edition"}-${period}.png`}
+                title={title ? `¡Albricias! — ${title}` : "¡Albricias!"}
+                version={`${layout}:${articles.length}`}
+              />
               <div className="flex flex-wrap items-center justify-center gap-1.5">
                 <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-400 mr-1">
                   Layout
