@@ -15,6 +15,7 @@ interface IssueMeta {
   dateLabel: string;
   dateShortLabel: string;
   weather: string;
+  coverImage: string | null;
 }
 
 const PROVIDERS: { id: AiProviderId; label: string }[] = [
@@ -204,17 +205,17 @@ export default function AppClient() {
 
           if (message.event === "meta") {
             const data = message.data as IssueMeta & { warnings: string[] };
-            setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, dateShortLabel: data.dateShortLabel, weather: data.weather });
+            setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, dateShortLabel: data.dateShortLabel, weather: data.weather, coverImage: data.coverImage ?? null });
             setWarnings(data.warnings ?? []);
           } else if (message.event === "layout") {
             setLayout((message.data as { layout: LayoutIndex }).layout);
           } else if (message.event === "status") {
             setStatusMessage((message.data as { message: string }).message);
           } else if (message.event === "section-start") {
-            const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string };
+            const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string; imageUrl?: string | null };
             setArticles((prev) => [
               ...prev,
-              { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck },
+              { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, imageUrl: data.imageUrl ?? null },
             ]);
             setStreamingId(data.index);
             if (!sawFirstSection) {
@@ -292,7 +293,7 @@ export default function AppClient() {
         </div>
         <IssueLayout
           layout={layout}
-          issue={{ id: 0, title, status: "published", coverImage: null, ...issueMeta }}
+          issue={{ id: 0, title, status: "published", ...issueMeta }}
           articles={articles}
           streamingArticleId={streamingId}
         />

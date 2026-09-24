@@ -8,11 +8,13 @@
  * finished vintage layout. And the feature's own image slot (originally
  * `issue.coverImage` treated as this one story's photo) is gone — that field
  * is now the edition's own cover art, rendered once for every layout by
- * `IssueCoverBanner` above, not any single story's.
+ * `IssueCoverBanner` above. Each story's own photo comes from its
+ * `imageUrl` instead (`ArticleImage`).
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
+import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -50,6 +52,8 @@ export default function IssueV4({
                 </h1>
               </a>
 
+              <ArticleImage src={main.imageUrl} alt={main.title} eager className="mb-6" />
+
               <ArticleBody html={renderMarkdown(main.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text drop-cap" />
               {main.id === streamingArticleId && <span className="typing-cursor" />}
             </article>
@@ -66,6 +70,7 @@ export default function IssueV4({
 
           {rest.map((article) => (
             <article key={article.id}>
+              <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
               <a href={articleHref()}>
                 <h3 className="font-headline text-xl font-bold leading-tight mb-2 hover:underline">
                   {article.title}

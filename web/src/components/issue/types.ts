@@ -8,6 +8,8 @@ export interface IssueArticle {
   category: string;
   author: string | null;
   deck: string;
+  /** A real image of the repository this article is about (GitHub's social-preview card), when it has one. */
+  imageUrl?: string | null;
 }
 
 /** A generated issue as the issue layouts and masthead render it. */

@@ -1,13 +1,12 @@
 /**
  * V5 — editorial grid: two half-page leads over a four-column brief bar.
- * Ported from `app/templates/issue_v5.html`, markup and classes unchanged —
- * still the one variant with no per-story imagery, a deliberate contrast
- * with the other four now that `IssueCoverBanner` gives every layout the
- * edition's own cover art up top.
+ * Ported from `app/templates/issue_v5.html`; each story carries its own
+ * `imageUrl` photo when it has one (`ArticleImage`), same as every layout.
  */
 
 import IssueCoverBanner from "@/components/issue/IssueCoverBanner";
 import ArticleBody from "@/components/ArticleBody";
+import ArticleImage from "@/components/issue/ArticleImage";
 import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
@@ -35,6 +34,7 @@ export default function IssueV5({
                   {article.category}
                 </span>
               </div>
+              <ArticleImage src={article.imageUrl} alt={article.title} eager className="mb-4" />
               <a href={articleHref()}>
                 <h2 className="font-headline text-3xl lg:text-4xl font-black leading-none mb-4 hover:underline">
                   {article.title}
@@ -57,6 +57,7 @@ export default function IssueV5({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {rest.map((article) => (
             <article key={article.id} className="border-t border-stone-300 pt-4">
+              <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
               <a href={articleHref()}>
                 <h4 className="font-headline text-lg font-bold leading-tight mb-2 hover:text-stone-600 transition-colors">
                   {article.title}

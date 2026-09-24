@@ -94,10 +94,12 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "## <first section heading>\n" +
   "BRIEF: <one or two sentences on what this section covers>\n" +
   "LENGTH: short|medium|long\n" +
+  "REPO: <owner/name of the one repository this section is mainly about>\n" +
   "\n" +
   "## <second section heading>\n" +
   "BRIEF: ...\n" +
   "LENGTH: ...\n" +
+  "REPO: ...\n" +
   "\n" +
   "(and so on)\n" +
   "\n" +
@@ -115,7 +117,10 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "section's BRIEF, since each section is written independently by someone " +
   "who sees only its own brief. Vary each section's LENGTH deliberately — a " +
   "real newspaper mixes short items with long features; do not mark every " +
-  "section the same length. Ground every section in what the material " +
+  "section the same length. Write REPO exactly as the repository appears in " +
+  "the material (owner/name); omit the REPO line for a section that is not " +
+  "mainly about one repository, such as an overview of the whole period. " +
+  "Ground every section in what the material " +
   "actually records — never plan a section around activity the period did " +
   "not have.";
 
@@ -216,6 +221,8 @@ export interface ParsedOutlineSection {
   heading: string;
   brief: string;
   lengthTier: LengthTier;
+  /** The model's own `REPO:` line, unvalidated — check it against the period's real repos before using it. */
+  repo?: string;
 }
 
 export interface ParsedOutline {
@@ -224,7 +231,7 @@ export interface ParsedOutline {
   sections: ParsedOutlineSection[];
 }
 
-/** Reads the `# headline` / `PREMISE:` / `## heading` / `BRIEF:` / `LENGTH:` shape `PERIOD_POST_OUTLINE_SYSTEM` asks for. */
+/** Reads the `# headline` / `PREMISE:` / `## heading` / `BRIEF:` / `LENGTH:` / `REPO:` shape `PERIOD_POST_OUTLINE_SYSTEM` asks for. */
 export function parseOutline(raw: string): ParsedOutline {
   const lines = raw.trim().split("\n");
   let title = "";
@@ -245,6 +252,8 @@ export function parseOutline(raw: string): ParsedOutline {
       current.brief = line.slice("BRIEF:".length).trim();
     } else if (line.startsWith("LENGTH:") && current) {
       current.lengthTier = parseLengthTier(line.slice("LENGTH:".length));
+    } else if (line.startsWith("REPO:") && current) {
+      current.repo = line.slice("REPO:".length).trim() || undefined;
     }
   }
   if (current) sections.push(current);
