@@ -11,3 +11,4 @@ npm-debug.log*
 .mastra
 src/mastra/public
 mastra.db*
+mastra.duckdb*

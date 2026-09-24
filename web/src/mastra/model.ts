@@ -5,7 +5,7 @@
  * their provider + BYO key (`buildAiModel`) and hands it to the run under
  * `MODEL_KEY` in the request context — never stored, gone when the run is.
  *
- * From Mastra Studio (`npm run mastra`), a run has no visitor, so the
+ * From Mastra Studio (`npm run studio`), a run has no visitor, so the
  * agents fall back to a model configured in `.env` — `ALBRICIAS_LLM_*`,
  * the same four fields the app's form asks for (see `.env.example`) — or,
  * with none set, to `openai/gpt-4o-mini` on `OPENAI_API_KEY`.

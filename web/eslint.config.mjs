@@ -12,7 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Mastra Studio's local dev build cache (`npm run mastra`) — huge
+    // The build cache `mastra dev` leaves if it's ever run — huge
     // bundled/minified JS, not source this repo owns; linting it exhausted
     // the heap and crashed the process.
     ".mastra/**",

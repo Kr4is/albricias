@@ -17,11 +17,12 @@
 /.next/
 /out/
 
-# Mastra Studio's build cache (`npm run mastra`), and the local store it
-# and `next dev` trace runs into — local-only, never committed
+# Mastra's local stores (runs in mastra.db, traces in mastra.duckdb) and
+# the build cache `mastra dev` would leave — local-only, never committed
 /.mastra/
 /src/mastra/public/
 /mastra.db*
+/mastra.duckdb*
 
 # production
 /build

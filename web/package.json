@@ -9,16 +9,19 @@
     "start": "next start",
     "lint": "eslint",
     "check": "tsx scripts/check-period-post.ts && tsx scripts/check-research.ts && tsx scripts/check-deterministic-articles.ts",
-    "mastra": "mastra dev"
+    "studio": "mastra studio --port 4111 --server-port 3000 --server-api-prefix /api/mastra"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.79",
     "@ai-sdk/openai": "^4.0.74",
     "@mastra/core": "^1.70.0",
+    "@mastra/duckdb": "^1.11.0",
+    "@mastra/hono": "^1.7.12",
     "@mastra/libsql": "^1.23.2",
     "@mastra/observability": "^1.18.0",
     "ai": "^7.0.113",
     "chart.js": "^4.5.1",
+    "hono": "^4.13.9",
     "html-to-image": "^1.11.13",
     "marked": "^16.4.2",
     "next": "16.3.4",

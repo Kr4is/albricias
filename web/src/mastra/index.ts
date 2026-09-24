@@ -1,17 +1,25 @@
 /**
  * The Mastra instance: the two newsroom agents and the `front-page`
- * workflow. `/api/generate` runs the workflow through it; `npm run mastra`
- * (`mastra dev`) opens Mastra Studio on it.
+ * workflow. `/api/generate` runs the workflow through it.
  *
- * Locally (anything but `NODE_ENV=production`) it also keeps a LibSQL
- * store in `mastra.db` with tracing into it — every run, whether started
- * from the app or from Studio, lands there as a trace: each step's input
- * and output, every model call with its prompt, reply, tokens and timing.
- * Studio reads the same file, so a front page generated in the browser can
- * be inspected in Studio right after. In production neither exists: the
- * app stays stateless, and nothing a visitor generates is written anywhere
- * (Mastra logs a one-time "no storage configured" warning at boot — expected;
- * the workflow's `shouldPersistSnapshot` keeps even its in-memory store empty).
+ * Locally (anything but `NODE_ENV=production`) it also keeps a store and
+ * traces every run into it — each step's input and output, every model
+ * call with its prompt, reply, tokens and timing — and serves Mastra's
+ * API at `/api/mastra` (`src/app/api/mastra/[...path]`), which Mastra
+ * Studio (`npm run studio`) connects to. One process owns everything: the
+ * traces live in DuckDB, which lets only one process open its file, so
+ * Studio talks to the app's own server instead of starting a second one —
+ * and sees exactly the runs the app made.
+ *
+ *   mastra.db      LibSQL — workflow runs and their snapshots
+ *   mastra.duckdb  DuckDB — traces, logs and metrics (what Studio's
+ *                  Traces and Metrics screens query; LibSQL can't)
+ *
+ * In production neither exists — the local-only packages aren't even
+ * loaded: the app stays stateless, and nothing a visitor generates is
+ * written anywhere. (Mastra logs a one-time "no storage configured"
+ * warning at boot — expected; the workflow's `shouldPersistSnapshot`
+ * keeps even its in-memory store empty.)
  *
  * Next.js needs every `@mastra/*` package listed by name in
  * `serverExternalPackages` (next.config.ts).
@@ -19,55 +27,60 @@
 
 import path from "node:path";
 import { Mastra } from "@mastra/core";
-import { LibSQLStore } from "@mastra/libsql";
-import { MastraStorageExporter, Observability, SensitiveDataFilter } from "@mastra/observability";
 
 import { correspondent, outlineEditor } from "./agents";
 import { frontPageWorkflow } from "./workflows/front-page";
 
-const local = process.env.NODE_ENV !== "production";
+export const isLocal = process.env.NODE_ENV !== "production";
 
-/** Where `mastra dev` runs its server from, relative to the project root. */
-const STUDIO_DIRS = [path.join("src", "mastra", "public"), path.join(".mastra", "output")];
-
-/**
- * `mastra.db` at the project root. `next dev` runs from the root, but
- * `mastra dev` runs its server from inside its own build
- * (`src/mastra/public`), and both must land on the same file for Studio to
- * see the app's runs. Worked out from the path alone: touching the
- * filesystem here would make Next trace the whole project into the
- * production build.
- */
-function localDbUrl(): string {
-  if (process.env.MASTRA_DB_URL) return process.env.MASTRA_DB_URL;
-  const cwd = process.cwd();
-  const inner = STUDIO_DIRS.find((dir) => cwd.endsWith(path.sep + dir));
-  const root = inner ? cwd.slice(0, -(inner.length + 1)) : cwd;
-  return `file:${path.join(root, "mastra.db")}`;
+/** The store and tracing for local runs — imported only here, so production never loads them. */
+async function localOptions() {
+  const [{ LibSQLStore }, { DuckDBStore }, { MastraCompositeStore }, observability] = await Promise.all([
+    import("@mastra/libsql"),
+    import("@mastra/duckdb"),
+    import("@mastra/core/storage"),
+    import("@mastra/observability"),
+  ]);
+  // `next dev` runs from the project root.
+  const root = process.cwd();
+  return {
+    storage: new MastraCompositeStore({
+      id: "albricias-local",
+      default: new LibSQLStore({ id: "albricias-runs", url: `file:${path.join(root, "mastra.db")}` }),
+      domains: {
+        observability: await new DuckDBStore({ path: path.join(root, "mastra.duckdb") }).getStore("observability"),
+      },
+    }),
+    observability: new observability.Observability({
+      configs: {
+        default: {
+          serviceName: "albricias",
+          exporters: [new observability.MastraStorageExporter()],
+          // Redacts anything key-shaped (API keys, tokens) from what's stored.
+          spanOutputProcessors: [new observability.SensitiveDataFilter()],
+        },
+      },
+    }),
+  };
 }
 
-function createMastra(): Mastra {
+async function createMastra(): Promise<Mastra> {
   return new Mastra({
     agents: { outlineEditor, correspondent },
     workflows: { frontPage: frontPageWorkflow },
-    ...(local && {
-      storage: new LibSQLStore({ id: "albricias-local", url: localDbUrl() }),
-      observability: new Observability({
-        configs: {
-          default: {
-            serviceName: "albricias",
-            exporters: [new MastraStorageExporter()],
-            // Redacts anything key-shaped (API keys, tokens) from what's stored.
-            spanOutputProcessors: [new SensitiveDataFilter()],
-          },
-        },
-      }),
-    }),
+    ...(isLocal ? await localOptions() : {}),
   });
 }
 
 // One instance per process: `next dev` re-evaluates modules on every edit,
-// and each fresh instance would open another handle on `mastra.db`.
-const globalForMastra = globalThis as unknown as { albriciasMastra?: Mastra };
-export const mastra = globalForMastra.albriciasMastra ?? createMastra();
-if (local) globalForMastra.albriciasMastra = mastra;
+// and a second instance would try to open `mastra.duckdb` again — which
+// DuckDB refuses while the first still holds it.
+const globalForMastra = globalThis as unknown as { albriciasMastra?: Promise<Mastra> };
+
+export function getMastra(): Promise<Mastra> {
+  globalForMastra.albriciasMastra ??= createMastra().catch((error) => {
+    globalForMastra.albriciasMastra = undefined;
+    throw error;
+  });
+  return globalForMastra.albriciasMastra;
+}

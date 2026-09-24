@@ -55,29 +55,39 @@ columns so they end on the same line (`src/components/usePageFill.ts`,
 
 ## Mastra Studio (local only)
 
+With `npm run dev` running, in a second terminal:
+
 ```bash
-npm run mastra   # mastra dev — Studio on http://localhost:4111
+npm run studio   # Studio UI on http://localhost:4111, connected to the app
 ```
 
 Studio shows the two agents and the `front-page` workflow, and every run's
 trace: each step's input and output, every model call with its prompt,
-reply, tokens and timing. Runs started from the app (with `npm run dev`)
-land there too — both processes trace into the same `mastra.db` at the
-project root — so you can generate a front page in the browser and inspect
-exactly what each call was asked and answered.
+reply, tokens and timing — plus metrics across runs. Runs started from the
+app land there as they happen, so you can generate a front page in the
+browser and inspect exactly what each call was asked and answered.
+
+Studio is only the UI: it talks to the app's own dev server, which serves
+Mastra's API at `/api/mastra` (`src/app/api/mastra/[...path]/route.ts`).
+That's deliberate — the traces live in DuckDB (`mastra.duckdb`; runs in
+`mastra.db`), which only one process may open, so a separate `mastra dev`
+server would lock the app out of its own traces. If the app isn't on port
+3000, change `--server-port` in the `studio` script. The first time, if
+Studio asks for the instance, it's `http://localhost:3000` with API prefix
+`/api/mastra`.
 
 To run the workflow from Studio itself, give it a model in `.env`
 (`ALBRICIAS_LLM_*`, see `.env.example`); runs from the app always use the
 visitor's own.
 
 None of this exists in production (`NODE_ENV=production`): no store, no
-tracing, no snapshots — the app stays stateless, and nothing a visitor
-generates is written anywhere.
+tracing, no snapshots, no `/api/mastra` — the app stays stateless, and
+nothing a visitor generates is written anywhere.
 
 ## Scripts
 
 - `npm run dev` — development server.
-- `npm run mastra` — Mastra Studio (local).
+- `npm run studio` — Mastra Studio (local; needs `npm run dev` running).
 - `npm run build` / `npm start` — production build and server.
 - `npm run check` — self-checks for the outline parser, the dossier and the
   computed boxes.

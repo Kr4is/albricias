@@ -12,8 +12,8 @@
  * `error` event.
  *
  * Nothing is persisted in production — the visitor's LLM key travels only
- * in this run's request context. (Locally, runs are also traced into
- * `mastra.db` for Mastra Studio; see `@/mastra`.)
+ * in this run's request context. (Locally, runs are also traced for Mastra
+ * Studio; see `@/mastra`.)
  */
 
 import { RequestContext } from "@mastra/core/request-context";
@@ -21,7 +21,7 @@ import { z } from "zod";
 
 import { buildAiModel } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
-import { mastra } from "@/mastra";
+import { getMastra } from "@/mastra";
 import { MODEL_KEY } from "@/mastra/model";
 
 const baseFields = {
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
   const requestContext = new RequestContext();
   requestContext.set(MODEL_KEY, buildAiModel(input));
 
+  const mastra = await getMastra();
   const run = await mastra.getWorkflow("frontPage").createRun();
   // A visitor who leaves mid-edition shouldn't keep spending their tokens.
   // (Also fires once a finished run's connection closes — harmless then.)

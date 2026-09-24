@@ -12,7 +12,7 @@ that call.
 
 The app lives under [`web/`](web/): Next.js (App Router) + React + TypeScript,
 with a [Mastra](https://mastra.ai) workflow and agents for the generation
-pipeline — inspectable locally in Mastra Studio (`npm run mastra`).
+pipeline — inspectable locally in Mastra Studio (`npm run studio`).
 
 ## Features
 
