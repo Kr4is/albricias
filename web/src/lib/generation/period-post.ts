@@ -6,14 +6,18 @@
  * the sections of a front page. Nothing here reads or writes anything —
  * this is a one-shot, in-memory pipeline with no cross-run history.
  *
- * The outline call is buffered (`generateText`) — it's an internal planning
- * step (headline/premise/section briefs in a control-syntax format), nobody
- * wants to watch `PREMISE:`/`BRIEF:` lines typed out. Each section is
- * streamed (`streamText`) with its text forwarded live via `onDelta`, so the
- * caller (the SSE route) can show it being written token by token.
+ * Both the outline and each section use `streamText`, not `generateText` —
+ * a blocking call sits silent until the whole response is ready, which is
+ * exactly what trips a reverse proxy's idle/response timeout in front of a
+ * slow self-hosted model. The outline's stream is drained internally and
+ * never shown (it's control syntax — headline/premise/section briefs in a
+ * fixed format, not prose anyone should watch typed out); each section's
+ * stream is forwarded live via `onDelta`, so the caller (the SSE route) can
+ * show it being written token by token.
  */
 
-import { generateText, streamText, type LanguageModel } from "ai";
+import { streamText, type LanguageModel } from "ai";
+import { describeAiError } from "@/lib/ai/error";
 import type { ActivityItem } from "@/lib/sources/types";
 
 /** Verbatim voice of the whole paper. */
@@ -51,9 +55,6 @@ const MONTHS_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ] as const;
 
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Shared chart clause — appended where a desk might plausibly have real,
@@ -286,7 +287,50 @@ export async function buildOutline(input: {
   model: LanguageModel;
 }): Promise<ParsedOutline> {
   const prompt = buildOutlinePrompt(input);
-  const call = () => generateText({ model: input.model, system: PERIOD_POST_OUTLINE_SYSTEM, prompt, temperature: DEFAULT_TEMPERATURE });
+  // maxRetries: 0 — the AI SDK's own retry wrapper (3 attempts by default)
+  // both adds several seconds of backoff before a real failure surfaces and
+  // discards the underlying error's detail (statusCode, response body) when
+  // it gives up, leaving only a bare, sometimes-empty message. This call
+  // already has its own retry-once for the specific "truncated/empty"
+  // failure mode just below; a hard API error (bad key, network) should
+  // surface immediately, with its real detail intact.
+  //
+  // streamText, not generateText — even though nothing here is forwarded to
+  // the client (the outline is control syntax, not prose anyone should
+  // watch typed out). A *blocking* call sits silent until the whole
+  // response is ready; behind a reverse proxy in front of a slow
+  // self-hosted model (Cloudflare, in front of a LiteLLM gateway, most
+  // concretely) that silence is exactly what trips its idle/response
+  // timeout (a 524). A streamed call keeps bytes flowing the moment the
+  // model emits its first token, which keeps the proxy from ever seeing a
+  // silent connection — same reason `writeSection` below streams.
+  const call = async (): Promise<TextResult> => {
+    // `onError` is a side channel for the *real* underlying error — when a
+    // request fails before any chunk arrives, the SDK's own `text`/
+    // `finishReason` promises can reject with a generic
+    // "No output generated" instead of the actual cause. Prefer whatever
+    // `onError` captured, when it did.
+    let capturedError: unknown;
+    const { textStream, text, finishReason } = streamText({
+      model: input.model,
+      system: PERIOD_POST_OUTLINE_SYSTEM,
+      prompt,
+      temperature: DEFAULT_TEMPERATURE,
+      maxRetries: 0,
+      onError: ({ error }) => {
+        capturedError = error;
+      },
+    });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- draining only, deltas aren't shown
+      for await (const _delta of textStream) {
+        // Discarded — consuming the stream is what keeps the connection alive.
+      }
+      return { text: await text, finishReason: await finishReason };
+    } catch (error) {
+      throw capturedError ?? error;
+    }
+  };
 
   let result = await call();
   if (isUnusable(result)) {
@@ -337,20 +381,33 @@ export async function writeSection(
   onDelta: (delta: string) => void,
 ): Promise<string> {
   const prompt = buildSectionPrompt(input);
+  // maxRetries: 0 — see the same note on the outline call above; a failure
+  // here should surface immediately with its real detail, not after several
+  // seconds of silent backoff. `onError` — same reason as the outline call:
+  // a side channel for the real error, since a failure before any chunk can
+  // otherwise surface via `text`/`finishReason` as a generic
+  // "No output generated" instead of the actual cause.
+  let capturedError: unknown;
   const { textStream, text, finishReason } = streamText({
     model: input.model,
     system: PERIOD_POST_SECTION_SYSTEM,
     prompt,
     temperature: DEFAULT_TEMPERATURE,
+    maxRetries: 0,
+    onError: ({ error }) => {
+      capturedError = error;
+    },
   });
 
+  let finalText: string;
+  let reason: string;
   try {
     for await (const delta of textStream) onDelta(delta);
+    [finalText, reason] = await Promise.all([text, finishReason]);
   } catch (error) {
-    throw new Error(`Section "${input.heading}" stream failed: ${describe(error)}`);
+    throw new Error(`Section "${input.heading}" stream failed: ${describeAiError(capturedError ?? error)}`);
   }
 
-  const [finalText, reason] = await Promise.all([text, finishReason]);
   if (reason === "length" || !finalText.trim()) {
     throw new Error(`Section "${input.heading}" truncated/empty (finishReason: ${reason}).`);
   }

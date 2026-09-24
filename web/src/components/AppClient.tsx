@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import IssueLayout from "@/components/issue/IssueLayout";
 import GeneratingAnimation from "@/components/GeneratingAnimation";
 import type { IssueArticle } from "@/components/issue/types";
@@ -38,6 +38,24 @@ const LAYOUT_OPTIONS: { id: LayoutIndex; label: string }[] = [
   { id: 5, label: "Editorial" },
   { id: 6, label: "Broadside" },
 ];
+
+/**
+ * Remembered across visits, including the API key — by explicit request:
+ * treated like a saved password, not silently. Stored only in this
+ * browser's localStorage, never sent anywhere but `/api/generate`; the
+ * `autoComplete="current-password"` on the key field also lets the
+ * browser's own password manager offer to save/fill it independently.
+ */
+const STORAGE_KEY = "albricias:generate-form";
+
+interface SavedForm {
+  githubUsername: string;
+  period: Period;
+  llmProvider: AiProviderId;
+  llmApiKey: string;
+  llmModel: string;
+  llmBaseUrl: string;
+}
 
 const INPUT_CLASS =
   "w-full border border-stone-300 bg-white px-3 py-2 font-body text-sm focus:outline-none focus:border-ink";
@@ -81,6 +99,38 @@ export default function AppClient() {
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmModel, setLlmModel] = useState("");
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
+
+  // Load once on mount — after render, so a saved value never fights the
+  // server-rendered default during hydration. A lazy useState initializer
+  // would read localStorage during the client's hydration pass too, which
+  // mismatches the server-rendered (always-blank) markup — the effect is
+  // the correct tool here, not a lint false-negative.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<SavedForm>;
+      if (saved.githubUsername) setGithubUsername(saved.githubUsername);
+      if (saved.period && PERIODS.some((p) => p.id === saved.period)) setPeriod(saved.period);
+      if (saved.llmProvider && PROVIDERS.some((p) => p.id === saved.llmProvider)) setLlmProvider(saved.llmProvider);
+      if (saved.llmApiKey) setLlmApiKey(saved.llmApiKey);
+      if (saved.llmModel) setLlmModel(saved.llmModel);
+      if (saved.llmBaseUrl) setLlmBaseUrl(saved.llmBaseUrl);
+    } catch {
+      // Private browsing, blocked storage, malformed JSON — just start blank.
+    }
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    try {
+      const toSave: SavedForm = { githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch {
+      // Storage unavailable — the form still works, it just won't be remembered.
+    }
+  }, [githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl]);
 
   const needsGateway = llmProvider === "litellm";
 
@@ -245,16 +295,17 @@ export default function AppClient() {
         Your GitHub activity, set in vintage type.
       </p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-5xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         <div className="flex flex-col justify-center gap-8 lg:border-r lg:border-stone-300 lg:pr-12">
           <div>
             <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-500">Notice</span>
             <h2 className="font-headline text-2xl font-bold mt-1 mb-3">What Happens Next</h2>
-            <p className="font-body text-sm text-stone-600 leading-relaxed">
+            <p className="font-body text-sm text-stone-600 leading-relaxed max-w-md">
               We fetch <strong>{githubUsername || "your"}</strong>&apos;s public GitHub
               activity for the {period} period, hand it to your chosen AI, and
-              set it in type — live, on this page. Your API key is used only
-              for this one request and is never stored.
+              set it in type — live, on this page. Everything below is saved
+              in this browser for next time — your API key included, never
+              written to a server-side database or log.
             </p>
           </div>
           <div className="border-t border-stone-300 pt-6">
@@ -308,21 +359,35 @@ export default function AppClient() {
                 </button>
               ))}
             </div>
-            <p className="font-body text-xs text-stone-500">
-              Your API key is used only for this generation and is never stored.
-            </p>
           </div>
 
           <div>
-            <label className={LABEL_CLASS} htmlFor="llmApiKey">API Key</label>
+            <div className="flex items-baseline justify-between">
+              <label className={LABEL_CLASS} htmlFor="llmApiKey">API Key</label>
+              {llmApiKey && (
+                <button
+                  type="button"
+                  onClick={() => setLlmApiKey("")}
+                  className="font-sans text-[10px] uppercase tracking-widest text-stone-400 hover:text-ink mb-1"
+                >
+                  Forget key
+                </button>
+              )}
+            </div>
             <input
               id="llmApiKey"
+              name="llmApiKey"
               type="password"
+              autoComplete="current-password"
               className={INPUT_CLASS}
               value={llmApiKey}
               onChange={(e) => setLlmApiKey(e.target.value)}
               required
             />
+            <p className="font-body text-xs text-stone-500 mt-1">
+              Saved in this browser only, like any other password — never
+              written to a server-side database or log.
+            </p>
           </div>
 
           <div>

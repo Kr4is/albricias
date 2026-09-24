@@ -10,6 +10,9 @@ instance/
 .idea/
 .vscode/
 
+# Playwright MCP browser-tool artifacts (snapshots, console logs)
+.playwright-mcp/
+
 .omc/
 
 # The Next.js app manages its own ignores (node_modules, .next, *.db, etc.)

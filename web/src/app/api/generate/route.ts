@@ -15,6 +15,7 @@ import { z } from "zod";
 import { dayBounds, defaultEditionVol, periodBoundsForDate } from "@/lib/cadence";
 import { editionWeather, periodLabel as formatPeriodLabel, periodLabelShort } from "@/lib/edition-helpers";
 import { buildAiModel } from "@/lib/ai/resolve";
+import { describeAiError } from "@/lib/ai/error";
 import { fetchGithubActivity } from "@/lib/sources/github";
 import { pickLayoutForContent } from "@/lib/layout";
 import { buildOutline, researchPeriod, writeSection } from "@/lib/generation/period-post";
@@ -38,10 +39,6 @@ function periodBoundsFor(period: "daily" | "weekly" | "monthly") {
     return dayBounds(new Date(Date.now() - 24 * 60 * 60 * 1000));
   }
   return periodBoundsForDate(period, new Date());
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 const SSE_HEADERS = {
@@ -151,7 +148,8 @@ export async function POST(request: Request) {
 
         send("done", { title: outline.title });
       } catch (error) {
-        send("error", { error: describe(error) });
+        console.error(`[period-post] generation failed for "${input.githubUsername}" (${input.period}):`, error);
+        send("error", { error: describeAiError(error) });
       } finally {
         if (!closed) {
           try {
