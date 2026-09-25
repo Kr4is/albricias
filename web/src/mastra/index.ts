@@ -29,6 +29,7 @@ import path from "node:path";
 import { Mastra } from "@mastra/core";
 
 import { correspondent, outlineEditor } from "./agents";
+import { allScorers } from "./scorers";
 import { frontPageWorkflow } from "./workflows/front-page";
 
 export const isLocal = process.env.NODE_ENV !== "production";
@@ -68,6 +69,7 @@ async function createMastra(): Promise<Mastra> {
   return new Mastra({
     agents: { outlineEditor, correspondent },
     workflows: { frontPage: frontPageWorkflow },
+    ...(isLocal ? { scorers: allScorers } : {}),
     ...(isLocal ? await localOptions() : {}),
   });
 }

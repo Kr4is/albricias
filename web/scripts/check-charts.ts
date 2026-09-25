@@ -63,6 +63,13 @@ const total = (chart: { datasets: { data: number[] }[] }) => chart.datasets.redu
   assert.match(day.title, /hour by hour/);
   assert.deepEqual(day.labels, ["14h", "15h", "16h", "17h", "18h"]);
   assert.equal(total(day), 8);
+  // Three features on one repo: three different shapes, then none.
+  const used = new Set<string>();
+  const feature = section({ kind: "feature", repos: ["me/big"], window: { from: "2026-09-06", to: "2026-09-21" } });
+  const shapes = [0, 1, 2, 3].map(() => chartsForSection(dossier, feature, used)[0]);
+  assert.deepEqual(shapes.slice(0, 3).map((c) => [c.type, c.title.split(", ").pop()]), [["bar", "day by day"], ["bar", "by hour of day"], ["line", "commit by commit"]]);
+  assert.equal(shapes[3], undefined);
+  assert.equal(total({ datasets: [{ data: [shapes[2].datasets[0].data.at(-1)!] }] }), 35);
   // Too little to chart.
   assert.equal(chartsForSection(dossier, section({ kind: "feature", repos: ["me/small"] })).length, 0);
 }
@@ -80,12 +87,12 @@ const total = (chart: { datasets: { data: number[] }[] }) => chart.datasets.redu
 
 // The boxes, as data: facts and the mix (the arc too without an overview); one card per star, best known first.
 {
-  const numbers = numbersBox(dossier, true)!;
+  const numbers = numbersBox(dossier, new Set(["arc"]))!;
   const facts = numbers.blocks[0];
   assert.equal(facts.type, "facts");
   assert.deepEqual(facts.type === "facts" && facts.items.find((f) => f.label === "Commits"), { label: "Commits", value: "38" });
   assert.deepEqual(numbers.blocks.map((b) => (b.type === "chart" ? b.chart.type : b.type)), ["facts", "doughnut"]);
-  assert.deepEqual(numbersBox(dossier, false)!.blocks.map((b) => (b.type === "chart" ? b.chart.type : b.type)), ["facts", "doughnut", "line"]);
+  assert.deepEqual(numbersBox(dossier)!.blocks.map((b) => (b.type === "chart" ? b.chart.type : b.type)), ["facts", "doughnut", "line"]);
   const mix = numbers.blocks[1];
   assert.equal(mix.type === "chart" && total(mix.chart), 38);
 

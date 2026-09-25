@@ -116,9 +116,13 @@ export const PERIOD_POST_SECTION_SYSTEM =
   "you are writing (a round-up, a feature) — the reader sees only a " +
   "newspaper. Never invent an " +
   "event, a number, or a motive the material does not state, and prefer saying the " +
-  "period was quiet to filling it out. Starred repositories are other " +
-  "people's projects the user starred: say what they are and do, from " +
-  "their descriptions, and never credit the user with building them. " +
+  "period was quiet to filling it out. Give each date as the material " +
+  "records it (\"on September 19\"), never an interval you worked out " +
+  "yourself (\"two days later\"). The prompt names whose activity this " +
+  "is: call them by that name or \"the author\", never \"the user\". " +
+  "Starred repositories are other people's projects the author starred: " +
+  "say what they are and do, from their descriptions, and never credit " +
+  "the author with building them. " +
   "Write prose only — no tables and no charts: the page sets its own " +
   "charts beside yours, computed from the same figures.";
 
@@ -144,6 +148,7 @@ const KIND_NOTES: Record<SectionKind, string> = {
 };
 
 export function buildSectionPrompt(input: {
+  author: string;
   periodLabel: string;
   heading: string;
   brief: string;
@@ -153,7 +158,7 @@ export function buildSectionPrompt(input: {
   sourceText: string;
 }): string {
   return (
-    `The period being covered is ${input.periodLabel}.\n\n` +
+    `The period being covered is ${input.periodLabel}, in the GitHub activity of ${input.author}.\n\n` +
     `The post's overall premise: ${input.premise}\n\n` +
     `Write the section titled "${input.heading}". ${input.brief}\n\n` +
     `${KIND_NOTES[input.kind]}\n\n` +

@@ -29,10 +29,15 @@ const NOISE_HOSTS = [
   "github-readme-stats.vercel.app", "visitor-badge.laobi.icu", "komarev.com", "hits.seeyoufarm.com", "pepy.tech",
   "static.pepy.tech", "img.youtube.com", "discordapp.com", "dcbadge.vercel.app", "repobeats.axiom.co", "www.bestpractices.dev",
   "api.securityscorecards.dev", "sonarcloud.io", "flat.badgen.net", "ghcr-badge.egpl.dev", "readthedocs.org", "gitter.im",
+  "skills.sh", "img.clerk.com", "api.netlify.com", "vercel.com", "deploy.workers.cloudflare.com", "gitpod.io",
+  // Stock photography: a README's decoration, not the project.
+  "images.unsplash.com", "unsplash.com", "images.pexels.com", "cdn.pixabay.com", "pixabay.com",
 ];
 const NOISE_PATH = /badge|shield|\/workflows\/|actions\/workflow|\/status\.|sponsor|backers|contributors|avatar|\.svg($|\?)/i;
 /** Alt text of someone else's picture: a sponsor's logo, a badge, a button. */
-const NOISE_ALT = /sponsor|backer|supported by|powered by|built with|badge|build status|coverage|license|downloads|version|discord|twitter|follow|star history|stargazers|contributors|donate|buy me/i;
+const NOISE_ALT = /sponsor|backer|supported by|powered by|built with|badge|build status|coverage|license|downloads|version|discord|twitter|follow|star history|stargazers|contributors|donate|buy me|qr ?code|wechat|background|wallpaper|deploy (to|with|on)|open in/i;
+/** Alt text that is just a domain (`skills.sh`, `npm.io`) — a service's button. */
+const DOMAIN_ALT = /^[\w-]+(\.[\w-]+)+$/;
 const SHOWS_THE_PROJECT = /screen ?shot|screen|demo|preview|hero|banner|cover|showcase|overview|architecture|diagram|workflow|example|interface|dashboard|\bui\b/i;
 const LOGO = /logo|icon|\bmark\b|emblem/i;
 
@@ -90,12 +95,15 @@ export function readmeImages(readme: string, repo: string, base: string): RepoIm
     seen.add(url);
     const { hostname, pathname, search } = new URL(url);
     if (NOISE_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`))) return;
-    if (NOISE_PATH.test(pathname + search) || NOISE_ALT.test(image.alt)) return;
+    if (NOISE_PATH.test(pathname + search) || NOISE_ALT.test(image.alt) || DOMAIN_ALT.test(image.alt.trim())) return;
     if (image.width !== null && image.width < 120) return;
     const words = `${image.alt} ${pathname.split("/").pop() ?? ""}`;
     const logo = LOGO.test(words);
-    // The README's first real picture is usually its header.
-    const score = (SHOWS_THE_PROJECT.test(words) ? 3 : 0) + (logo ? -1 : 0) + (images.length === 0 ? 1 : 0);
+    // The README's first real picture is usually its header; one its authors
+    // described at length shows something worth a caption.
+    const described = describes(image.alt, repo) && image.alt.trim().split(/\s+/).length >= 5;
+    // A "logo banner" is still a logo.
+    const score = (SHOWS_THE_PROJECT.test(words) && !logo ? 3 : 0) + (described ? 2 : 0) + (logo ? -1 : 0) + (images.length === 0 ? 1 : 0);
     images.push({
       image: { url, alt: image.alt.trim() || repo, caption: describes(image.alt, repo) ? image.alt.trim() : null, fit: logo ? "contain" : "cover", source: "readme" },
       score,

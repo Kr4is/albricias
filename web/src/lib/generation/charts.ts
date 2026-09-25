@@ -6,7 +6,9 @@
  *   overview      the working day as a 24-hour rose, and the period's arc
  *                 week by week (or day by day)
  *   feature       its repository's commits day by day over its window,
- *                 stacked by kind of work (hour by hour for a single day)
+ *                 stacked by kind of work (hour by hour for a single day);
+ *                 a second feature on the same page gets the stretch's
+ *                 hours of day instead, a third its climb
  *   roundup       its repositories side by side, stacked by kind of work
  *   reading-list  how big the starred projects are (log scale — they
  *                 range from a few hundred stars to a hundred thousand)
@@ -146,12 +148,54 @@ function repoCourse(dossier: Dossier, repo: string, window: { from: string; to: 
   const keys = daysBetween(days[0], days[days.length - 1]);
   return {
     type: "bar",
-    title: window ? `${shortDay(keys[0])} – ${shortDay(keys[keys.length - 1])}` : "Commits, day by day",
+    title: `${span(keys[0], keys[keys.length - 1])}, day by day`,
     labels: keys.map(shortDay),
     datasets: stackedByKind(commits, keys, (c) => c.date),
     stacked: true,
     unit: "commits",
     caption: `${plural(commits.length, "commit")} to ${repo}, by kind of work.`,
+  };
+}
+
+/** `Sep 6 – Sep 11`, or `Sep 21` for one day. */
+function span(from: string, to: string): string {
+  return from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`;
+}
+
+/** A repository's commits over a window by hour of the author's day — when that stretch of work got done. */
+function repoHours(dossier: Dossier, repo: string, window: { from: string; to: string } | null): ChartSpec | null {
+  const commits = commitsOf(dossier, [repo], window);
+  const hours = commits.map((c) => c.hour).filter((h): h is number => h !== null);
+  if (hours.length < MIN_CHART_COMMITS) return null;
+  const days = commits.map((c) => c.date).sort();
+  const data = Array.from({ length: 24 }, (_, h) => hours.filter((x) => x === h).length);
+  const peak = data.indexOf(Math.max(...data));
+  return {
+    type: "bar",
+    title: `${span(days[0], days[days.length - 1])}, by hour of day`,
+    labels: data.map((_, h) => `${String(h).padStart(2, "0")}h`),
+    datasets: [{ label: "Commits", data }],
+    unit: "commits",
+    caption: `When the ${plural(commits.length, "commit")} to ${repo} were made, in the author's own time — most at ${String(peak).padStart(2, "0")}:00.`,
+  };
+}
+
+/** A repository's commits over a window, piling up day by day. */
+function repoClimb(dossier: Dossier, repo: string, window: { from: string; to: string } | null): ChartSpec | null {
+  const commits = commitsOf(dossier, [repo], window);
+  if (commits.length < MIN_CHART_COMMITS) return null;
+  const dates = commits.map((c) => c.date).sort();
+  const keys = daysBetween(dates[0], dates[dates.length - 1]);
+  if (keys.length < 3) return null;
+  let running = 0;
+  const data = keys.map((day) => (running += commits.filter((c) => c.date === day).length));
+  return {
+    type: "line",
+    title: `${span(keys[0], keys[keys.length - 1])}, commit by commit`,
+    labels: keys.map(shortDay),
+    datasets: [{ label: "Commits so far", data }],
+    unit: "commits",
+    caption: `${repo}'s commits adding up over the stretch — the steep days are where the work landed.`,
   };
 }
 
@@ -219,29 +263,53 @@ function workMix(commits: Commit[]): ChartSpec | null {
 // The desk
 // ---------------------------------------------------------------------------
 
-/** The charts for one section (see the header) — none, one, or two for an overview. */
-export function chartsForSection(dossier: Dossier, section: ReviewedSection): ChartSpec[] {
+/**
+ * The charts for one section (see the header) — none, one, or two for an
+ * overview. `used` is the shapes already on the page: several features on
+ * one busy repository each get a different one (its course day by day, its
+ * hours, its climb) rather than the same bars three times; one with every
+ * shape taken gets none.
+ */
+export function chartsForSection(dossier: Dossier, section: ReviewedSection, used: Set<string> = new Set()): ChartSpec[] {
   if (section.lengthTier === "short") return [];
+  const pick = (candidates: [string, () => ChartSpec | null][]): ChartSpec | null => {
+    for (const [shape, build] of candidates) {
+      if (used.has(shape)) continue;
+      const chart = build();
+      if (chart) {
+        used.add(shape);
+        return chart;
+      }
+    }
+    return null;
+  };
+  const { repos, window } = section;
   const charts: (ChartSpec | null)[] = [];
   switch (section.kind) {
     case "overview":
-      charts.push(workingDay(commitsOf(dossier)), section.lengthTier === "long" ? arc(dossier) : null);
+      charts.push(pick([["rose", () => workingDay(commitsOf(dossier))]]), section.lengthTier === "long" ? pick([["arc", () => arc(dossier)]]) : null);
       break;
     case "feature":
-      charts.push(repoCourse(dossier, section.repos[0], section.window));
+      charts.push(
+        pick([
+          ["course", () => repoCourse(dossier, repos[0], window)],
+          ["hours", () => repoHours(dossier, repos[0], window)],
+          ["climb", () => repoClimb(dossier, repos[0], window)],
+        ]),
+      );
       break;
     case "roundup":
-      charts.push(repoComparison(dossier, section.repos));
+      charts.push(pick([["comparison", () => repoComparison(dossier, repos)]]));
       break;
     case "reading-list":
-      charts.push(starSizes(dossier, section.repos));
+      charts.push(pick([["sizes", () => starSizes(dossier, repos)]]));
       break;
   }
   return charts.filter((chart): chart is ChartSpec => chart !== null);
 }
 
-/** The numbers box: the period's facts, the mix of work, and — when no overview section tells it — the arc. */
-export function numbersBox(dossier: Dossier, hasOverview: boolean): { deck: string; blocks: ArticleBlock[] } | null {
+/** The numbers box: the period's facts, the mix of work, and — when no section already charts it — the arc. */
+export function numbersBox(dossier: Dossier, used: Set<string> = new Set()): { deck: string; blocks: ArticleBlock[] } | null {
   const { totals, rhythm } = dossier.overview;
   if (totals.events === 0) return null;
   const facts: Fact[] = [
@@ -258,7 +326,7 @@ export function numbersBox(dossier: Dossier, hasOverview: boolean): { deck: stri
   const blocks: ArticleBlock[] = [{ type: "facts", items: facts }];
   const mix = workMix(commitsOf(dossier));
   if (mix) blocks.push({ type: "chart", chart: mix });
-  const course = hasOverview ? null : arc(dossier);
+  const course = used.has("arc") ? null : arc(dossier);
   if (course) blocks.push({ type: "chart", chart: course });
   const repos = dossier.repos.length;
   return { deck: `${plural(totals.events, "event")} recorded across ${plural(repos, "repository", "repositories")}.`, blocks };

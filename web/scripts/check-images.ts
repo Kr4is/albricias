@@ -33,7 +33,7 @@ Sponsorship: [![Sponsored by AppsCode](https://cdn.appscode.com/images/logo/apps
   assert.deepEqual(readmeImages(readme, "restic/restic", BASE), []);
 }
 
-// The header banner, then diagrams and screenshots; relative and blob paths resolved, tiny icons and SVGs dropped, captions only when they say something.
+// A described diagram, then the header banner and screenshots; relative and blob paths resolved, tiny icons and SVGs dropped, captions only when they say something.
 {
   const readme = `# App
 <img src="docs/icon.png" width="32">
@@ -43,13 +43,24 @@ Sponsorship: [![Sponsored by AppsCode](https://cdn.appscode.com/images/logo/apps
 <img src="./shots/screenshot-dark.jpg" alt="screenshot">`;
   const images = readmeImages(readme, "me/app", BASE);
   assert.deepEqual(images.map((i) => i.url), [
-    "https://raw.githubusercontent.com/me/app/main/assets/banner.png",
     "https://raw.githubusercontent.com/me/app/main/docs/arch.png",
+    "https://raw.githubusercontent.com/me/app/main/assets/banner.png",
     "https://raw.githubusercontent.com/me/app/main/shots/screenshot-dark.jpg",
   ]);
-  assert.equal(images[0].caption, null);
-  assert.equal(images[1].caption, "Architecture: how the agents talk to the runtime");
+  assert.equal(images[0].caption, "Architecture: how the agents talk to the runtime");
+  assert.equal(images[1].caption, null);
   assert.equal(images[2].caption, null);
+}
+
+// The trace-5 noise: a stock photo, a service's button, a QR code; a described screenshot beats the logo banner.
+{
+  const readme = `<img src="https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=1200" alt="Library Background">
+<img src="docs/assets/caveman-logo-banner.png" alt="Caveman">
+[![skills.sh](https://skills.sh/b/JuliusBrussee/caveman)](https://skills.sh)
+![WeChat group 10 QR code for the Orca community](docs/assets/wechat-qr.jpg)
+![Caveman Learn report: TLDR summary and savings cards on the left](docs/assets/learn-report.png)`;
+  const images = readmeImages(readme, "JuliusBrussee/caveman", "https://raw.githubusercontent.com/JuliusBrussee/caveman/main/README.md");
+  assert.deepEqual(images.map((i) => i.url.split("/").pop()), ["learn-report.png", "caveman-logo-banner.png"]);
 }
 
 // A homepage's preview image, relative to the page.

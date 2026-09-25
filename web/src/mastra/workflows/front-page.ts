@@ -52,6 +52,7 @@ import { outlineSchema, reviewOutline, SECTION_KINDS, type Outline, type Section
 import { buildOutlinePrompt, buildSectionPrompt, DEFAULT_TEMPERATURE, createLeadingHeadingFilter } from "@/lib/generation/period-post";
 import { pickLayoutForContent } from "@/lib/layout";
 import { CALL_OPTIONS_KEY, type CallOptions } from "@/mastra/model";
+import { reviewScorers, sectionScorers } from "@/mastra/scorers";
 import { proxiedImageUrl } from "@/lib/image-proxy";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
 import { fetchRepoImages, type RepoImage } from "@/lib/sources/repo-images";
@@ -156,6 +157,9 @@ const sectionResultSchema = z.object({
   index: z.number(),
   ok: z.boolean(),
   error: z.string().optional(),
+  /** What was written, and the material it was written from — what the scorers check it against. */
+  text: z.string(),
+  material: z.string(),
 });
 
 const outputSchema = z.object({
@@ -349,6 +353,7 @@ const review = createStep({
   description: "Check the outline against the dossier and fix what a model gets wrong — repo names, kinds, the lead, the count, the stars.",
   inputSchema: z.object({ plan: plannedSchema, pictures: picturesSchema }),
   outputSchema: reviewedSchema,
+  scorers: reviewScorers,
   execute: async ({ inputData, getStepResult }) => {
     const gathered = getStepResult(gather);
     const reviewed = reviewOutline(inputData.plan.outline, gathered.dossier, { cadence: gathered.cadence, periodLabel: gathered.periodLabel });
@@ -388,10 +393,12 @@ const illustrate = createStep({
       return null;
     };
 
+    // The chart shapes already on the page, so no two sections repeat one.
+    const shapes = new Set<string>();
     const sections = inputData.sections.map((section) => ({
       ...section,
       image: section.kind === "overview" ? null : pictureFor(section.repos),
-      blocks: chartsForSection(dossier, section).map((chart) => ({ type: "chart" as const, chart })),
+      blocks: chartsForSection(dossier, section, shapes).map((chart) => ({ type: "chart" as const, chart })),
       premise: inputData.premise,
       periodLabel,
     }));
@@ -399,7 +406,7 @@ const illustrate = createStep({
     const boxes: z.infer<typeof boxSchema>[] = [];
     const stars = inputData.dropStarsBox ? null : starsBox(dossier);
     if (stars) boxes.push({ id: STARS_BOX_ID, title: "On the Shelves", category: "Miscellany", deck: stars.deck, image: pictureFor(stars.order), blocks: stars.blocks });
-    const numbers = numbersBox(dossier, sections.some((section) => section.kind === "overview"));
+    const numbers = numbersBox(dossier, shapes);
     if (numbers) boxes.push({ id: NUMBERS_BOX_ID, title: "By the Numbers", category: "Almanac", deck: numbers.deck, image: null, blocks: numbers.blocks });
 
     await page(writer).write({ event: "layout", data: { layout: pickLayoutForContent(sections.length + boxes.length) } });
@@ -412,9 +419,11 @@ const writeSection = createStep({
   description: "Have the correspondent write one section, streaming it to the page as it's written.",
   inputSchema: sectionJobSchema,
   outputSchema: sectionResultSchema,
-  execute: async ({ inputData, mastra, requestContext, writer, getStepResult }) => {
+  scorers: sectionScorers,
+  execute: async ({ inputData, mastra, requestContext, writer, getStepResult, getInitData }) => {
     const out = page(writer);
     const { index } = inputData;
+    const author = getInitData<z.infer<typeof inputSchema>>().githubUsername;
     const focus = { kind: inputData.kind === "overview" || inputData.kind === "reading-list" ? inputData.kind : ("repos" as const), repos: inputData.repos, window: inputData.window };
     const sourceText = dossierText(sliceDossier(getStepResult(gather).dossier, focus));
     await out.write({
@@ -438,7 +447,7 @@ const writeSection = createStep({
         await out.write({ event: "section-delta", data: { index, delta } });
       };
       try {
-        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt({ ...inputData, sourceText }), requestContext, {
+        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt({ ...inputData, author, sourceText }), requestContext, {
           onDelta: (delta) => send(headings.push(delta)),
           call: "sections",
         });
@@ -466,12 +475,12 @@ const writeSection = createStep({
       // already on the page. The section is dropped instead.
       if (isUnusable(result.reply)) throw new Error(`truncated/empty (finishReason: ${result.reply.finishReason})`);
       await out.write({ event: "section-end", data: { index } });
-      return { index, ok: true };
+      return { index, ok: true, text: result.reply.text, material: sourceText };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[front-page] section "${inputData.heading}" failed: ${message}`);
       await out.write({ event: "section-end", data: { index, failed: true } });
-      return { index, ok: false, error: message };
+      return { index, ok: false, error: message, text: "", material: sourceText };
     }
   },
 });
