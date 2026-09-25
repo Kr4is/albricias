@@ -1,14 +1,18 @@
 /**
  * The front page, as a Mastra workflow:
  *
- *   gather → plan → foreach(write-section, SECTION_CONCURRENCY) → assemble
+ *   gather → plan → review → foreach(write-section, SECTION_CONCURRENCY) → assemble
  *
  *   gather         GitHub activity + repo details → the period's dossier
  *                  (typed JSON, `@/lib/generation/dossier`)
- *   plan           the outline editor's headline, premise and briefs; each
- *                  brief's REPO checked against the repos really touched
- *   write-section  one correspondent call per brief, streamed token by token
- *   assemble       the two computed boxes (stars, numbers), and done
+ *   plan           the outline editor's outline, as a typed object
+ *                  (`outlineSchema`, Mastra structured output)
+ *   review         the outline checked and fixed against the dossier, in
+ *                  code (`reviewOutline`): real repo names, one reading
+ *                  list, the lead, the section count, forgotten work
+ *   write-section  one correspondent call per section, streamed token by
+ *                  token, reading only its slice of the dossier
+ *   assemble       the computed boxes (stars, numbers), and done
  *
  * Every step also narrates itself to the page through `writer`: each
  * `writer.write({ event, data })` becomes one `workflow-step-output` in the
@@ -35,16 +39,11 @@ import { describeAiError } from "@/lib/ai/error";
 import { defaultEditionVol, editionBounds } from "@/lib/cadence";
 import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
 import { buildByTheNumbersArticle, buildStarsArticle, starImageCandidates } from "@/lib/generation/deterministic-articles";
-import {
-  buildOutlinePrompt,
-  buildSectionPrompt,
-  DEFAULT_TEMPERATURE,
-  createLeadingHeadingFilter,
-  parseOutline,
-} from "@/lib/generation/period-post";
-import { buildDossier, dossierRepos, dossierSchema, dossierText, sliceDossier } from "@/lib/generation/dossier";
+import { buildDossier, dossierSchema, dossierText, sliceDossier } from "@/lib/generation/dossier";
+import { outlineSchema, reviewOutline, SECTION_KINDS, type Outline, type SectionKind } from "@/lib/generation/outline";
+import { buildOutlinePrompt, buildSectionPrompt, DEFAULT_TEMPERATURE, createLeadingHeadingFilter } from "@/lib/generation/period-post";
 import { pickLayoutForContent } from "@/lib/layout";
-import { repoImageUrl, resolveRepo } from "@/lib/repo-image";
+import { repoImageUrl } from "@/lib/repo-image";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
 
 /** How many sections are written at once — see the header. */
@@ -83,26 +82,44 @@ const gatheredSchema = z.object({
   starCandidates: z.array(z.string()),
 });
 
+const plannedSchema = z.object({
+  /** What the outline editor answered — `null` when it never came back as a valid outline. */
+  outline: outlineSchema.nullable(),
+});
+
 const sectionBriefSchema = z.object({
   index: z.number(),
   heading: z.string(),
   brief: z.string(),
+  kind: z.enum(SECTION_KINDS),
   lengthTier: lengthTierSchema,
-  repo: z.string().nullable(),
+  /** The repos the section covers — what it reads of the dossier (`sliceDossier`), the first its picture. */
+  repos: z.array(z.string()),
+  window: z.object({ from: z.string(), to: z.string() }).nullable(),
   imageUrl: z.string().nullable(),
   premise: z.string(),
   periodLabel: z.string(),
-  /** The repos the section is about — it reads the dossier sliced to these, or all of it when empty. */
-  repos: z.array(z.string()),
 });
 
-const planSchema = z.object({
+const reviewedSchema = z.object({
   title: z.string(),
   premise: z.string(),
   sections: z.array(sectionBriefSchema),
   /** Repos whose card a section already shows. */
   pictured: z.array(z.string()),
+  /** A reading-list section covers the stars, so the stars box is left out. */
+  dropStarsBox: z.boolean(),
+  /** What the review changed in the editor's outline, and why. */
+  notes: z.array(z.string()),
 });
+
+/** How the page labels each kind of section. */
+const CATEGORY: Record<SectionKind, string> = {
+  feature: "Feature",
+  roundup: "Dispatches",
+  overview: "The Period",
+  "reading-list": "Reading List",
+};
 
 const sectionResultSchema = z.object({
   index: z.number(),
@@ -135,9 +152,11 @@ function page(writer: unknown): Writer {
   return (writer as Writer | undefined) ?? { write: async () => {} };
 }
 
-interface StreamedText {
+interface StreamedText<T = never> {
   text: string;
   finishReason: string;
+  /** With `schema`: the reply validated against it, or `undefined` when it didn't parse or fit. */
+  object?: T;
 }
 
 /**
@@ -152,25 +171,34 @@ interface StreamedText {
  * back into a thrown error here, worded for the visitor by
  * `describeAiError`. `maxRetries: 0` (Mastra's default, made explicit):
  * retries add seconds of backoff before a real failure (a bad key) surfaces.
+ *
+ * With a `schema`, the reply is Mastra structured output: the schema (its
+ * field descriptions included) goes into the system prompt and the JSON
+ * that comes back is parsed and validated against it — prompt injection
+ * rather than the provider's native JSON mode, which not every
+ * OpenAI-compatible gateway or model honours. A reply that doesn't fit
+ * leaves `object` undefined (`errorStrategy: "warn"`) for the caller to
+ * retry, instead of failing the run.
  */
-async function streamAgent(
+async function streamAgent<T extends object = never>(
   agent: Agent,
   prompt: string,
   requestContext: RequestContext,
-  onDelta?: (delta: string) => Promise<void>,
-): Promise<StreamedText> {
-  const output = await agent.stream(prompt, {
-    requestContext,
-    modelSettings: { temperature: DEFAULT_TEMPERATURE, maxRetries: 0 },
-  });
-  for await (const delta of output.textStream) await onDelta?.(delta);
+  options: { onDelta?: (delta: string) => Promise<void>; schema?: z.ZodType<T> } = {},
+): Promise<StreamedText<T>> {
+  const settings = { requestContext, modelSettings: { temperature: DEFAULT_TEMPERATURE, maxRetries: 0 } };
+  const output = options.schema
+    ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
+    : await agent.stream(prompt, settings);
+  for await (const delta of output.textStream) await options.onDelta?.(delta);
   const [text, finishReason] = await Promise.all([output.text, output.finishReason]);
   if (finishReason === "error") throw new Error(describeAiError(output.error));
-  return { text: text ?? "", finishReason: finishReason ?? "unknown" };
+  const object = options.schema ? ((await output.object.catch(() => undefined)) as T | undefined) : undefined;
+  return { text: text ?? "", finishReason: finishReason ?? "unknown", object: object ?? undefined };
 }
 
 /** A reply too broken to use: cut off mid-generation, or nothing at all. */
-function isUnusable(result: StreamedText): boolean {
+function isUnusable(result: StreamedText<unknown>): boolean {
   return result.finishReason === "length" || !result.text.trim();
 }
 
@@ -233,60 +261,59 @@ const gather = createStep({
 
 const plan = createStep({
   id: "plan",
-  description: "Ask the outline editor for the headline, premise and section briefs; check each brief's repo against the real ones.",
+  description: "Ask the outline editor for the page's outline — headline, premise, and each section's kind, brief, length and repos — as a typed object.",
   inputSchema: gatheredSchema,
-  outputSchema: planSchema,
+  outputSchema: plannedSchema,
   execute: async ({ inputData, mastra, requestContext, writer }) => {
     const out = page(writer);
     await out.write({ event: "status", data: { message: "Planning the front page…" } });
 
     const editor = mastra.getAgent("outlineEditor");
     const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: dossierText(inputData.dossier) });
-    let reply = await streamAgent(editor, prompt, requestContext);
-    if (isUnusable(reply)) {
-      console.warn(`[front-page] outline truncated/empty (finishReason: ${reply.finishReason}) — retrying once`);
-      reply = await streamAgent(editor, prompt, requestContext);
+    const ask = () => streamAgent<Outline>(editor, prompt, requestContext, { schema: outlineSchema });
+    let reply = await ask();
+    if (isUnusable(reply) || !reply.object) {
+      console.warn(`[front-page] outline unusable (finishReason: ${reply.finishReason}, ${reply.object ? "parsed" : "no valid outline"}) — retrying once`);
+      reply = await ask();
     }
-    if (isUnusable(reply)) {
+    if (reply.finishReason === "length" && !reply.object) {
       throw new Error(
-        `The outline came back truncated/empty twice in a row (finishReason: ${reply.finishReason}). ` +
-          "The provider may be enforcing its own token ceiling, or the model may be failing silently.",
+        "The outline came back truncated twice in a row. The provider may be enforcing its own token ceiling, or the model may be failing silently.",
       );
     }
+    // Still nothing valid: `review` makes do with one section, rather than failing the edition.
+    return { outline: reply.object ?? null };
+  },
+});
 
-    const outline = parseOutline(reply.text);
-    // A weak model can write fine prose yet miss the "## heading" / "BRIEF:"
-    // shape — one section over the whole period beats failing the edition.
-    if (outline.sections.length === 0) {
-      outline.sections = [{ heading: outline.title || inputData.periodLabel, brief: "Cover the period's activity as a whole.", lengthTier: "medium" }];
-    }
-    const title = outline.title || inputData.periodLabel;
+const review = createStep({
+  id: "review",
+  description: "Check the outline against the dossier and fix what a model gets wrong — repo names, kinds, the lead, the count, the stars — then pick each section's picture.",
+  inputSchema: plannedSchema,
+  outputSchema: reviewedSchema,
+  execute: async ({ inputData, getStepResult, writer }) => {
+    const gathered = getStepResult(gather);
+    const reviewed = reviewOutline(inputData.outline, gathered.dossier, { cadence: gathered.cadence, periodLabel: gathered.periodLabel });
+    for (const note of reviewed.notes) console.info(`[front-page] review: ${note}`);
 
     // Each repo's card appears at most once on the page.
-    const repos = new Map(dossierRepos(inputData.dossier).map((repo) => [repo.toLowerCase(), repo]));
     const pictured = new Set<string>();
-    const sections = outline.sections.map((section, index) => {
-      const repo = resolveRepo(section.repo, repos);
-      const imageUrl = repo && !pictured.has(repo) ? repoImageUrl(repo) : null;
+    const sections = reviewed.sections.map((section, index) => {
+      const repo = section.repos.find((name) => !pictured.has(name));
       if (repo) pictured.add(repo);
       return {
+        ...section,
         index,
-        heading: section.heading,
-        brief: section.brief,
-        lengthTier: section.lengthTier,
-        repo,
-        imageUrl,
-        premise: outline.premise,
-        periodLabel: inputData.periodLabel,
-        // What the section reads: the dossier sliced to these repos
-        // (`write-section`), or all of it when empty.
-        repos: repo ? [repo] : [],
+        imageUrl: repo && section.kind !== "overview" ? repoImageUrl(repo) : null,
+        premise: reviewed.premise,
+        periodLabel: gathered.periodLabel,
       };
     });
 
-    const total = sections.length + (inputData.starsArticle ? 1 : 0) + (inputData.numbersArticle ? 1 : 0);
-    await out.write({ event: "layout", data: { layout: pickLayoutForContent(total) } });
-    return { title, premise: outline.premise, sections, pictured: [...pictured] };
+    const starsBox = gathered.starsArticle && !reviewed.dropStarsBox;
+    const total = sections.length + (starsBox ? 1 : 0) + (gathered.numbersArticle ? 1 : 0);
+    await page(writer).write({ event: "layout", data: { layout: pickLayoutForContent(total) } });
+    return { title: reviewed.title, premise: reviewed.premise, sections, pictured: [...pictured], dropStarsBox: reviewed.dropStarsBox, notes: reviewed.notes };
   },
 });
 
@@ -298,10 +325,11 @@ const writeSection = createStep({
   execute: async ({ inputData, mastra, requestContext, writer, getStepResult }) => {
     const out = page(writer);
     const { index } = inputData;
-    const sourceText = dossierText(sliceDossier(getStepResult(gather).dossier, inputData.repos));
+    const focus = { kind: inputData.kind === "overview" || inputData.kind === "reading-list" ? inputData.kind : ("repos" as const), repos: inputData.repos, window: inputData.window };
+    const sourceText = dossierText(sliceDossier(getStepResult(gather).dossier, focus));
     await out.write({
       event: "section-start",
-      data: { index, heading: inputData.heading, category: "Dispatch", author: "The Albricias Correspondent", deck: inputData.brief, imageUrl: inputData.imageUrl },
+      data: { index, heading: inputData.heading, category: CATEGORY[inputData.kind], author: "The Albricias Correspondent", deck: inputData.brief, imageUrl: inputData.imageUrl },
     });
     const attempt = async () => {
       const headings = createLeadingHeadingFilter();
@@ -312,9 +340,9 @@ const writeSection = createStep({
         await out.write({ event: "section-delta", data: { index, delta } });
       };
       try {
-        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt({ ...inputData, sourceText }), requestContext, (delta) =>
-          send(headings.push(delta)),
-        );
+        const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt({ ...inputData, sourceText }), requestContext, {
+          onDelta: (delta) => send(headings.push(delta)),
+        });
         await send(headings.flush());
         return { reply, sent };
       } catch (error) {
@@ -357,7 +385,7 @@ const assemble = createStep({
   execute: async ({ inputData, getStepResult, writer }) => {
     const out = page(writer);
     const gathered = getStepResult(gather);
-    const planned = getStepResult(plan);
+    const planned = getStepResult(review);
 
     /** A computed article, sent through the same three events a written section uses. */
     const sendWhole = async (article: z.infer<typeof articleSchema>) => {
@@ -370,7 +398,7 @@ const assemble = createStep({
     };
 
     // After the written sections, so the outline's own lead stays the lead.
-    if (gathered.starsArticle) {
+    if (gathered.starsArticle && !planned.dropStarsBox) {
       const pictured = new Set(planned.pictured);
       const card = gathered.starCandidates.find((repo) => !pictured.has(repo));
       await sendWhole({ ...gathered.starsArticle, imageUrl: card ? repoImageUrl(card) : null });
@@ -401,6 +429,7 @@ export const frontPageWorkflow = createWorkflow({
 })
   .then(gather)
   .then(plan)
+  .then(review)
   .map(async ({ inputData }) => inputData.sections)
   .foreach(writeSection, { concurrency: SECTION_CONCURRENCY })
   .then(assemble)

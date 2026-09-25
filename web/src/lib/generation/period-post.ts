@@ -1,11 +1,12 @@
 /**
- * The period post's words: the paper's voice, the two prompts (outline
- * editor, section correspondent), and the parser for the outline's reply.
- * Pure — no model calls; the `front-page` Mastra workflow
- * (`@/mastra/workflows/front-page`) runs the agents that use these.
+ * The period post's words: the paper's voice and the two prompts (outline
+ * editor, section correspondent). Pure — no model calls; the `front-page`
+ * Mastra workflow (`@/mastra/workflows/front-page`) runs the agents that
+ * use these. The outline's shape is `outlineSchema` (`./outline`).
  */
 
 import type { Cadence } from "@/lib/edition-helpers";
+import { SECTION_RANGE, type LengthTier, type SectionKind } from "@/lib/generation/outline";
 
 /** Verbatim voice of the whole paper. */
 const NEWSPAPER_PERSONA =
@@ -18,20 +19,6 @@ const NEWSPAPER_PERSONA =
 
 /** The paper's house temperature — a little flair, not invention. */
 export const DEFAULT_TEMPERATURE = 0.8;
-
-export type LengthTier = "short" | "medium" | "long";
-
-/**
- * How many sections a period's material may support — a quiet period should
- * still propose fewer. Daily floors at 2, not 1: a lead plus the
- * deterministic asides alone reads as a thin page, and even one day's
- * activity can almost always be sliced into two honest angles.
- */
-const SECTION_RANGE: Record<Cadence, readonly [number, number]> = {
-  daily: [2, 4],
-  weekly: [3, 6],
-  monthly: [5, 9],
-};
 
 /** Word-count band per length tier — named bands, not a numeric target no model hits anyway. */
 const LENGTH_BANDS: Record<LengthTier, string> = {
@@ -86,55 +73,38 @@ export const PERIOD_POST_OUTLINE_SYSTEM =
   "activity over a period, which someone else will write one section at a " +
   "time from the material given to you. " +
   MATERIAL_GUIDE +
-  "The user prompt also states the period being covered and exactly how " +
+  " The user prompt also states the period being covered and exactly how " +
   "many sections to propose — follow that range precisely.\n\n" +
-  "Read the material once, then reply with exactly this shape, nothing else:\n" +
-  "\n" +
-  "# <a compelling headline for the period>\n" +
-  "\n" +
-  "PREMISE: <one short paragraph — what kind of period this was, the thread " +
-  "that ties its sections together>\n" +
-  "\n" +
-  "## <first section heading>\n" +
-  "BRIEF: <one or two sentences on what this section covers>\n" +
-  "LENGTH: short|medium|long\n" +
-  "REPO: <owner/name of the one repository this section is mainly about>\n" +
-  "\n" +
-  "## <second section heading>\n" +
-  "BRIEF: ...\n" +
-  "LENGTH: ...\n" +
-  "REPO: ...\n" +
-  "\n" +
-  "(and so on)\n" +
-  "\n" +
+  "Reply with the outline as one JSON object: a headline, a premise, and " +
+  "the sections in page order, the first being the lead. Each section has " +
+  "a heading, a kind, a brief, a length, the repositories it covers and, " +
+  "rarely, a window of days.\n\n" +
   "Propose only as many sections as the period's own material genuinely " +
   "supports, up to the stated maximum — a quiet period deserves fewer " +
   "sections, and padding it out is a worse outline than a shorter, honest " +
-  "one. When the material spans many repositories or a large number of " +
-  "events, do not propose one section per item — group related activity by " +
-  "theme or repository cluster and cover the most interesting handful in " +
-  "depth rather than everything shallowly. A repository earns its own " +
-  "section when the period did real work in it; everything smaller belongs " +
-  "inside another section as a passing mention, not a section of its own. " +
-  "Starred repositories are worth a section of their own when there are " +
-  "several with something to say — what the user was reading about, what " +
-  "the projects are and do, any theme they share — with REPO set to the " +
-  "most notable of them; write about them as other people's work, never " +
-  "as the user's. Keep sections " +
-  "non-overlapping: each repository or theme belongs to exactly one " +
-  "section's BRIEF, since each section is written independently by someone " +
-  "who sees only its own brief. Vary each section's LENGTH deliberately — a " +
-  "real newspaper mixes short items with long features; do not mark every " +
-  "section the same length. When the material is thin and the outline has " +
-  "only a few sections, give those few room — lean toward medium and long " +
-  "rather than short, since a front page with little to cover should cover " +
-  "it in depth, not in fragments; still never stretch a section past what " +
-  "its material supports. Write REPO exactly as a repository's `name` (or a " +
-  "star's `repo`) appears in the material (owner/name); omit the REPO line for a section that is not " +
-  "mainly about one repository, such as an overview of the whole period. " +
-  "Ground every section in what the material " +
-  "actually records — never plan a section around activity the period did " +
-  "not have.";
+  "one. Lead with the period's biggest piece of work. A repository earns a " +
+  "`feature` of its own when the period did real work in it; smaller ones " +
+  "go together in a `roundup` that lists them all, not a section each. " +
+  "When one repository holds most of the period and has distinct chapters, " +
+  "you may give it several features, each with a `window` of the days it " +
+  "covers — they must not overlap. At most one `overview`, on the " +
+  "period's shape as a whole — rhythm, totals, the mix of work — and only " +
+  "when that shape is itself worth a story. At most one `reading-list`, " +
+  "when several starred repositories have something to say — what the " +
+  "user was reading about, what the projects are and do, a theme they " +
+  "share — listing the stars it features, the most notable first; they " +
+  "are other people's work, never the user's, and they never outweigh the " +
+  "user's own work. Keep sections non-overlapping: each repository (or " +
+  "window of one) belongs to exactly one section, since each section is " +
+  "written independently by someone who sees only its own brief and " +
+  "material. Vary the lengths deliberately — a real newspaper mixes short " +
+  "items with long features; do not mark every section the same length. " +
+  "When the material is thin and the outline has only a few sections, give " +
+  "those few room — lean toward medium and long rather than short; still " +
+  "never stretch a section past what its material supports. Write every " +
+  "repository exactly as its `name` (or a star's `repo`) appears in the " +
+  "material. Ground every section in what the material actually records — " +
+  "never plan a section around activity the period did not have.";
 
 /**
  * The prose half of this pipeline. No headline, no restating the premise, no
@@ -155,6 +125,8 @@ export const PERIOD_POST_SECTION_SYSTEM =
   MATERIAL_GUIDE +
   " Its `elsewhere` list names the rest of the period's activity, for a " +
   "passing mention at most — you have no detail on it, so never describe it. " +
+  "When its `window` is set, the repositories' commits and other items are " +
+  "only those of that stretch of days — another section covers the rest. " +
   "Write about what happened, naming the actual repositories, " +
   "commits, releases and figures the material records; never invent an " +
   "event, a number, or a motive it does not state, and prefer saying the " +
@@ -164,7 +136,7 @@ export const PERIOD_POST_SECTION_SYSTEM =
   CHART_CLAUSE;
 
 // ---------------------------------------------------------------------------
-// Prompts + outline parsing
+// Prompts
 // ---------------------------------------------------------------------------
 
 export function buildOutlinePrompt(input: { periodLabel: string; cadence: Cadence; sourceText: string }): string {
@@ -176,10 +148,19 @@ export function buildOutlinePrompt(input: { periodLabel: string; cadence: Cadenc
   );
 }
 
+/** What each kind of section is, told to its writer. */
+const KIND_NOTES: Record<SectionKind, string> = {
+  feature: "It is a feature on the repository in its material: the story of the work, in the order it happened.",
+  roundup: "It is a round-up of the repositories in its material: give each its due, the busiest first.",
+  overview: "It is about the period's shape as a whole — its rhythm, totals and mix of work, from the overview; name repositories only in passing.",
+  "reading-list": "It is about the repositories the user starred: other people's projects — what they are and do, and what they say about what the user was reading.",
+};
+
 export function buildSectionPrompt(input: {
   periodLabel: string;
   heading: string;
   brief: string;
+  kind: SectionKind;
   lengthTier: LengthTier;
   premise: string;
   sourceText: string;
@@ -188,66 +169,21 @@ export function buildSectionPrompt(input: {
     `The period being covered is ${input.periodLabel}.\n\n` +
     `The post's overall premise: ${input.premise}\n\n` +
     `Write the section titled "${input.heading}". ${input.brief}\n\n` +
+    `${KIND_NOTES[input.kind]}\n\n` +
     `This section is a ${input.lengthTier} item — aim for ${LENGTH_BANDS[input.lengthTier]}, and no more.\n\n` +
     `This section's material (JSON):\n${input.sourceText}\n`
   );
 }
 
-function parseLengthTier(value: string): LengthTier {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "short" || normalized === "long" ? normalized : "medium";
-}
-
-export interface ParsedOutlineSection {
-  heading: string;
-  brief: string;
-  lengthTier: LengthTier;
-  /** The model's own `REPO:` line, unvalidated — check it against the period's real repos before using it. */
-  repo?: string;
-}
-
-export interface ParsedOutline {
-  title: string;
-  premise: string;
-  sections: ParsedOutlineSection[];
-}
-
-/** Reads the `# headline` / `PREMISE:` / `## heading` / `BRIEF:` / `LENGTH:` / `REPO:` shape `PERIOD_POST_OUTLINE_SYSTEM` asks for. */
-export function parseOutline(raw: string): ParsedOutline {
-  const lines = raw.trim().split("\n");
-  let title = "";
-  let premise = "";
-  const sections: ParsedOutlineSection[] = [];
-  let current: ParsedOutlineSection | null = null;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (line.startsWith("# ")) {
-      title = line.slice(2).trim();
-    } else if (line.startsWith("## ")) {
-      if (current) sections.push(current);
-      current = { heading: line.slice(3).trim(), brief: "", lengthTier: "medium" };
-    } else if (line.startsWith("PREMISE:")) {
-      premise = line.slice("PREMISE:".length).trim();
-    } else if (line.startsWith("BRIEF:") && current) {
-      current.brief = line.slice("BRIEF:".length).trim();
-    } else if (line.startsWith("LENGTH:") && current) {
-      current.lengthTier = parseLengthTier(line.slice("LENGTH:".length));
-    } else if (line.startsWith("REPO:") && current) {
-      current.repo = line.slice("REPO:".length).trim() || undefined;
-    }
-  }
-  if (current) sections.push(current);
-
-  return { title, premise, sections: sections.filter((section) => section.heading) };
-}
-
 /** A first line this long without a newline can't be a heading echo — stop holding it back. */
 const MAX_HEADING_PEEK = 200;
 
+/** A Markdown heading, or a line that is nothing but bold (`**The Month's Rhythm**`) — how a heading echo looks. */
+const HEADING_LINE = /^(?:#{1,6}\s+\S.*|(\*\*|__)[^*_\n]+\1:?)$/;
+
 /**
- * A section writer sometimes opens by repeating its own heading as a
- * Markdown heading, though told not to — and the heading is already on
+ * A section writer sometimes opens by repeating its own heading — as a
+ * Markdown heading or a bold line — though told not to — and the heading is already on
  * the page. This drops such a first line (plus one blank line after it)
  * from the *stream*, since the page shows the deltas as they arrive:
  * `push` each delta and forward what it returns, then forward `flush()`
@@ -264,7 +200,7 @@ export function createLeadingHeadingFilter() {
     if (newline === -1 && !final && lead.length < MAX_HEADING_PEEK) return "";
     decided = true;
     const first = newline === -1 ? lead : lead.slice(0, newline);
-    if (!/^#{1,6}\s+\S/.test(first.trim())) return buffer;
+    if (!HEADING_LINE.test(first.trim())) return buffer;
     if (newline === -1) return "";
     return lead.slice(newline + 1).replace(/^[ \t]*\n/, "");
   };

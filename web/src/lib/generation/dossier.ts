@@ -16,7 +16,8 @@
  *     count: streaks, the busiest day and weekday, what time of day the work
  *     happened, the mix of commit types, the week-by-week arc, new
  *     repositories, and work in other people's repositories;
- *   - `sliceDossier` narrows it to the repositories one section is about.
+ *   - `sliceDossier` narrows it to what one section is about: the
+ *     period's shape, the stars, or some repositories over some days.
  */
 
 import { z } from "zod";
@@ -160,6 +161,10 @@ type Commit = z.infer<typeof commitSchema>;
 /** A section's material: the overview, the repositories it's about in full, and one line on everything else. */
 export const dossierSliceSchema = z.object({
   overview: overviewSchema,
+  window: z
+    .object({ from: z.string(), to: z.string() })
+    .nullable()
+    .describe("When set, the repositories' commits, pull requests, issues, reviews and releases are only those between these dates (their `counts` still cover the whole period)"),
   repos: z.array(repoSchema),
   stars: z.array(starSchema),
   elsewhere: z.array(z.object({ name: z.string(), kind: z.enum(["own", "contribution", "starred"]), summary: z.string() })),
@@ -544,23 +549,56 @@ export function buildDossier(activity: ActivityItem[], details: Map<string, Repo
   };
 }
 
+/** What a section reads — which part of the dossier, see `sliceDossier`. */
+export interface SliceFocus {
+  /** `overview`: the whole period's shape, no repository in detail. `reading-list`: the stars. Anything else: `repos`. */
+  kind: "overview" | "reading-list" | "repos";
+  repos: string[];
+  /** Narrow the focus repositories' dated items to these days (inclusive). */
+  window?: { from: string; to: string } | null;
+}
+
 /**
  * A section's material: the overview, the repositories (worked in or
  * starred) it's about in full, and one line on everything else — so it can
- * mention the rest in passing without being able to write about it. With
- * no repositories named, the whole dossier.
+ * mention the rest in passing without being able to write about it.
+ *
+ * An `overview` section gets no repository in full — its facts are the
+ * overview's, and `elsewhere` names every repository with its counts. A
+ * `reading-list` gets every star, the ones it names first.
+ * With a `window`, a focus repository keeps only what falls inside it —
+ * how three sections on one busy repository each read their own stretch of
+ * it instead of all of it — unless that would leave it empty.
  */
-export function sliceDossier(dossier: Dossier, focus: string[]): Dossier | DossierSlice {
-  const keys = new Set(focus.map((name) => name.toLowerCase()));
-  if (keys.size === 0) return dossier;
+export function sliceDossier(dossier: Dossier, focus: SliceFocus): DossierSlice {
+  const keys = new Set(focus.repos.map((name) => name.toLowerCase()));
   const inFocus = (name: string) => keys.has(name.toLowerCase());
+  const repoFocus = focus.kind === "overview" ? () => false : inFocus;
+  const starFocus = focus.kind === "overview" ? () => false : focus.kind === "reading-list" ? () => true : inFocus;
+  const window = focus.kind === "repos" && focus.window && focus.window.from <= focus.window.to ? focus.window : null;
+  const within = <T extends { date: string }>(items: T[]) => (window ? items.filter((item) => item.date >= window.from && item.date <= window.to) : items);
+  const narrow = (repo: Repo): Repo => {
+    if (!window) return repo;
+    const narrowed = {
+      ...repo,
+      commits: within(repo.commits),
+      pullRequests: within(repo.pullRequests),
+      reviews: within(repo.reviews),
+      issues: within(repo.issues),
+      releases: within(repo.releases),
+    };
+    const empty = narrowed.commits.length + narrowed.pullRequests.length + narrowed.reviews.length + narrowed.issues.length + narrowed.releases.length === 0;
+    return empty ? repo : narrowed;
+  };
   return {
     overview: dossier.overview,
-    repos: dossier.repos.filter((repo) => inFocus(repo.name)),
-    stars: dossier.stars.filter((star) => inFocus(star.repo)),
+    window,
+    repos: dossier.repos.filter((repo) => repoFocus(repo.name)).map(narrow),
+    // A reading list replaces the stars box, so it reads every star — the ones it features first.
+    stars: dossier.stars.filter((star) => starFocus(star.repo)).sort((a, b) => Number(inFocus(b.repo)) - Number(inFocus(a.repo))),
     elsewhere: [
-      ...dossier.repos.filter((repo) => !inFocus(repo.name)).map((repo) => ({ name: repo.name, kind: repo.relation, summary: summarize(repo) })),
-      ...dossier.stars.filter((star) => !inFocus(star.repo)).map((star) => ({ name: star.repo, kind: "starred" as const, summary: `starred ${star.starredOn}` })),
+      ...dossier.repos.filter((repo) => !repoFocus(repo.name)).map((repo) => ({ name: repo.name, kind: repo.relation, summary: summarize(repo) })),
+      ...dossier.stars.filter((star) => !starFocus(star.repo)).map((star) => ({ name: star.repo, kind: "starred" as const, summary: `starred ${star.starredOn}` })),
     ],
   };
 }

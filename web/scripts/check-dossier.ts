@@ -93,12 +93,34 @@ assert.equal(dossier.stars[0].about!.description, "A tool");
 assert.ok(dossierRepos(dossier).includes("acme/tool"));
 
 // A slice: the focus in full, one line on the rest.
-const slice = sliceDossier(dossier, ["ME/APP"]) as DossierSlice;
+const slice: DossierSlice = sliceDossier(dossier, { kind: "repos", repos: ["ME/APP"] });
 assert.deepEqual(slice.repos.map((r) => r.name), ["me/app"]);
 assert.equal(slice.stars.length, 0);
+assert.equal(slice.window, null);
 assert.deepEqual(slice.elsewhere.find((e) => e.name === "friend/lib"), { name: "friend/lib", kind: "contribution", summary: "2 commits" });
 assert.deepEqual(slice.elsewhere.find((e) => e.name === "acme/tool"), { name: "acme/tool", kind: "starred", summary: "starred 2026-09-07" });
-assert.equal(sliceDossier(dossier, []), dossier);
+
+// A window: only that stretch of the repo's commits, counts untouched; an empty one is ignored.
+{
+  const windowed = sliceDossier(dossier, { kind: "repos", repos: ["me/app"], window: { from: "2026-09-01", to: "2026-09-03" } });
+  const repo = windowed.repos[0];
+  assert.ok(repo.commits.length > 0 && repo.commits.every((c) => c.date <= "2026-09-03"));
+  assert.equal(repo.counts.commits, 56);
+  assert.equal(repo.pullRequests.length, 0);
+  const empty = sliceDossier(dossier, { kind: "repos", repos: ["me/app"], window: { from: "2026-09-29", to: "2026-09-30" } });
+  assert.equal(empty.repos[0].commits.length, 56);
+}
+
+// An overview reads no repository in full; a reading list gets every star.
+{
+  const overview = sliceDossier(dossier, { kind: "overview", repos: ["me/app"] });
+  assert.equal(overview.repos.length, 0);
+  assert.equal(overview.stars.length, 0);
+  assert.equal(overview.elsewhere.length, dossier.repos.length + dossier.stars.length);
+  const list = sliceDossier(dossier, { kind: "reading-list", repos: [] });
+  assert.deepEqual(list.stars.map((s) => s.repo), ["acme/tool"]);
+  assert.equal(list.repos.length, 0);
+}
 
 // A very busy repo: capped, least informative dropped first, still in order.
 const busy: ActivityItem[] = [];
