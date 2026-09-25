@@ -34,3 +34,15 @@ export function describeAiError(error: unknown): string {
   }
   return error instanceof Error ? error.message : String(error);
 }
+
+/** Settings we send that a model may refuse. */
+export type RefusableSetting = "temperature" | "providerOptions";
+
+/** Which of our settings a provider's error says it refused, if any — an unsupported `temperature`, an unknown `chat_template_kwargs`. */
+export function refusedSetting(message: string): RefusableSetting | null {
+  if (!/unsupported|not supported|does not support|doesn't support|unrecognized|unknown|not allowed|invalid|extra (inputs|fields)|not permitted/i.test(message)) return null;
+  if (/temperature/i.test(message)) return "temperature";
+  if (/chat_template_kwargs|enable_thinking/i.test(message)) return "providerOptions";
+  return null;
+}
+

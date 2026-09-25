@@ -42,7 +42,7 @@ import type { RequestContext } from "@mastra/core/request-context";
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { z } from "zod";
 
-import { describeAiError } from "@/lib/ai/error";
+import { describeAiError, refusedSetting, type RefusableSetting } from "@/lib/ai/error";
 import { defaultEditionVol, editionBounds } from "@/lib/cadence";
 import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
 import { articleBlockSchema, articleImageSchema, type ArticleImageRef } from "@/lib/article-blocks";
@@ -187,6 +187,18 @@ function page(writer: unknown): Writer {
   return (writer as Writer | undefined) ?? { write: async () => {} };
 }
 
+/** The run's refused settings, kept in its request context so later calls skip them too. */
+function rejectedSettings(requestContext: RequestContext): Set<RefusableSetting> {
+  let rejected = requestContext.get(REFUSED_SETTINGS_KEY) as Set<RefusableSetting> | undefined;
+  if (!rejected) {
+    rejected = new Set();
+    requestContext.set(REFUSED_SETTINGS_KEY, rejected);
+  }
+  return rejected;
+}
+
+const REFUSED_SETTINGS_KEY = "refusedSettings";
+
 interface StreamedText<T = never> {
   text: string;
   finishReason: string;
@@ -206,6 +218,9 @@ interface StreamedText<T = never> {
  * back into a thrown error here, worded for the visitor by
  * `describeAiError`. `maxRetries: 0` (Mastra's default, made explicit):
  * retries add seconds of backoff before a real failure (a bad key) surfaces.
+ * The one retry it does make: a model that refuses one of the settings we
+ * send (`refusedSetting`) is asked again without it — reasoning models
+ * only take their default temperature — and the whole run stops sending it.
  * `call` picks this call's provider options from the request context
  * (`CALL_OPTIONS_KEY`) — the visitor's choice of where the model thinks.
  *
@@ -223,21 +238,40 @@ async function streamAgent<T extends object = never>(
   requestContext: RequestContext,
   options: { onDelta?: (delta: string) => Promise<void>; schema?: z.ZodType<T>; call: keyof CallOptions },
 ): Promise<StreamedText<T>> {
-  const providerOptions = (requestContext.get(CALL_OPTIONS_KEY) as CallOptions | undefined)?.[options.call];
-  const settings = {
-    requestContext,
-    modelSettings: { temperature: DEFAULT_TEMPERATURE, maxRetries: 0 },
-    // Our options are plain JSON under the provider's name; Mastra types the key per known provider.
-    ...(providerOptions ? { providerOptions: providerOptions as Record<string, Record<string, never>> } : {}),
-  };
-  const output = options.schema
-    ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
-    : await agent.stream(prompt, settings);
-  for await (const delta of output.textStream) await options.onDelta?.(delta);
-  const [text, finishReason] = await Promise.all([output.text, output.finishReason]);
-  if (finishReason === "error") throw new Error(describeAiError(output.error));
-  const object = options.schema ? ((await output.object.catch(() => undefined)) as T | undefined) : undefined;
-  return { text: text ?? "", finishReason: finishReason ?? "unknown", object: object ?? undefined };
+  const rejected = rejectedSettings(requestContext);
+  for (;;) {
+    const providerOptions = rejected.has("providerOptions") ? undefined : (requestContext.get(CALL_OPTIONS_KEY) as CallOptions | undefined)?.[options.call];
+    const settings = {
+      requestContext,
+      modelSettings: { ...(rejected.has("temperature") ? {} : { temperature: DEFAULT_TEMPERATURE }), maxRetries: 0 },
+      // Our options are plain JSON under the provider's name; Mastra types the key per known provider.
+      ...(providerOptions ? { providerOptions: providerOptions as Record<string, Record<string, never>> } : {}),
+    };
+    const output = options.schema
+      ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
+      : await agent.stream(prompt, settings);
+    let sent = false;
+    for await (const delta of output.textStream) {
+      sent = true;
+      await options.onDelta?.(delta);
+    }
+    const [text, finishReason] = await Promise.all([output.text, output.finishReason]);
+    if (finishReason === "error") {
+      const message = describeAiError(output.error);
+      // A model that refuses one of our settings (a reasoning model's fixed
+      // temperature; a provider that doesn't know `chat_template_kwargs`)
+      // is asked again without it, and never sent it again this run.
+      const setting = sent ? null : refusedSetting(message);
+      if (setting && !rejected.has(setting)) {
+        rejected.add(setting);
+        console.warn(`[front-page] the model refused ${setting === "temperature" ? "a temperature" : "the thinking switch"} — asking again without it: ${message.slice(0, 160)}`);
+        continue;
+      }
+      throw new Error(message);
+    }
+    const object = options.schema ? ((await output.object.catch(() => undefined)) as T | undefined) : undefined;
+    return { text: text ?? "", finishReason: finishReason ?? "unknown", object: object ?? undefined };
+  }
 }
 
 /** A reply too broken to use: cut off mid-generation, or nothing at all. */
