@@ -124,9 +124,12 @@ server would lock the app out of its own traces. If the app isn't on port
 Studio asks for the instance, it's `http://localhost:3000` with API prefix
 `/api/mastra`.
 
-Every run is also **scored** as it happens (`src/mastra/scorers.ts`,
-Mastra's evals), and the scores show in Studio next to each step and under
-*Scorers*. They're code, not a model grading a model — free, and exact about
+Runs can also be **scored** (`src/mastra/scorers.ts`, Mastra's evals),
+with the scores shown in Studio next to each step and under *Scorers*. Off by
+default — each scoring is its own trace, and scoring every run buries the
+runs — so set `ALBRICIAS_SCORERS` in `.env` to turn it on: `1` for every run,
+a fraction (`0.2`) for that share of runs. The scorers are listed in Studio
+either way. They're code, not a model grading a model — free, and exact about
 what they found (`src/lib/generation/checks.ts`):
 
 - `figures-grounded` — the numbers in a section's prose (digits or words)

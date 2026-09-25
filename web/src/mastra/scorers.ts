@@ -14,7 +14,10 @@
  *                      house-style        no "the user", no meta, no markup
  *   on review          outline-clean      how little the review had to fix
  *
- * Local only: production keeps no store to put scores in (`@/mastra`).
+ * Off by default — set `ALBRICIAS_SCORERS` to score runs as they happen
+ * (see `scoringRate`). Either way they're registered with Mastra, so
+ * Studio lists them and can run them on demand. Local only: production
+ * keeps no store to put scores in (`@/mastra`).
  */
 
 import { createScorer, type MastraScorers } from "@mastra/core/evals";
@@ -90,22 +93,32 @@ export const outlineClean = createScorer<unknown, { notes: string[]; sections: u
   .generateScore(({ run }) => 1 / (1 + run.output.notes.length))
   .generateReason(({ run }) => (run.output.notes.length === 0 ? `${run.output.sections.length} sections, nothing to fix.` : `Fixed: ${run.output.notes.join("; ")}.`));
 
-const isLocal = process.env.NODE_ENV !== "production";
-const always = { type: "ratio" as const, rate: 1 };
+/**
+ * How often a run is scored: off unless `ALBRICIAS_SCORERS` says otherwise —
+ * `1` every run, a fraction (`0.2`) that share of runs. Each scoring is its
+ * own trace in Studio, so scoring every run by default buried the runs
+ * themselves. Never in production, which has no store to keep scores in.
+ */
+function scoringRate(): number {
+  if (process.env.NODE_ENV === "production") return 0;
+  const rate = Number(process.env.ALBRICIAS_SCORERS);
+  return Number.isFinite(rate) ? Math.min(1, Math.max(0, rate)) : 0;
+}
 
-/** The `write-section` step's scorers (none in production). */
-export const sectionScorers = (): MastraScorers =>
-  isLocal
-    ? {
-        figuresGrounded: { scorer: figuresGrounded, sampling: always },
-        reposGrounded: { scorer: reposGrounded, sampling: always },
-        lengthFit: { scorer: lengthFitScorer, sampling: always },
-        houseStyle: { scorer: houseStyle, sampling: always },
-      }
-    : {};
+/** The step scorers at the configured rate — none at 0. */
+function atRate(entries: Record<string, MastraScorers[string]["scorer"]>): () => MastraScorers {
+  return () => {
+    const rate = scoringRate();
+    if (rate === 0) return {};
+    return Object.fromEntries(Object.entries(entries).map(([key, scorer]) => [key, { scorer, sampling: { type: "ratio" as const, rate } }]));
+  };
+}
 
-/** The `review` step's scorers (none in production). */
-export const reviewScorers = (): MastraScorers => (isLocal ? { outlineClean: { scorer: outlineClean, sampling: always } } : {});
+/** The `write-section` step's scorers. */
+export const sectionScorers = atRate({ figuresGrounded, reposGrounded, lengthFit: lengthFitScorer, houseStyle });
 
-/** Every scorer, registered on the Mastra instance so Studio lists them. */
+/** The `review` step's scorers. */
+export const reviewScorers = atRate({ outlineClean });
+
+/** Every scorer, registered on the Mastra instance so Studio lists them (and can run them) even when runs aren't scored. */
 export const allScorers = { figuresGrounded, reposGrounded, lengthFit: lengthFitScorer, houseStyle, outlineClean };
