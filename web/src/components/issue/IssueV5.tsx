@@ -8,7 +8,6 @@
 
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -33,13 +32,13 @@ export default function IssueV5({
                   {article.category}
                 </span>
               </div>
-              <ArticleImage src={article.imageUrl} alt={article.title} eager className="mb-4" />
+              <ArticleImage image={article.image} eager className="mb-4" />
               <a href={articleHref()}>
                 <h2 className="font-headline text-3xl lg:text-4xl font-black leading-none mb-4 hover:underline">
                   {article.title}
                 </h2>
               </a>
-              <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink justified-text" />
+              <ArticleBody article={article} className="text-sm font-body leading-relaxed text-ink justified-text" />
               {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
             </article>
           ))}
@@ -58,13 +57,13 @@ export default function IssueV5({
             <div className="issue-flow columns-1 sm:columns-2 lg:columns-4 gap-8 border-t border-stone-300 pt-4">
               {rest.map((article) => (
                 <article key={article.id} className="mb-6 last:mb-0">
-                  <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+                  <ArticleImage image={article.image} className="mb-2" />
                   <a href={articleHref()}>
                     <h4 className="font-headline text-lg font-bold leading-tight mb-2 hover:text-stone-600 transition-colors">
                       {article.title}
                     </h4>
                   </a>
-                  <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-500 leading-snug" />
+                  <ArticleBody article={article} className="text-xs font-body text-stone-500 leading-snug" />
                   {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
                 </article>
               ))}

@@ -8,7 +8,6 @@
 
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -38,8 +37,8 @@ export default function IssueV3({
               </h1>
             </a>
             <div className="issue-flow columns-1 md:columns-2 lg:columns-3 gap-10">
-              <ArticleImage src={main.imageUrl} alt={main.title} eager className="mb-4" />
-              <ArticleBody html={renderMarkdown(main.content)} className="font-body text-base leading-relaxed justified-text" />
+              <ArticleImage image={main.image} eager className="mb-4" />
+              <ArticleBody article={main} className="font-body text-base leading-relaxed justified-text" />
               {streamingArticleIds?.has(main.id) && <span className="typing-cursor" />}
             </div>
           </div>
@@ -49,13 +48,13 @@ export default function IssueV3({
         <div className="issue-flow columns-1 md:columns-3 gap-16">
           {rest.map((article) => (
             <article key={article.id} className="mb-8 last:mb-0">
-              <ArticleImage src={article.imageUrl} alt={article.title} className="mb-3" />
+              <ArticleImage image={article.image} className="mb-3" />
               <a href={articleHref()}>
                 <h3 className="font-headline text-xl font-bold mb-2 hover:underline">
                   {article.title}
                 </h3>
               </a>
-              <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text text-stone-600" />
+              <ArticleBody article={article} className="text-xs font-body justified-text text-stone-600" />
               {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
             </article>
           ))}

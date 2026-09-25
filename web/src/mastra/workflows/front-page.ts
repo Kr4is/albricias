@@ -1,26 +1,33 @@
 /**
  * The front page, as a Mastra workflow:
  *
- *   gather → plan → review → foreach(write-section, SECTION_CONCURRENCY) → assemble
+ *   gather → [plan ‖ pictures] → review → illustrate → foreach(write-section) → assemble
  *
  *   gather         GitHub activity + repo details → the period's dossier
  *                  (typed JSON, `@/lib/generation/dossier`)
  *   plan           the outline editor's outline, as a typed object
  *                  (`outlineSchema`, Mastra structured output)
+ *   pictures       alongside `plan`, which takes far longer: the real
+ *                  pictures each repo shows of itself (`fetchRepoImages`)
  *   review         the outline checked and fixed against the dossier, in
  *                  code (`reviewOutline`): real repo names, one reading
  *                  list, the lead, the section count, forgotten work
+ *   illustrate     no model: each section's picture (one per repo on the
+ *                  page) and charts (`@/lib/generation/charts`, computed
+ *                  from the dossier), and the two boxes as structured
+ *                  blocks — the stars as cards, the numbers as facts
  *   write-section  one correspondent call per section, streamed token by
  *                  token, reading only its slice of the dossier
- *   assemble       the computed boxes (stars, numbers), and done
+ *   assemble       the boxes after the written sections, and done
  *
  * Every step also narrates itself to the page through `writer`: each
  * `writer.write({ event, data })` becomes one `workflow-step-output` in the
  * run's stream, which `/api/generate` relays verbatim as a Server-Sent
  * Event (`event: <event>`) — so the page renders the edition live, section
  * by section, as the correspondent writes it. The events are the same the
- * page has always spoken: `meta`, `status`, `layout`, `section-start`,
- * `section-delta`, `section-end`, `done`.
+ * page has always spoken: `meta`, `status`, `layout`, `section-start`
+ * (with the section's picture and structured blocks), `section-delta`,
+ * `section-end`, `done`.
  *
  * Sections are written `SECTION_CONCURRENCY` at a time (2 unless
  * `ALBRICIAS_SECTION_CONCURRENCY` says otherwise): one at a time a busy
@@ -38,14 +45,16 @@ import { z } from "zod";
 import { describeAiError } from "@/lib/ai/error";
 import { defaultEditionVol, editionBounds } from "@/lib/cadence";
 import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
-import { buildByTheNumbersArticle, buildStarsArticle, starImageCandidates } from "@/lib/generation/deterministic-articles";
+import { articleBlockSchema, articleImageSchema, type ArticleImageRef } from "@/lib/article-blocks";
+import { chartsForSection, numbersBox, starsBox } from "@/lib/generation/charts";
 import { buildDossier, dossierSchema, dossierText, sliceDossier } from "@/lib/generation/dossier";
 import { outlineSchema, reviewOutline, SECTION_KINDS, type Outline, type SectionKind } from "@/lib/generation/outline";
 import { buildOutlinePrompt, buildSectionPrompt, DEFAULT_TEMPERATURE, createLeadingHeadingFilter } from "@/lib/generation/period-post";
 import { pickLayoutForContent } from "@/lib/layout";
 import { CALL_OPTIONS_KEY, type CallOptions } from "@/mastra/model";
-import { repoImageUrl } from "@/lib/repo-image";
+import { proxiedImageUrl } from "@/lib/image-proxy";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
+import { fetchRepoImages, type RepoImage } from "@/lib/sources/repo-images";
 
 /** How many sections are written at once — see the header. */
 const SECTION_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.ALBRICIAS_SECTION_CONCURRENCY) || 2));
@@ -57,14 +66,22 @@ const SECTION_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.ALBRICIAS_
 const cadenceSchema = z.enum(["daily", "weekly", "monthly"]);
 const lengthTierSchema = z.enum(["short", "medium", "long"]);
 
-const articleSchema = z.object({
+/** A computed box: no prose, only structured blocks. */
+const boxSchema = z.object({
   id: z.number(),
   title: z.string(),
-  content: z.string(),
   category: z.string(),
-  author: z.string().nullable(),
   deck: z.string(),
-  imageUrl: z.string().nullable().optional(),
+  image: articleImageSchema.nullable(),
+  blocks: z.array(articleBlockSchema),
+});
+
+const repoImageSchema = z.object({
+  url: z.string(),
+  alt: z.string(),
+  caption: z.string().nullable(),
+  fit: z.enum(["cover", "contain"]),
+  source: z.enum(["social", "readme", "homepage"]),
 });
 
 const inputSchema = z.object({
@@ -77,10 +94,13 @@ const gatheredSchema = z.object({
   cadence: cadenceSchema,
   /** Everything the period recorded, typed — what the outline editor reads, and each section a slice of. */
   dossier: dossierSchema,
-  numbersArticle: articleSchema.nullable(),
-  starsArticle: articleSchema.nullable(),
-  /** Starred repos by popularity — the stars box takes the first card no section used. */
-  starCandidates: z.array(z.string()),
+  /** Each repo's own website, for `pictures` to look for a preview image on. */
+  homepages: z.record(z.string(), z.string()),
+});
+
+const picturesSchema = z.object({
+  /** The pictures each repository shows of itself, best first (`fetchRepoImages`) — repos with none are absent. */
+  images: z.record(z.string(), z.array(repoImageSchema)),
 });
 
 const plannedSchema = z.object({
@@ -97,21 +117,31 @@ const sectionBriefSchema = z.object({
   /** The repos the section covers — what it reads of the dossier (`sliceDossier`), the first its picture. */
   repos: z.array(z.string()),
   window: z.object({ from: z.string(), to: z.string() }).nullable(),
-  imageUrl: z.string().nullable(),
-  premise: z.string(),
-  periodLabel: z.string(),
 });
 
 const reviewedSchema = z.object({
   title: z.string(),
   premise: z.string(),
   sections: z.array(sectionBriefSchema),
-  /** Repos whose card a section already shows. */
-  pictured: z.array(z.string()),
   /** A reading-list section covers the stars, so the stars box is left out. */
   dropStarsBox: z.boolean(),
   /** What the review changed in the editor's outline, and why. */
   notes: z.array(z.string()),
+});
+
+/** A section as it's written: its brief, plus what `illustrate` gave it. */
+const sectionJobSchema = sectionBriefSchema.extend({
+  image: articleImageSchema.nullable(),
+  blocks: z.array(articleBlockSchema),
+  premise: z.string(),
+  periodLabel: z.string(),
+});
+
+const illustratedSchema = z.object({
+  title: z.string(),
+  sections: z.array(sectionJobSchema),
+  /** The computed boxes, run after the written sections. */
+  boxes: z.array(boxSchema),
 });
 
 /** How the page labels each kind of section. */
@@ -257,14 +287,33 @@ const gather = createStep({
       periodEnd,
     });
 
-    return {
-      periodLabel,
-      cadence: inputData.period,
-      dossier,
-      numbersArticle: buildByTheNumbersArticle(activity),
-      starsArticle: buildStarsArticle(activity, details),
-      starCandidates: starImageCandidates(activity, details),
-    };
+    const homepages: Record<string, string> = {};
+    for (const [, repo] of details) if (repo.homepage) homepages[repo.fullName] = repo.homepage;
+    return { periodLabel, cadence: inputData.period, dossier, homepages };
+  },
+});
+
+/** Repos whose pictures are looked up: the busiest worked in, and the best-known starred. */
+const PICTURED_REPOS = 10;
+const PICTURED_STARS = 12;
+
+const pictures = createStep({
+  id: "pictures",
+  description: "Find the real pictures each repository shows of itself — its social preview, its README's screenshots and diagrams, its website's preview.",
+  inputSchema: gatheredSchema,
+  outputSchema: picturesSchema,
+  execute: async ({ inputData }) => {
+    const { dossier } = inputData;
+    const repos = [
+      ...dossier.repos.slice(0, PICTURED_REPOS).map((repo) => repo.name),
+      ...[...dossier.stars]
+        .sort((a, b) => (b.about?.stars ?? -1) - (a.about?.stars ?? -1))
+        .slice(0, PICTURED_STARS)
+        .map((star) => star.repo),
+    ];
+    const homepages = new Map(Object.entries(inputData.homepages).map(([name, url]) => [name.toLowerCase(), url]));
+    const found = await fetchRepoImages(repos, new Map(repos.map((repo) => [repo, homepages.get(repo.toLowerCase()) ?? null])), process.env.GITHUB_TOKEN ?? "");
+    return { images: Object.fromEntries(found) };
   },
 });
 
@@ -297,39 +346,71 @@ const plan = createStep({
 
 const review = createStep({
   id: "review",
-  description: "Check the outline against the dossier and fix what a model gets wrong — repo names, kinds, the lead, the count, the stars — then pick each section's picture.",
-  inputSchema: plannedSchema,
+  description: "Check the outline against the dossier and fix what a model gets wrong — repo names, kinds, the lead, the count, the stars.",
+  inputSchema: z.object({ plan: plannedSchema, pictures: picturesSchema }),
   outputSchema: reviewedSchema,
-  execute: async ({ inputData, getStepResult, writer }) => {
+  execute: async ({ inputData, getStepResult }) => {
     const gathered = getStepResult(gather);
-    const reviewed = reviewOutline(inputData.outline, gathered.dossier, { cadence: gathered.cadence, periodLabel: gathered.periodLabel });
+    const reviewed = reviewOutline(inputData.plan.outline, gathered.dossier, { cadence: gathered.cadence, periodLabel: gathered.periodLabel });
     for (const note of reviewed.notes) console.info(`[front-page] review: ${note}`);
+    return { ...reviewed, sections: reviewed.sections.map((section, index) => ({ ...section, index })) };
+  },
+});
 
-    // Each repo's card appears at most once on the page.
+/** A found picture as the page shows it: through the image proxy. */
+function shown(image: RepoImage): ArticleImageRef {
+  return { src: proxiedImageUrl(image.url), alt: image.alt, caption: image.caption, fit: image.fit };
+}
+
+const STARS_BOX_ID = -1;
+const NUMBERS_BOX_ID = -2;
+
+const illustrate = createStep({
+  id: "illustrate",
+  description: "Give each section its picture (each repo's at most once) and its charts, computed from the dossier; build the stars and numbers boxes.",
+  inputSchema: reviewedSchema,
+  outputSchema: illustratedSchema,
+  execute: async ({ inputData, getStepResult, writer }) => {
+    const { dossier, periodLabel } = getStepResult(gather);
+    const { images } = getStepResult(pictures);
+    const imagesOf = new Map(Object.entries(images).map(([name, list]) => [name.toLowerCase(), list]));
+
+    // Each repo's picture appears at most once on the page; a section takes the first of its repos with one left.
     const pictured = new Set<string>();
-    const sections = reviewed.sections.map((section, index) => {
-      const repo = section.repos.find((name) => !pictured.has(name));
-      if (repo) pictured.add(repo);
-      return {
-        ...section,
-        index,
-        imageUrl: repo && section.kind !== "overview" ? repoImageUrl(repo) : null,
-        premise: reviewed.premise,
-        periodLabel: gathered.periodLabel,
-      };
-    });
+    const pictureFor = (repos: string[]): ArticleImageRef | null => {
+      for (const repo of repos) {
+        const image = !pictured.has(repo) ? imagesOf.get(repo.toLowerCase())?.[0] : undefined;
+        if (image) {
+          pictured.add(repo);
+          return shown(image);
+        }
+      }
+      return null;
+    };
 
-    const starsBox = gathered.starsArticle && !reviewed.dropStarsBox;
-    const total = sections.length + (starsBox ? 1 : 0) + (gathered.numbersArticle ? 1 : 0);
-    await page(writer).write({ event: "layout", data: { layout: pickLayoutForContent(total) } });
-    return { title: reviewed.title, premise: reviewed.premise, sections, pictured: [...pictured], dropStarsBox: reviewed.dropStarsBox, notes: reviewed.notes };
+    const sections = inputData.sections.map((section) => ({
+      ...section,
+      image: section.kind === "overview" ? null : pictureFor(section.repos),
+      blocks: chartsForSection(dossier, section).map((chart) => ({ type: "chart" as const, chart })),
+      premise: inputData.premise,
+      periodLabel,
+    }));
+
+    const boxes: z.infer<typeof boxSchema>[] = [];
+    const stars = inputData.dropStarsBox ? null : starsBox(dossier);
+    if (stars) boxes.push({ id: STARS_BOX_ID, title: "On the Shelves", category: "Miscellany", deck: stars.deck, image: pictureFor(stars.order), blocks: stars.blocks });
+    const numbers = numbersBox(dossier, sections.some((section) => section.kind === "overview"));
+    if (numbers) boxes.push({ id: NUMBERS_BOX_ID, title: "By the Numbers", category: "Almanac", deck: numbers.deck, image: null, blocks: numbers.blocks });
+
+    await page(writer).write({ event: "layout", data: { layout: pickLayoutForContent(sections.length + boxes.length) } });
+    return { title: inputData.title, sections, boxes };
   },
 });
 
 const writeSection = createStep({
   id: "write-section",
   description: "Have the correspondent write one section, streaming it to the page as it's written.",
-  inputSchema: sectionBriefSchema,
+  inputSchema: sectionJobSchema,
   outputSchema: sectionResultSchema,
   execute: async ({ inputData, mastra, requestContext, writer, getStepResult }) => {
     const out = page(writer);
@@ -338,7 +419,15 @@ const writeSection = createStep({
     const sourceText = dossierText(sliceDossier(getStepResult(gather).dossier, focus));
     await out.write({
       event: "section-start",
-      data: { index, heading: inputData.heading, category: CATEGORY[inputData.kind], author: "The Albricias Correspondent", deck: inputData.brief, imageUrl: inputData.imageUrl },
+      data: {
+        index,
+        heading: inputData.heading,
+        category: CATEGORY[inputData.kind],
+        author: "The Albricias Correspondent",
+        deck: inputData.brief,
+        image: inputData.image,
+        blocks: inputData.blocks,
+      },
     });
     const attempt = async () => {
       const headings = createLeadingHeadingFilter();
@@ -389,35 +478,26 @@ const writeSection = createStep({
 
 const assemble = createStep({
   id: "assemble",
-  description: "Add the two computed boxes — starred repos and the numbers — after the written sections, and finish.",
+  description: "Run the computed boxes — starred repos and the numbers — after the written sections, and finish.",
   inputSchema: z.array(sectionResultSchema),
   outputSchema,
   execute: async ({ inputData, getStepResult, writer }) => {
     const out = page(writer);
-    const gathered = getStepResult(gather);
-    const planned = getStepResult(review);
-
-    /** A computed article, sent through the same three events a written section uses. */
-    const sendWhole = async (article: z.infer<typeof articleSchema>) => {
-      await out.write({
-        event: "section-start",
-        data: { index: article.id, heading: article.title, category: article.category, author: article.author, deck: article.deck, imageUrl: article.imageUrl ?? null },
-      });
-      await out.write({ event: "section-delta", data: { index: article.id, delta: article.content } });
-      await out.write({ event: "section-end", data: { index: article.id } });
-    };
+    const { title, boxes } = getStepResult(illustrate);
 
     // After the written sections, so the outline's own lead stays the lead.
-    if (gathered.starsArticle && !planned.dropStarsBox) {
-      const pictured = new Set(planned.pictured);
-      const card = gathered.starCandidates.find((repo) => !pictured.has(repo));
-      await sendWhole({ ...gathered.starsArticle, imageUrl: card ? repoImageUrl(card) : null });
+    // A box has no prose: its blocks travel with its start, like a section's charts.
+    for (const box of boxes) {
+      await out.write({
+        event: "section-start",
+        data: { index: box.id, heading: box.title, category: box.category, author: null, deck: box.deck, image: box.image, blocks: box.blocks },
+      });
+      await out.write({ event: "section-end", data: { index: box.id } });
     }
-    if (gathered.numbersArticle) await sendWhole(gathered.numbersArticle);
 
-    await out.write({ event: "done", data: { title: planned.title } });
+    await out.write({ event: "done", data: { title } });
     const failed = inputData.filter((result) => !result.ok).length;
-    return { title: planned.title, sectionsWritten: inputData.length - failed, sectionsFailed: failed };
+    return { title, sectionsWritten: inputData.length - failed, sectionsFailed: failed };
   },
 });
 
@@ -438,8 +518,9 @@ export const frontPageWorkflow = createWorkflow({
   },
 })
   .then(gather)
-  .then(plan)
+  .parallel([plan, pictures])
   .then(review)
+  .then(illustrate)
   .map(async ({ inputData }) => inputData.sections)
   .foreach(writeSection, { concurrency: SECTION_CONCURRENCY })
   .then(assemble)

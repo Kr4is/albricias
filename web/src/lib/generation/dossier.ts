@@ -612,17 +612,3 @@ export function dossierRepos(dossier: Dossier): string[] {
 export function dossierText(material: Dossier | DossierSlice): string {
   return JSON.stringify(material);
 }
-
-/** `"TypeScript, ★ 1.2k, 40 forks"` — whatever of that is known, for the stars box. */
-export function describeRepo(details: RepoDetails | undefined): string {
-  if (!details) return "";
-  const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k` : String(n));
-  const parts: string[] = [];
-  if (details.language) parts.push(details.language);
-  if (details.stars !== null) parts.push(`★ ${compact(details.stars)}`);
-  if (details.forks) parts.push(`${compact(details.forks)} forks`);
-  if (details.isFork) parts.push("a fork");
-  if (details.archived) parts.push("archived");
-  if (details.topics.length > 0) parts.push(`topics: ${details.topics.slice(0, 6).join(", ")}`);
-  return parts.join(", ");
-}

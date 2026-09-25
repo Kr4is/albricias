@@ -28,25 +28,6 @@ const LENGTH_BANDS: Record<LengthTier, string> = {
 };
 
 /**
- * Shared chart clause — appended where a desk might plausibly have real,
- * countable numbers worth plotting. Renders via the `chart` fenced-code
- * convention `@/lib/markdown` and `@/components/ArticleCharts` implement.
- */
-const CHART_CLAUSE =
-  " When the material gives you real, countable numbers worth seeing as " +
-  "well as reading — a tally, a comparison, a trend over the period — you " +
-  "may include one chart alongside the prose: a fenced code block written " +
-  'exactly as ```chart containing a single JSON object shaped {"type": ' +
-  '"bar" | "line" | "doughnut", "title": string, "labels": string[], ' +
-  '"datasets": [{"label": string, "data": number[]}]}, each dataset\'s ' +
-  "data array the same length as labels. Use doughnut only for a genuine " +
-  "part-of-whole breakdown, e.g. percentages that sum to roughly 100% — " +
-  "reach for bar or line otherwise. Use only numbers that actually appear " +
-  "in the material — never invent or estimate a figure to fill a chart — " +
-  "and leave it out entirely when there is nothing quantitative worth " +
-  "plotting.";
-
-/**
  * What the material is — shared by both prompts. The dossier arrives as
  * JSON (`@/lib/generation/dossier`), so the writers get the facts as fields
  * rather than prose to parse back, and the counts are already done.
@@ -137,8 +118,9 @@ export const PERIOD_POST_SECTION_SYSTEM =
   "event, a number, or a motive the material does not state, and prefer saying the " +
   "period was quiet to filling it out. Starred repositories are other " +
   "people's projects the user starred: say what they are and do, from " +
-  "their descriptions, and never credit the user with building them." +
-  CHART_CLAUSE;
+  "their descriptions, and never credit the user with building them. " +
+  "Write prose only — no tables and no charts: the page sets its own " +
+  "charts beside yours, computed from the same figures.";
 
 // ---------------------------------------------------------------------------
 // Prompts

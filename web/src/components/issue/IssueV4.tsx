@@ -11,7 +11,6 @@ import BelowFold from "@/components/issue/BelowFold";
 import { cutAtFold } from "@/components/issue/fold";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -49,9 +48,9 @@ export default function IssueV4({
                   </h1>
                 </a>
 
-                <ArticleImage src={main.imageUrl} alt={main.title} eager className="mb-6" />
+                <ArticleImage image={main.image} eager className="mb-6" />
 
-                <ArticleBody html={renderMarkdown(main.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text drop-cap" />
+                <ArticleBody article={main} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text drop-cap" />
                 {streamingArticleIds?.has(main.id) && <span className="typing-cursor" />}
               </article>
             )}
@@ -68,13 +67,13 @@ export default function IssueV4({
             {above.map((article, index) => (
               <Fragment key={article.id}>
                 <article data-story={article.id} data-order={index}>
-                  <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+                  <ArticleImage image={article.image} className="mb-2" />
                   <a href={articleHref()}>
                     <h3 className="font-headline text-xl font-bold leading-tight mb-2 hover:underline">
                       {article.title}
                     </h3>
                   </a>
-                  <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body justified-text text-stone-600" />
+                  <ArticleBody article={article} className="text-xs font-body justified-text text-stone-600" />
                   {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
                 </article>
                 {index !== above.length - 1 && <div data-rail-rule className="w-12 h-px bg-stone-300"></div>}

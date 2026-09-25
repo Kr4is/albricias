@@ -10,7 +10,6 @@
 
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -34,7 +33,7 @@ export default function IssueV2({
               </span>
             </div>
 
-            <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+            <ArticleImage image={article.image} className="mb-2" />
 
             <a href={articleHref()}>
               <h2
@@ -46,7 +45,7 @@ export default function IssueV2({
               </h2>
             </a>
 
-            <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body leading-snug text-ink-light justified-text" />
+            <ArticleBody article={article} className="text-xs font-body leading-snug text-ink-light justified-text" />
             {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
           </article>
         ))}

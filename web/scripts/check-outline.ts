@@ -4,8 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { buildDossier } from "../src/lib/generation/dossier";
-import { outlineSchema, reviewOutline, type Outline } from "../src/lib/generation/outline";
-import { resolveRepo } from "../src/lib/repo-image";
+import { outlineSchema, resolveRepo, reviewOutline, type Outline } from "../src/lib/generation/outline";
 import type { ActivityItem } from "../src/lib/sources/types";
 
 function commit(repo: string, day: string, message: string): ActivityItem {

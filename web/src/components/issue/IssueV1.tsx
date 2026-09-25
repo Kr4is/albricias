@@ -16,7 +16,6 @@ import BelowFold from "@/components/issue/BelowFold";
 import { cutAtFold, dealIntoTwo } from "@/components/issue/fold";
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle, IssueLayoutProps } from "@/components/issue/types";
 
@@ -50,7 +49,7 @@ function Rail({
           )}
         </div>
 
-        <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+        <ArticleImage image={article.image} className="mb-2" />
 
         <a href={articleHref()}>
           <h2 className="font-headline text-xl lg:text-2xl font-bold leading-tight mb-2 hover:opacity-70 transition-opacity">
@@ -58,7 +57,7 @@ function Rail({
           </h2>
         </a>
 
-        <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text" />
+        <ArticleBody article={article} className="text-sm font-body leading-relaxed text-ink-light space-y-2 justified-text" />
         {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
       </article>
       {index !== articles.length - 1 && <div data-rail-rule className="w-16 h-px bg-stone-200 mx-auto"></div>}
@@ -112,9 +111,9 @@ export default function IssueV1({
                   </h4>
                 </div>
 
-                <ArticleImage src={mainArticle.imageUrl} alt={mainArticle.title} eager className="mb-5" />
+                <ArticleImage image={mainArticle.image} eager className="mb-5" />
 
-                <ArticleBody html={renderMarkdown(mainArticle.content)} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
+                <ArticleBody article={mainArticle} className="columns-1 md:columns-2 gap-6 text-sm font-body leading-relaxed justified-text text-ink drop-cap" />
                 {streamingArticleIds?.has(mainArticle.id) && <span className="typing-cursor" />}
               </article>
             )}

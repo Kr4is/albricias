@@ -420,6 +420,8 @@ export interface RepoDetails {
   isFork: boolean;
   archived: boolean;
   url: string | null;
+  /** The project's own website, when it lists one. */
+  homepage: string | null;
 }
 
 /**
@@ -441,6 +443,7 @@ function repoDetailsFromRaw(raw: unknown): RepoDetails | null {
     isFork: r.fork === true,
     archived: r.archived === true,
     url: typeof r.html_url === "string" ? r.html_url : null,
+    homepage: typeof r.homepage === "string" && /^https:\/\//i.test(r.homepage.trim()) ? r.homepage.trim() : null,
   };
 }
 

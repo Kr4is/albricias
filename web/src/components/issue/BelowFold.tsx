@@ -7,7 +7,6 @@
 
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueArticle } from "@/components/issue/types";
 
@@ -35,13 +34,13 @@ export default function BelowFold({
                 {article.category}
               </span>
             </div>
-            <ArticleImage src={article.imageUrl} alt={article.title} className="mb-2" />
+            <ArticleImage image={article.image} className="mb-2" />
             <a href={articleHref()}>
               <h3 className="font-headline text-xl font-bold leading-tight mb-2 hover:underline">
                 {article.title}
               </h3>
             </a>
-            <ArticleBody html={renderMarkdown(article.content)} className="text-sm font-body leading-relaxed text-ink-light justified-text" />
+            <ArticleBody article={article} className="text-sm font-body leading-relaxed text-ink-light justified-text" />
             {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
           </article>
         ))}

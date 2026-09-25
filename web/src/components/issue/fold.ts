@@ -17,10 +17,9 @@ export function cutAtFold(rest: IssueArticle[], fold: number | null | undefined)
  * balancing pass does the exact levelling afterwards.
  */
 function weight(article: IssueArticle): number {
-  const text = article.content.replace(/```chart[\s\S]*?```/g, "");
-  const words = text.split(/\s+/).filter(Boolean).length;
-  const hasChart = text.length !== article.content.length;
-  return 25 + words + (article.imageUrl ? 45 : 0) + (hasChart ? 55 : 0);
+  const words = article.content.split(/\s+/).filter(Boolean).length;
+  const blocks = (article.blocks ?? []).reduce((sum, block) => sum + (block.type === "chart" ? 55 : block.items.length * 12), 0);
+  return 25 + words + (article.image ? 45 : 0) + blocks;
 }
 
 /**

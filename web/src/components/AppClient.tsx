@@ -9,6 +9,7 @@ import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
 import type { FoldPlan } from "@/lib/balance";
 import type { AiProviderId, ThinkingMode } from "@/lib/ai/resolve";
+import type { ArticleBlock, ArticleImageRef } from "@/lib/article-blocks";
 
 type Period = "daily" | "weekly" | "monthly";
 type Phase = "config" | "generating" | "result";
@@ -249,11 +250,11 @@ export default function AppClient() {
           } else if (message.event === "status") {
             setStatusMessage((message.data as { message: string }).message);
           } else if (message.event === "section-start") {
-            const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string; imageUrl?: string | null };
+            const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string; image?: ArticleImageRef | null; blocks?: ArticleBlock[] };
             setArticles((prev) =>
               [
                 ...prev,
-                { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, imageUrl: data.imageUrl ?? null },
+                { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, image: data.image ?? null, blocks: data.blocks ?? [] },
               ].sort((a, b) => readingOrder(a.id) - readingOrder(b.id)),
             );
             setStreamingIds((prev) => new Set(prev).add(data.index));

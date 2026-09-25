@@ -1,5 +1,7 @@
 /** Shared shapes for the six broadsheet layouts (`IssueV1` … `IssueV6`). */
 
+import type { ArticleBlock, ArticleImageRef } from "@/lib/article-blocks";
+
 /** An article as the issue layouts render it. */
 export interface IssueArticle {
   id: number;
@@ -8,8 +10,10 @@ export interface IssueArticle {
   category: string;
   author: string | null;
   deck: string;
-  /** A real image of the repository this article is about (GitHub's social-preview card), when it has one. */
-  imageUrl?: string | null;
+  /** A picture the repository this article is about shows of itself, when it has one. */
+  image?: ArticleImageRef | null;
+  /** Charts, facts and repo cards, after the prose (a computed box has only these). */
+  blocks?: ArticleBlock[];
 }
 
 /** What the issue layouts show of the edition itself. */

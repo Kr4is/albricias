@@ -245,13 +245,118 @@ article:nth-child(5) { animation-delay: 0.5s; }
   letter-spacing: 0.03em;
 }
 
-.article-body .article-chart {
+/* Structured blocks after an article's prose (`ArticleBody`): charts, facts, repo cards. */
+.article-blocks {
+  /* Scales with the page fill and the column balancer, like body type (see below). */
+  font-size: calc(1rem * var(--issue-scale, 1) * var(--col-scale, 1));
+  display: flex;
+  flex-direction: column;
+  gap: 0.9em;
+  margin-top: 0.9em;
+}
+.article-blocks:first-child {
+  margin-top: 0;
+}
+.article-chart {
   break-inside: avoid;
-  margin: 1rem 0;
-  padding: 0.75rem 0.5rem 0.4rem;
-  border: 1px solid #d6d3cd;
+  margin: 0;
+  padding: 0.6em 0.6em 0.5em;
+  border-top: 2px solid #1a1a1a;
+  border-bottom: 1px solid #d6d3cd;
   background: #fdfcf9;
-  height: 240px;
+}
+.article-chart-title {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 0.95em;
+  line-height: 1.2;
+  color: #1a1a1a;
+  margin-bottom: 0.4em;
+}
+.article-chart-caption {
+  font-family: 'Libre Franklin', sans-serif;
+  font-size: 0.68em;
+  line-height: 1.35;
+  color: #6b665e;
+  margin-top: 0.35em;
+  font-style: italic;
+}
+.article-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5em, 1fr));
+  border-top: 2px solid #1a1a1a;
+  border-left: 1px solid #d6d3cd;
+}
+.article-facts > div {
+  padding: 0.45em 0.55em 0.5em;
+  border-right: 1px solid #d6d3cd;
+  border-bottom: 1px solid #d6d3cd;
+  break-inside: avoid;
+}
+.article-facts dt {
+  font-family: 'Libre Franklin', sans-serif;
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b665e;
+}
+.article-facts dd {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 1.15em;
+  line-height: 1.2;
+  color: #1a1a1a;
+}
+.article-facts dd.article-facts-note {
+  font-family: 'Libre Franklin', sans-serif;
+  font-weight: 400;
+  font-size: 0.65em;
+  color: #6b665e;
+}
+.article-repos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 2px solid #1a1a1a;
+}
+.article-repos > li {
+  padding: 0.5em 0;
+  border-bottom: 1px solid #d6d3cd;
+  break-inside: avoid;
+}
+.article-repos-name {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 0.9em;
+  color: #1a1a1a;
+  text-decoration: none;
+}
+.article-repos-name:hover {
+  text-decoration: underline;
+}
+.article-repos-description {
+  font-family: 'Merriweather', serif;
+  font-size: 0.75em;
+  line-height: 1.4;
+  color: #3a3733;
+  margin-top: 0.15em;
+}
+.article-repos-meta {
+  font-family: 'Libre Franklin', sans-serif;
+  font-size: 0.62em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b665e;
+  margin-top: 0.2em;
+}
+.article-image-caption {
+  font-family: 'Libre Franklin', sans-serif;
+  font-size: 0.68em;
+  line-height: 1.35;
+  font-style: italic;
+  color: #6b665e;
+  margin-top: 0.3em;
 }
 
 .article-body :where(img) {

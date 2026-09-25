@@ -8,7 +8,6 @@
 
 import ArticleBody from "@/components/ArticleBody";
 import ArticleImage from "@/components/issue/ArticleImage";
-import { renderMarkdown } from "@/lib/markdown";
 import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
@@ -34,8 +33,8 @@ export default function IssueV6({
               {main.title}
             </h1>
           </a>
-          <ArticleImage src={main.imageUrl} alt={main.title} eager className="max-w-4xl mx-auto mb-8" />
-          <ArticleBody html={renderMarkdown(main.content)} className="columns-1 md:columns-2 gap-8 text-left text-base font-body leading-relaxed justified-text text-ink-light max-w-4xl mx-auto drop-cap" />
+          <ArticleImage image={main.image} eager className="max-w-4xl mx-auto mb-8" />
+          <ArticleBody article={main} className="columns-1 md:columns-2 gap-8 text-left text-base font-body leading-relaxed justified-text text-ink-light max-w-4xl mx-auto drop-cap" />
           {streamingArticleIds?.has(main.id) && <span className="typing-cursor" />}
         </div>
       )}
@@ -63,10 +62,10 @@ export default function IssueV6({
                       {article.title}
                     </h4>
                   </a>
-                  <ArticleBody html={renderMarkdown(article.content)} className="text-xs font-body text-stone-600 mt-1" />
+                  <ArticleBody article={article} className="text-xs font-body text-stone-600 mt-1" />
                   {streamingArticleIds?.has(article.id) && <span className="typing-cursor" />}
                 </div>
-                <ArticleImage src={article.imageUrl} alt={article.title} className="hidden sm:block w-40 shrink-0" />
+                <ArticleImage image={article.image} className="hidden sm:block w-40 shrink-0" />
               </li>
             ))}
           </ol>

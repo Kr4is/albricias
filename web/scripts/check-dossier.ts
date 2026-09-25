@@ -34,8 +34,8 @@ const activity: ActivityItem[] = [
   event("star", "acme/tool", "2026-09-07T12:00:00Z", "acme/tool"),
 ];
 const details = new Map<string, RepoDetails>([
-  ["me/app", { fullName: "me/app", description: "An app", language: "TypeScript", stars: 3, forks: 0, topics: ["x"], isFork: false, archived: false, url: null }],
-  ["acme/tool", { fullName: "acme/tool", description: "A tool", language: "Go", stars: 900, forks: 10, topics: [], isFork: false, archived: false, url: null }],
+  ["me/app", { fullName: "me/app", description: "An app", language: "TypeScript", stars: 3, forks: 0, topics: ["x"], isFork: false, archived: false, url: null, homepage: null }],
+  ["acme/tool", { fullName: "acme/tool", description: "A tool", language: "Go", stars: 900, forks: 10, topics: [], isFork: false, archived: false, url: null, homepage: null }],
 ]);
 
 const dossier: Dossier = buildDossier(activity, details, input);
