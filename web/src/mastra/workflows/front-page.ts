@@ -43,6 +43,7 @@ import { buildDossier, dossierSchema, dossierText, sliceDossier } from "@/lib/ge
 import { outlineSchema, reviewOutline, SECTION_KINDS, type Outline, type SectionKind } from "@/lib/generation/outline";
 import { buildOutlinePrompt, buildSectionPrompt, DEFAULT_TEMPERATURE, createLeadingHeadingFilter } from "@/lib/generation/period-post";
 import { pickLayoutForContent } from "@/lib/layout";
+import { CALL_OPTIONS_KEY, type CallOptions } from "@/mastra/model";
 import { repoImageUrl } from "@/lib/repo-image";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
 
@@ -171,6 +172,8 @@ interface StreamedText<T = never> {
  * back into a thrown error here, worded for the visitor by
  * `describeAiError`. `maxRetries: 0` (Mastra's default, made explicit):
  * retries add seconds of backoff before a real failure (a bad key) surfaces.
+ * `call` picks this call's provider options from the request context
+ * (`CALL_OPTIONS_KEY`) — the visitor's choice of where the model thinks.
  *
  * With a `schema`, the reply is Mastra structured output: the schema (its
  * field descriptions included) goes into the system prompt and the JSON
@@ -184,9 +187,15 @@ async function streamAgent<T extends object = never>(
   agent: Agent,
   prompt: string,
   requestContext: RequestContext,
-  options: { onDelta?: (delta: string) => Promise<void>; schema?: z.ZodType<T> } = {},
+  options: { onDelta?: (delta: string) => Promise<void>; schema?: z.ZodType<T>; call: keyof CallOptions },
 ): Promise<StreamedText<T>> {
-  const settings = { requestContext, modelSettings: { temperature: DEFAULT_TEMPERATURE, maxRetries: 0 } };
+  const providerOptions = (requestContext.get(CALL_OPTIONS_KEY) as CallOptions | undefined)?.[options.call];
+  const settings = {
+    requestContext,
+    modelSettings: { temperature: DEFAULT_TEMPERATURE, maxRetries: 0 },
+    // Our options are plain JSON under the provider's name; Mastra types the key per known provider.
+    ...(providerOptions ? { providerOptions: providerOptions as Record<string, Record<string, never>> } : {}),
+  };
   const output = options.schema
     ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
     : await agent.stream(prompt, settings);
@@ -270,7 +279,7 @@ const plan = createStep({
 
     const editor = mastra.getAgent("outlineEditor");
     const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: dossierText(inputData.dossier) });
-    const ask = () => streamAgent<Outline>(editor, prompt, requestContext, { schema: outlineSchema });
+    const ask = () => streamAgent<Outline>(editor, prompt, requestContext, { schema: outlineSchema, call: "outline" });
     let reply = await ask();
     if (isUnusable(reply) || !reply.object) {
       console.warn(`[front-page] outline unusable (finishReason: ${reply.finishReason}, ${reply.object ? "parsed" : "no valid outline"}) — retrying once`);
@@ -342,6 +351,7 @@ const writeSection = createStep({
       try {
         const reply = await streamAgent(mastra.getAgent("correspondent"), buildSectionPrompt({ ...inputData, sourceText }), requestContext, {
           onDelta: (delta) => send(headings.push(delta)),
+          call: "sections",
         });
         await send(headings.flush());
         return { reply, sent };

@@ -19,10 +19,10 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
 
-import { buildAiModel } from "@/lib/ai/resolve";
+import { buildAiModel, thinkingOff, THINKING_MODES } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
 import { getMastra } from "@/mastra";
-import { MODEL_KEY } from "@/mastra/model";
+import { CALL_OPTIONS_KEY, MODEL_KEY, type CallOptions } from "@/mastra/model";
 
 const baseFields = {
   githubUsername: z.string().trim().min(1).max(100),
@@ -32,7 +32,14 @@ const baseFields = {
 const requestSchema = z.discriminatedUnion("llmProvider", [
   z.object({ ...baseFields, llmProvider: z.literal("openai"), llmApiKey: z.string().min(1), llmModel: z.string().optional() }),
   z.object({ ...baseFields, llmProvider: z.literal("gemini"), llmApiKey: z.string().min(1), llmModel: z.string().optional() }),
-  z.object({ ...baseFields, llmProvider: z.literal("litellm"), llmApiKey: z.string().min(1), llmModel: z.string().min(1), llmBaseUrl: z.string().min(1) }),
+  z.object({
+    ...baseFields,
+    llmProvider: z.literal("litellm"),
+    llmApiKey: z.string().min(1),
+    llmModel: z.string().min(1),
+    llmBaseUrl: z.string().min(1),
+    thinking: z.enum(THINKING_MODES).default("full"),
+  }),
 ]);
 
 const SSE_HEADERS = {
@@ -78,6 +85,10 @@ export async function POST(request: Request) {
 
   const requestContext = new RequestContext();
   requestContext.set(MODEL_KEY, buildAiModel(input));
+  const thinking = "thinking" in input ? input.thinking : "full";
+  const off = thinkingOff(input.llmProvider);
+  const callOptions: CallOptions = { outline: thinking === "off" ? off : undefined, sections: thinking === "full" ? undefined : off };
+  requestContext.set(CALL_OPTIONS_KEY, callOptions);
 
   const mastra = await getMastra();
   const run = await mastra.getWorkflow("frontPage").createRun();
@@ -104,7 +115,7 @@ export async function POST(request: Request) {
         const output = run.stream({
           inputData: { githubUsername: input.githubUsername, period: input.period },
           requestContext,
-          tracingOptions: { metadata: { githubUsername: input.githubUsername, period: input.period } },
+          tracingOptions: { metadata: { githubUsername: input.githubUsername, period: input.period, thinking } },
         });
         for await (const chunk of output.fullStream) {
           const event = pageEvent(chunk);

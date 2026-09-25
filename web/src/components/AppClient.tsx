@@ -8,7 +8,7 @@ import { usePageFill } from "@/components/usePageFill";
 import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
 import type { FoldPlan } from "@/lib/balance";
-import type { AiProviderId } from "@/lib/ai/resolve";
+import type { AiProviderId, ThinkingMode } from "@/lib/ai/resolve";
 
 type Period = "daily" | "weekly" | "monthly";
 type Phase = "config" | "generating" | "result";
@@ -23,6 +23,13 @@ const PROVIDERS: { id: AiProviderId; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "gemini", label: "Google Gemini" },
   { id: "litellm", label: "LLM Gateway" },
+];
+
+/** Where a thinking model behind the gateway may reason — most of its time goes there. */
+const THINKING: { id: ThinkingMode; label: string }[] = [
+  { id: "full", label: "Everywhere" },
+  { id: "outline", label: "Outline only" },
+  { id: "off", label: "Off" },
 ];
 
 const PERIODS: { id: Period; label: string }[] = [
@@ -57,6 +64,7 @@ interface SavedForm {
   llmApiKey: string;
   llmModel: string;
   llmBaseUrl: string;
+  thinking: ThinkingMode;
 }
 
 const INPUT_CLASS =
@@ -113,6 +121,7 @@ export default function AppClient() {
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmModel, setLlmModel] = useState("");
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
+  const [thinking, setThinking] = useState<ThinkingMode>("full");
 
   // Load once on mount — after render, so a saved value never fights the
   // server-rendered default during hydration. A lazy useState initializer
@@ -140,6 +149,7 @@ export default function AppClient() {
         if (saved.llmApiKey) setLlmApiKey(saved.llmApiKey);
         if (saved.llmModel) setLlmModel(saved.llmModel);
         if (saved.llmBaseUrl) setLlmBaseUrl(saved.llmBaseUrl);
+        if (saved.thinking && THINKING.some((t) => t.id === saved.thinking)) setThinking(saved.thinking);
       }
     } catch {
       // Private browsing, blocked storage, malformed JSON — just start blank.
@@ -151,12 +161,12 @@ export default function AppClient() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const toSave: SavedForm = { githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl };
+      const toSave: SavedForm = { githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch {
       // Storage unavailable — the form still works, it just won't be remembered.
     }
-  }, [loaded, githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl]);
+  }, [loaded, githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking]);
 
   const needsGateway = llmProvider === "litellm";
 
@@ -202,6 +212,7 @@ export default function AppClient() {
           llmApiKey: llmApiKey || undefined,
           llmModel: llmModel || undefined,
           llmBaseUrl: llmBaseUrl || undefined,
+          thinking: llmProvider === "litellm" ? thinking : undefined,
         }),
       });
 
@@ -474,6 +485,29 @@ export default function AppClient() {
                 placeholder="https://your-llm-gateway/v1"
                 required
               />
+            </div>
+          )}
+
+          {needsGateway && (
+            <div>
+              <span className={LABEL_CLASS}>Thinking</span>
+              <div className="flex gap-2">
+                {THINKING.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setThinking(option.id)}
+                    className={`${PILL_BASE} flex-1 ${thinking === option.id ? PILL_ACTIVE : PILL_INACTIVE}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="font-body text-xs text-stone-500 mt-1">
+                For thinking models (Qwen and the like, on vLLM or SGLang): where
+                they may reason before writing. Reasoning is most of their time —
+                &ldquo;Outline only&rdquo; plans carefully and writes fast.
+              </p>
             </div>
           )}
 

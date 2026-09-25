@@ -13,10 +13,19 @@
 
 import type { MastraModelConfig } from "@mastra/core/llm";
 import type { RequestContext } from "@mastra/core/request-context";
-import { buildAiModel, type AiProviderId } from "@/lib/ai/resolve";
+import { buildAiModel, type AiProviderId, type ProviderOptions } from "@/lib/ai/resolve";
 
 /** The request-context key a run's model travels under. */
 export const MODEL_KEY = "model";
+
+/** The request-context key for each call's provider options — how the visitor's thinking choice reaches the model. */
+export const CALL_OPTIONS_KEY = "callOptions";
+
+/** Provider options per kind of call; absent = the model's own default. */
+export interface CallOptions {
+  outline?: ProviderOptions;
+  sections?: ProviderOptions;
+}
 
 /**
  * `buildAiModel`'s AI SDK model, as Mastra types it. `ai`'s `LanguageModel`

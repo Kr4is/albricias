@@ -61,6 +61,16 @@ puts the visitor's model (their provider + BYO key, built by
    this period (left out when a reading list already covers them), and the
    numbers (`src/lib/generation/deterministic-articles.ts`).
 
+With the LLM Gateway provider, the form's **Thinking** choice says where a
+thinking model (Qwen and the like, served by vLLM or SGLang, directly or
+behind LiteLLM) may reason: everywhere, only while planning the outline, or
+nowhere — sent per call as `chat_template_kwargs.enable_thinking: false`
+(`thinkingOff`, `src/lib/ai/resolve.ts`). Reasoning is most of such a
+model's output and time; "Outline only" keeps the careful plan and writes
+the sections fast. The gateway runs through `@ai-sdk/openai-compatible`,
+which reads the model's `reasoning_content`, so the reasoning shows in
+Studio's traces.
+
 Each step reports to the page as it goes (`writer.write({ event, data })`);
 the route relays those as Server-Sent Events, so the page shows each
 section being written, token by token. The prompts live in

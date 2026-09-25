@@ -128,8 +128,13 @@ export const PERIOD_POST_SECTION_SYSTEM =
   "When its `window` is set, the repositories' commits and other items are " +
   "only those of that stretch of days — another section covers the rest. " +
   "Write about what happened, naming the actual repositories, " +
-  "commits, releases and figures the material records; never invent an " +
-  "event, a number, or a motive it does not state, and prefer saying the " +
+  "commits, releases and figures the material records — a story, not a " +
+  "changelog: follow the thread of the work through its most telling " +
+  "commits and group the small ones, rather than reciting each in turn. " +
+  "Never name the material itself or its fields, nor the kind of section " +
+  "you are writing (a round-up, a feature) — the reader sees only a " +
+  "newspaper. Never invent an " +
+  "event, a number, or a motive the material does not state, and prefer saying the " +
   "period was quiet to filling it out. Starred repositories are other " +
   "people's projects the user starred: say what they are and do, from " +
   "their descriptions, and never credit the user with building them." +
