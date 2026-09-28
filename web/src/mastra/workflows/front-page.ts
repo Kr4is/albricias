@@ -51,7 +51,7 @@ import { buildDossier, dossierSchema, dossierText, sliceDossier } from "@/lib/ge
 import { outlineSchema, reviewOutline, SECTION_KINDS, type Outline, type SectionKind } from "@/lib/generation/outline";
 import { buildOutlinePrompt, buildSectionPrompt, DEFAULT_TEMPERATURE, createLeadingHeadingFilter } from "@/lib/generation/period-post";
 import { pickLayoutForContent } from "@/lib/layout";
-import { CALL_OPTIONS_KEY, type CallOptions } from "@/mastra/model";
+import { CALL_OPTIONS_KEY, runGithubToken, type CallOptions } from "@/mastra/model";
 import { reviewScorers, sectionScorers } from "@/mastra/scorers";
 import { proxiedImageUrl } from "@/lib/image-proxy";
 import { fetchGithubActivity, fetchRepoDetails } from "@/lib/sources/github";
@@ -288,10 +288,10 @@ const gather = createStep({
   description: "Fetch the period's GitHub activity and repo details, and lay them out as the writers' dossier.",
   inputSchema,
   outputSchema: gatheredSchema,
-  execute: async ({ inputData, writer }) => {
+  execute: async ({ inputData, writer, requestContext }) => {
     const out = page(writer);
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) throw new Error("Server is missing GITHUB_TOKEN.");
+    const token = runGithubToken(requestContext);
+    if (!token) throw new Error("No GitHub token available — supply your own, or ask the operator to set one.");
 
     const { periodStart, periodEnd } = editionBounds(inputData.period);
     const edition = { cadence: inputData.period, periodStart, periodEnd };
@@ -340,7 +340,7 @@ const pictures = createStep({
   description: "Find the real pictures each repository shows of itself — its social preview, its README's screenshots and diagrams, its website's preview.",
   inputSchema: gatheredSchema,
   outputSchema: picturesSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const { dossier } = inputData;
     const repos = [
       ...dossier.repos.slice(0, PICTURED_REPOS).map((repo) => repo.name),
@@ -350,7 +350,7 @@ const pictures = createStep({
         .map((star) => star.repo),
     ];
     const homepages = new Map(Object.entries(inputData.homepages).map(([name, url]) => [name.toLowerCase(), url]));
-    const found = await fetchRepoImages(repos, new Map(repos.map((repo) => [repo, homepages.get(repo.toLowerCase()) ?? null])), process.env.GITHUB_TOKEN ?? "");
+    const found = await fetchRepoImages(repos, new Map(repos.map((repo) => [repo, homepages.get(repo.toLowerCase()) ?? null])), runGithubToken(requestContext) ?? "");
     return { images: Object.fromEntries(found) };
   },
 });

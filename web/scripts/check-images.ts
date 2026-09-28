@@ -3,6 +3,7 @@
  * image proxy's signatures. `npx tsx scripts/check-images.ts`.
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { pageImage, readmeImages } from "../src/lib/sources/readme-images";
 import { proxiedImageUrl, verifyImageUrl } from "../src/lib/image-proxy";
 import { safeFetch } from "../src/lib/sources/safe-fetch";
@@ -78,6 +79,15 @@ Sponsorship: [![Sponsored by AppsCode](https://cdn.appscode.com/images/logo/apps
   assert.ok(verifyImageUrl(params.get("u")!, params.get("s")!));
   assert.ok(!verifyImageUrl("https://example.org/b.png", params.get("s")!));
   assert.ok(!verifyImageUrl(params.get("u")!, "forged"));
+}
+
+// With neither IMAGE_PROXY_SECRET nor GITHUB_TOKEN set, the fallback key is
+// random per boot, not one fixed guessable string every such instance shares.
+{
+  const clean = { ...process.env, IMAGE_PROXY_SECRET: "", GITHUB_TOKEN: "" };
+  const run = () => execFileSync(process.execPath, ["--require", require.resolve("tsx/cjs"), require.resolve("./_boot-secret-probe.ts")], { env: clean, encoding: "utf8" }).trim();
+  const [first, second] = [run(), run()];
+  assert.notEqual(new URL(first, "http://localhost").searchParams.get("s"), new URL(second, "http://localhost").searchParams.get("s"));
 }
 
 // Never the local network, never plain http, never another port.

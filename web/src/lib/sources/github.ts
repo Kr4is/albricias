@@ -69,7 +69,7 @@ async function* paginateItems<T>(
 export interface GithubFetchOptions extends Period {
   /** GitHub login whose activity is chronicled. */
   username: string;
-  /** The server's personal access token (`GITHUB_TOKEN`). */
+  /** A GitHub personal access token — the visitor's own, or the server's `GITHUB_TOKEN` (`runGithubToken`). */
   token: string;
   /**
    * Called once per event-type section that failed, with a human-readable

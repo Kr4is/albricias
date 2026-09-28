@@ -30,10 +30,11 @@ pipeline — inspectable locally in Mastra Studio (`npm run studio`).
 ## Getting started
 
 See [`web/README.md`](web/README.md) for setup and running the app locally.
-The one environment variable the app needs is `GITHUB_TOKEN` (in
-`web/.env`) — a server-held token used for every visitor's read-only
-GitHub activity lookup. The rest of `web/.env.example` is local-only
-Mastra Studio configuration.
+`GITHUB_TOKEN` (in `web/.env`) is an optional server-held token used as the
+default for every visitor's read-only GitHub activity lookup — a visitor
+can supply their own instead, in the form, so it's not required for the
+app to work. The rest of `web/.env.example` is local-only Mastra Studio
+configuration.
 
 ## Docker
 

@@ -60,6 +60,7 @@ const STORAGE_KEY = "albricias:generate-form";
 
 interface SavedForm {
   githubUsername: string;
+  githubToken: string;
   period: Period;
   llmProvider: AiProviderId;
   llmApiKey: string;
@@ -117,6 +118,7 @@ export default function AppClient() {
   const [error, setError] = useState<string | null>(null);
 
   const [githubUsername, setGithubUsername] = useState("");
+  const [githubToken, setGithubToken] = useState("");
   const [period, setPeriod] = useState<Period>("weekly");
   const [llmProvider, setLlmProvider] = useState<AiProviderId>("openai");
   const [llmApiKey, setLlmApiKey] = useState("");
@@ -145,6 +147,7 @@ export default function AppClient() {
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SavedForm>;
         if (saved.githubUsername) setGithubUsername(saved.githubUsername);
+        if (saved.githubToken) setGithubToken(saved.githubToken);
         if (saved.period && PERIODS.some((p) => p.id === saved.period)) setPeriod(saved.period);
         if (saved.llmProvider && PROVIDERS.some((p) => p.id === saved.llmProvider)) setLlmProvider(saved.llmProvider);
         if (saved.llmApiKey) setLlmApiKey(saved.llmApiKey);
@@ -162,12 +165,12 @@ export default function AppClient() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const toSave: SavedForm = { githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking };
+      const toSave: SavedForm = { githubUsername, githubToken, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch {
       // Storage unavailable — the form still works, it just won't be remembered.
     }
-  }, [loaded, githubUsername, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking]);
+  }, [loaded, githubUsername, githubToken, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking]);
 
   const needsGateway = llmProvider === "litellm";
 
@@ -208,6 +211,7 @@ export default function AppClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           githubUsername,
+          githubToken: githubToken || undefined,
           period,
           llmProvider,
           llmApiKey: llmApiKey || undefined,
@@ -375,8 +379,8 @@ export default function AppClient() {
               We fetch <strong>{githubUsername || "your"}</strong>&apos;s public GitHub
               activity for the {period} period, hand it to your chosen AI, and
               set it in type — live, on this page. Everything below is saved
-              in this browser for next time — your API key included, never
-              written to a server-side database or log.
+              in this browser for next time — your API key and GitHub token
+              included, never written to a server-side database or log.
             </p>
           </div>
           <div className="border-t border-stone-300 pt-6">
@@ -398,6 +402,39 @@ export default function AppClient() {
               placeholder="octocat"
               required
             />
+          </div>
+
+          <div>
+            <div className="flex items-baseline justify-between">
+              <label className={LABEL_CLASS} htmlFor="githubToken">
+                GitHub Token (optional)
+              </label>
+              {githubToken && (
+                <button
+                  type="button"
+                  onClick={() => setGithubToken("")}
+                  className="font-sans text-[10px] uppercase tracking-widest text-stone-400 hover:text-ink mb-1"
+                >
+                  Forget token
+                </button>
+              )}
+            </div>
+            <input
+              id="githubToken"
+              name="githubToken"
+              type="password"
+              autoComplete="current-password"
+              className={INPUT_CLASS}
+              value={githubToken}
+              onChange={(e) => setGithubToken(e.target.value)}
+              placeholder="ghp_… — leave blank to use this site's own"
+            />
+            <p className="font-body text-xs text-stone-500 mt-1">
+              Only needed if this site has none configured, or you&apos;d rather
+              not share its rate limit — a token of your own, no special
+              scopes, gets a much higher GitHub API budget. Saved in this
+              browser only, like the API key above.
+            </p>
           </div>
 
           <div>

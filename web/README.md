@@ -10,11 +10,13 @@ npm run setup   # installs deps, creates .env from .env.example if missing
 npm run dev
 ```
 
-Set `GITHUB_TOKEN` in `.env`: a personal access token with no special
-scopes, used server-side for every visitor's read-only activity lookup
-(visitors only ever supply a GitHub *username*, never a token). Without it,
-GitHub's unauthenticated rate limits (10 req/min on the search API) are
-exhausted almost immediately.
+Optionally set `GITHUB_TOKEN` in `.env`: a personal access token with no
+special scopes, used server-side as the default for every visitor's
+read-only activity lookup. Any visitor can instead type their own into the
+form's "GitHub Token" field — never stored server-side, only in their
+browser — so the app works for others without depending on this instance's
+token or its rate limit. Leave both unset and GitHub's unauthenticated rate
+limits (10 req/min on the search API) are exhausted almost immediately.
 
 Open [http://localhost:3000](http://localhost:3000): `/` is the landing
 page, `/app` is the generator. There is no login and nothing is saved —
@@ -25,12 +27,14 @@ front page.
 
 `POST /api/generate` (`src/app/api/generate/route.ts`) validates the form,
 puts the visitor's model (their provider + BYO key, built by
-`src/lib/ai/resolve.ts`) into the run's request context, and runs the
+`src/lib/ai/resolve.ts`) and their GitHub token — their own if they
+supplied one, else the server's `GITHUB_TOKEN` (`runGithubToken`,
+`src/mastra/model.ts`) — into the run's request context, and runs the
 `front-page` [Mastra](https://mastra.ai) workflow
 (`src/mastra/workflows/front-page.ts`):
 
 1. **gather** — the user's GitHub activity for the period
-   (`src/lib/sources/github.ts`, on the server's `GITHUB_TOKEN`, every event
+   (`src/lib/sources/github.ts`, on the run's GitHub token, every event
    type fetched in parallel), plus what each repo touched *is*
    (description, language, stars, topics), built into a typed JSON dossier
    (`src/lib/generation/dossier.ts`): every commit in order with its

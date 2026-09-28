@@ -8,14 +8,22 @@
  * So each proxied URL carries an HMAC of its target, signed with a key
  * only the server knows (`IMAGE_PROXY_SECRET`, or else one derived from
  * `GITHUB_TOKEN` — the same on every instance, with nothing new to
- * configure). The route fetches only URLs that verify, through
- * `safeFetch`'s public-internet-only rules. Stateless: nothing is stored.
+ * configure). With neither set (both are optional — a visitor can supply
+ * their own GitHub token instead), a fixed fallback would be the same
+ * guessable string on every such instance, letting anyone forge a
+ * signature and use the proxy to fetch arbitrary public URLs; instead one
+ * random key is generated at boot and kept for the process's life —
+ * signed URLs just stop verifying across a restart, which nothing else
+ * depends on (nothing is stored). The route fetches only URLs that
+ * verify, through `safeFetch`'s public-internet-only rules.
  */
 
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+
+const bootSecret = randomBytes(32).toString("hex");
 
 function key(): Buffer {
-  const secret = process.env.IMAGE_PROXY_SECRET || `albricias-image-proxy:${process.env.GITHUB_TOKEN ?? ""}`;
+  const secret = process.env.IMAGE_PROXY_SECRET || (process.env.GITHUB_TOKEN ? `albricias-image-proxy:${process.env.GITHUB_TOKEN}` : bootSecret);
   return createHash("sha256").update(secret).digest();
 }
 

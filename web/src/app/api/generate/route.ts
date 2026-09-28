@@ -11,9 +11,10 @@
  * as one SSE `event: <event>` unchanged, and turns a failed run into an
  * `error` event.
  *
- * Nothing is persisted in production — the visitor's LLM key travels only
- * in this run's request context. (Locally, runs are also traced for Mastra
- * Studio; see `@/mastra`.)
+ * Nothing is persisted in production — the visitor's LLM key (and their
+ * GitHub token, if they supplied one) travel only in this run's request
+ * context. (Locally, runs are also traced for Mastra Studio; see
+ * `@/mastra`.)
  */
 
 import { RequestContext } from "@mastra/core/request-context";
@@ -22,11 +23,18 @@ import { z } from "zod";
 import { buildAiModel, thinkingOff, THINKING_MODES } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
 import { getMastra } from "@/mastra";
-import { CALL_OPTIONS_KEY, MODEL_KEY, type CallOptions } from "@/mastra/model";
+import { CALL_OPTIONS_KEY, GITHUB_TOKEN_KEY, MODEL_KEY, type CallOptions } from "@/mastra/model";
 
 const baseFields = {
   githubUsername: z.string().trim().min(1).max(100),
   period: z.enum(["daily", "weekly", "monthly"]),
+  /**
+   * A visitor's own GitHub personal access token (no special scopes — the
+   * same read-only lookup the server's own `GITHUB_TOKEN` does), so
+   * generating never depends on the operator's rate limit or having set
+   * one at all. Falls back to the server's `GITHUB_TOKEN` when omitted.
+   */
+  githubToken: z.string().trim().min(1).optional(),
 };
 
 const requestSchema = z.discriminatedUnion("llmProvider", [
@@ -79,12 +87,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid request.", details: body.error.flatten() }, { status: 400 });
   }
   const input = body.data;
-  if (!process.env.GITHUB_TOKEN) {
-    return Response.json({ error: "Server is missing GITHUB_TOKEN." }, { status: 500 });
+  const githubToken = input.githubToken || process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    return Response.json(
+      { error: "No GitHub token available — this instance has none configured, so you'll need to supply your own (no special scopes needed)." },
+      { status: 400 },
+    );
   }
 
   const requestContext = new RequestContext();
   requestContext.set(MODEL_KEY, buildAiModel(input));
+  requestContext.set(GITHUB_TOKEN_KEY, githubToken);
   const thinking = "thinking" in input ? input.thinking : "full";
   const off = thinkingOff(input.llmProvider);
   const callOptions: CallOptions = { outline: thinking === "off" ? off : undefined, sections: thinking === "full" ? undefined : off };
