@@ -612,3 +612,35 @@ export function dossierRepos(dossier: Dossier): string[] {
 export function dossierText(material: Dossier | DossierSlice): string {
   return JSON.stringify(material);
 }
+
+/**
+ * Most characters of dossier a model call reads (`ALBRICIAS_PROMPT_CHARS`,
+ * default 60 000 — about 15k tokens). A month or a quarter of a busy account
+ * is several times that, and a model behind a small context window or a slow
+ * gateway would stall on the prompt before writing a word.
+ */
+const PROMPT_CHARS = Math.max(8_000, Math.floor(Number(process.env.ALBRICIAS_PROMPT_CHARS) || 60_000));
+/** The fewest commits per repository kept, however large the material. */
+const MIN_KEPT_COMMITS = 6;
+
+/**
+ * The dossier, or a section's slice of it, as text within `limit`: when it's
+ * larger, every repository's commits are thinned together — the least
+ * informative first, halving until it fits — and `commitsOmitted` says so.
+ * The outline plans from counts, rhythm and the repos' biggest work, and a
+ * section from its repositories' biggest changes, not from every commit.
+ */
+export function fitText(material: Dossier | DossierSlice, limit: number = PROMPT_CHARS): string {
+  let text = dossierText(material);
+  for (let keep = MAX_COMMITS_PER_REPO; text.length > limit && keep > MIN_KEPT_COMMITS; ) {
+    keep = Math.max(MIN_KEPT_COMMITS, Math.floor(keep / 2));
+    text = dossierText({
+      ...material,
+      repos: material.repos.map((repo) => {
+        const commits = keepHeaviest(repo.commits, keep, weight);
+        return { ...repo, commits, commitsOmitted: repo.commitsOmitted + repo.commits.length - commits.length };
+      }),
+    });
+  }
+  return text;
+}

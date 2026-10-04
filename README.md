@@ -76,6 +76,7 @@ optional.
 | `GITHUB_TOKEN` | Server-side token for **public** editions (no scopes needed). Without one, GitHub's unauthenticated limits apply (10 requests/min on search) — fine for occasional use. Never used for private activity. |
 | `IMAGE_PROXY_SECRET` | Key the image proxy signs picture URLs with. Unset: derived from `GITHUB_TOKEN`, or random at boot. |
 | `ALBRICIAS_SECTION_CONCURRENCY` | Sections written at once (default 2). `1` for gateways that drop concurrent connections. |
+| `ALBRICIAS_PROMPT_CHARS` | Most characters of GitHub material a model call reads (default 60 000, about 15k tokens); busier accounts have their least informative commits thinned to fit. Lower it for small-context models. |
 | `ALBRICIAS_LLM_IDLE_SECONDS` | How long an AI call may go without producing a token before it is stopped with an error (default 240, minimum 30). Raise it for slow thinking models. |
 | `ALBRICIAS_LLM_*` | Model used by Mastra Studio runs (local development only). |
 | `ALBRICIAS_SCORERS` | Score runs in Studio (`1` = every run, `0.2` = 20 %). Local only. |

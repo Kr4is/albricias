@@ -3,7 +3,7 @@
  * `npx tsx scripts/check-dossier.ts`.
  */
 import assert from "node:assert/strict";
-import { buildDossier, dossierRepos, sliceDossier, type Dossier, type DossierSlice } from "../src/lib/generation/dossier";
+import { fitText, buildDossier, dossierRepos, sliceDossier, type Dossier, type DossierSlice } from "../src/lib/generation/dossier";
 import type { RepoDetails } from "../src/lib/sources/github";
 import type { ActivityItem } from "../src/lib/sources/types";
 
@@ -129,6 +129,22 @@ const capped = buildDossier(busy, new Map(), input).repos[0];
 assert.equal(capped.counts.commits, 150);
 assert.equal(capped.commits.length + capped.commitsOmitted, 150);
 assert.equal(capped.commits.filter((c) => c.type === "feat").length, 50);
+
+// Model calls read a budgeted dossier: thinned together, the heaviest commits kept, the omission counted.
+{
+  const many: ActivityItem[] = [];
+  for (const repo of ["me/a", "me/b", "me/c"]) {
+    for (let i = 0; i < 120; i += 1) many.push(commit(repo, `2026-09-02T09:${String(i % 60).padStart(2, "0")}:00.000+00:00`, i % 4 === 0 ? `feat: thing ${i}` : `chore: bump ${i}`));
+  }
+  const big = buildDossier(many, new Map(), input);
+  const full = JSON.stringify(big);
+  assert.equal(fitText(big, full.length + 1), full, "under budget: untouched");
+  const small = fitText(big, 20_000);
+  assert.ok(small.length < full.length, "over budget: thinner");
+  const thin = JSON.parse(small).repos[0];
+  assert.equal(thin.commits.length + thin.commitsOmitted, 120, "every commit is either kept or counted as omitted");
+  assert.ok(thin.commits.every((c: { type: string }) => c.type === "feat"), "the least informative go first");
+}
 
 // Nothing at all -> refuses.
 assert.throws(() => buildDossier([], new Map(), input));

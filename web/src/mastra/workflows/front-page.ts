@@ -48,7 +48,7 @@ import { CADENCES } from "@/lib/periods";
 import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
 import { articleBlockSchema, articleImageSchema, type ArticleImageRef } from "@/lib/article-blocks";
 import { chartsForSection, numbersBox, starsBox } from "@/lib/generation/charts";
-import { buildDossier, dossierSchema, dossierText, sliceDossier } from "@/lib/generation/dossier";
+import { buildDossier, dossierSchema, fitText, sliceDossier } from "@/lib/generation/dossier";
 import { outlineSchema, reviewOutline, SECTION_KINDS, type Outline, type SectionKind } from "@/lib/generation/outline";
 import { buildOutlinePrompt, buildSectionPrompt, DEFAULT_TEMPERATURE, createLeadingHeadingFilter } from "@/lib/generation/period-post";
 import { pickLayoutForContent } from "@/lib/layout";
@@ -393,7 +393,7 @@ const plan = createStep({
     await out.write({ event: "status", data: { message: "Planning the front page…" } });
 
     const editor = mastra.getAgent("outlineEditor");
-    const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: dossierText(inputData.dossier) });
+    const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: fitText(inputData.dossier) });
     const ask = () => streamAgent<Outline>(editor, prompt, requestContext, { schema: outlineSchema, call: "outline" });
     let reply = await ask();
     if (isUnusable(reply) || !reply.object) {
@@ -487,7 +487,7 @@ const writeSection = createStep({
     const { index } = inputData;
     const author = getInitData<z.infer<typeof inputSchema>>().githubUsername;
     const focus = { kind: inputData.kind === "overview" || inputData.kind === "reading-list" ? inputData.kind : ("repos" as const), repos: inputData.repos, window: inputData.window };
-    const sourceText = dossierText(sliceDossier(getStepResult(gather).dossier, focus));
+    const sourceText = fitText(sliceDossier(getStepResult(gather).dossier, focus));
     await out.write({
       event: "section-start",
       data: {
