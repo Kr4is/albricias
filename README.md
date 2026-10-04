@@ -119,6 +119,13 @@ npm run build         # production build
   one (`BROWSER=firefox` for Firefox); `check:layouts` needs
   `npx playwright-core install chromium`, or `CHROMIUM_PATH` pointing at one.
 
+## Which version is running
+
+The page footer shows the app version and the commit it was built from
+(linked to GitHub), and `GET /api/version` returns the same as JSON:
+`curl https://<your-host>/api/version`. CI passes the commit to the Docker
+build (`GIT_SHA`); a local build shows `dev`.
+
 ## Project structure
 
 ```

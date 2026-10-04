@@ -4,6 +4,7 @@
 
 import Header from "@/components/Header";
 import type { HeaderProps } from "@/components/Header";
+import { VERSION } from "@/lib/version";
 
 export type NewspaperShellProps = HeaderProps & {
   children: React.ReactNode;
@@ -19,6 +20,16 @@ export default function NewspaperShell({
       <main className="flex-grow px-6 sm:px-8 lg:px-10 py-6 print:px-0">
         {children}
       </main>
+      <footer className="no-print px-6 sm:px-8 lg:px-10 pb-4 text-center font-sans text-[10px] uppercase tracking-widest text-stone-400">
+        v{VERSION.version} ·{" "}
+        {VERSION.commitUrl ? (
+          <a href={VERSION.commitUrl} target="_blank" rel="noreferrer" className="hover:text-ink">
+            {VERSION.shortSha}
+          </a>
+        ) : (
+          VERSION.shortSha
+        )}
+      </footer>
     </div>
   );
 }

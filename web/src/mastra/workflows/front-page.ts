@@ -201,6 +201,9 @@ function rejectedSettings(requestContext: RequestContext): Set<RefusableSetting>
 
 const REFUSED_SETTINGS_KEY = "refusedSettings";
 
+/** How often a long model call reports that it is still working. */
+const PROGRESS_EVERY_MS = 5_000;
+
 /** How long a model call may go without producing a token before it's stopped (`ALBRICIAS_LLM_IDLE_SECONDS`, default 240). */
 const MODEL_IDLE_MS = Math.max(30, Math.floor(Number(process.env.ALBRICIAS_LLM_IDLE_SECONDS) || 240)) * 1000;
 
@@ -241,7 +244,13 @@ async function streamAgent<T extends object = never>(
   agent: Agent,
   prompt: string,
   requestContext: RequestContext,
-  options: { onDelta?: (delta: string) => Promise<void>; schema?: z.ZodType<T>; call: keyof CallOptions },
+  options: {
+    onDelta?: (delta: string) => Promise<void>;
+    /** Called at most every few seconds while the model works (reasoning included), so a long silent call can tell the page it's alive. */
+    onProgress?: (info: { seconds: number; characters: number; thinking: boolean }) => Promise<void>;
+    schema?: z.ZodType<T>;
+    call: keyof CallOptions;
+  },
 ): Promise<StreamedText<T>> {
   const rejected = rejectedSettings(requestContext);
   for (;;) {
@@ -272,10 +281,23 @@ async function streamAgent<T extends object = never>(
         ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
         : await agent.stream(prompt, settings);
       let sent = false;
-      for await (const delta of output.textStream) {
-        sent = true;
+      let characters = 0;
+      let lastProgress = 0;
+      const startedAt = Date.now();
+      // The full stream, not just its text: a thinking model reasons for minutes before its first word,
+      // and that is the model working, not the provider gone quiet.
+      for await (const chunk of output.fullStream) {
         arm();
-        await options.onDelta?.(delta);
+        const thinking = chunk.type === "reasoning-delta";
+        if (chunk.type === "text-delta") {
+          sent = true;
+          characters += chunk.payload.text.length;
+          await options.onDelta?.(chunk.payload.text);
+        }
+        if (options.onProgress && (thinking || chunk.type === "text-delta") && Date.now() - lastProgress >= PROGRESS_EVERY_MS) {
+          lastProgress = Date.now();
+          await options.onProgress({ seconds: Math.round((lastProgress - startedAt) / 1000), characters, thinking });
+        }
       }
       const [text, finishReason] = await Promise.all([output.text, output.finishReason]);
       if (timedOut) throw idleError();
@@ -394,7 +416,10 @@ const plan = createStep({
 
     const editor = mastra.getAgent("outlineEditor");
     const prompt = buildOutlinePrompt({ periodLabel: inputData.periodLabel, cadence: inputData.cadence, sourceText: fitText(inputData.dossier) });
-    const ask = () => streamAgent<Outline>(editor, prompt, requestContext, { schema: outlineSchema, call: "outline" });
+    // The outline streams for minutes on a slow or thinking model; the page hears of it, rather than sitting on "Planning…".
+    const onProgress = ({ seconds, characters, thinking }: { seconds: number; characters: number; thinking: boolean }) =>
+      out.write({ event: "status", data: { message: `Planning the front page… ${thinking ? "the model is thinking" : `${characters.toLocaleString("en")} characters drafted`} (${seconds}s)` } });
+    const ask = () => streamAgent<Outline>(editor, prompt, requestContext, { schema: outlineSchema, call: "outline", onProgress });
     let reply = await ask();
     if (isUnusable(reply) || !reply.object) {
       console.warn(`[front-page] outline unusable (finishReason: ${reply.finishReason}, ${reply.object ? "parsed" : "no valid outline"}) — retrying once`);

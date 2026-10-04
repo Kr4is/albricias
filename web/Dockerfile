@@ -9,6 +9,9 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# The commit this image is built from (CI passes it); shown in the page footer and at /api/version.
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -16,6 +19,8 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
 
 RUN groupadd --system --gid 1001 nodejs \
  && useradd --system --uid 1001 --gid nodejs nextjs
