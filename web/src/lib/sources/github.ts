@@ -23,6 +23,28 @@ const GITHUB_API = "https://api.github.com";
 /** Repositories whose releases are looked up at once. */
 const RELEASE_LOOKUPS = 6;
 
+/**
+ * The longest a rate-limited request waits to be retried. Octokit's default
+ * waits out the whole limit once — up to an hour for an exhausted
+ * unauthenticated quota (60 requests/hour per IP), which left the page on
+ * "Fetching the activity…" for as long. Past this the request fails instead.
+ */
+const MAX_RATE_LIMIT_WAIT_SECONDS = 20;
+
+/** An Octokit that retries a short rate-limit wait but never sits out a long one. */
+export function githubClient(token?: string): Octokit {
+  const retryShortWaits = (retryAfter: number) => retryAfter <= MAX_RATE_LIMIT_WAIT_SECONDS;
+  return new Octokit({ auth: token, throttle: { onRateLimit: retryShortWaits, onSecondaryRateLimit: retryShortWaits } });
+}
+
+/** When (UTC clock time) a rate-limited error says the quota comes back, if it says. */
+function rateLimitReset(error: unknown): { limited: boolean; resetsAt: string | null } {
+  if (!(error instanceof RequestError) || (error.status !== 403 && error.status !== 429)) return { limited: false, resetsAt: null };
+  if (!/rate limit/i.test(error.message) && error.response?.headers?.["x-ratelimit-remaining"] !== "0") return { limited: false, resetsAt: null };
+  const reset = Number(error.response?.headers?.["x-ratelimit-reset"]);
+  return { limited: true, resetsAt: Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString().slice(11, 16) + " UTC" : null };
+}
+
 /** Statuses that mean "no (more) results" rather than a failure. */
 const IGNORED_STATUSES = [404, 422];
 
@@ -103,7 +125,10 @@ export async function fetchGithubActivity({
 }: GithubFetchOptions): Promise<ActivityItem[]> {
   const period: Period = { periodStart, periodEnd };
   /** One section failed: log it (as always) and tell the caller, if it asked. */
+  const failure: { rateLimit: { resetsAt: string | null } | null } = { rateLimit: null };
   const sectionFailed = (what: string, error: unknown): void => {
+    const limit = rateLimitReset(error);
+    if (limit.limited) failure.rateLimit = { resetsAt: limit.resetsAt };
     const message = `${what} fetch failed: ${describe(error)}`;
     console.error(`[github] ${message}`);
     onWarning?.(message);
@@ -112,7 +137,7 @@ export async function fetchGithubActivity({
   // periodEnd is exclusive; GitHub's `a..b` search range is inclusive.
   const endDate = isoDate(new Date(periodEnd.getTime() - 86_400_000));
 
-  const octokit = new Octokit({ auth: token });
+  const octokit = githubClient(token);
   if (includePrivate) await assertTokenOwner(octokit, username);
 
   /** The user's repositories, newest first by `sort` — all of them with `includePrivate`, else only the public ones. */
@@ -360,7 +385,16 @@ export async function fetchGithubActivity({
   );
 
   // Concatenated in the fixed order above, whatever order they finish in.
-  return (await Promise.all(jobs)).flat();
+  const activity = (await Promise.all(jobs)).flat();
+  if (activity.length === 0 && failure.rateLimit) {
+    const when = failure.rateLimit.resetsAt ? ` It resets at ${failure.rateLimit.resetsAt}.` : "";
+    throw new Error(
+      token
+        ? `GitHub's rate limit for this token is used up.${when} Try again then.`
+        : `GitHub's rate limit for anonymous requests is used up.${when} The operator can raise it by setting GITHUB_TOKEN on the server, or include your private activity with a token of your own.`,
+    );
+  }
+  return activity;
 }
 
 /** The few fields read off a repository listing — `GET /user/repos` and `GET /users/{u}/repos` both carry them. */
@@ -508,7 +542,7 @@ export async function fetchRepoDetails(
     .slice(0, MAX_DETAIL_LOOKUPS)
     .map(([repo]) => repo);
 
-  const octokit = new Octokit({ auth: token });
+  const octokit = githubClient(token);
   await Promise.all(
     missing.map(async (repo) => {
       const [owner, name] = repo.split("/");

@@ -73,7 +73,7 @@ optional.
 
 | Variable | Purpose |
 | --- | --- |
-| `GITHUB_TOKEN` | Server-side token for **public** editions (no scopes needed). Without one, GitHub's unauthenticated limits apply (10 requests/min on search) — fine for occasional use. Never used for private activity. |
+| `GITHUB_TOKEN` | Server-side token for **public** editions (no scopes needed). Without one, GitHub's anonymous limits apply (60 requests/hour per IP, 10/min on search) — enough for a few editions, then GitHub refuses until the hour resets; **set one on any shared deployment** (`/api/version` shows whether the instance has one). Never used for private activity. |
 | `IMAGE_PROXY_SECRET` | Key the image proxy signs picture URLs with. Unset: derived from `GITHUB_TOKEN`, or random at boot. |
 | `ALBRICIAS_SECTION_CONCURRENCY` | Sections written at once (default 2). `1` for gateways that drop concurrent connections. |
 | `ALBRICIAS_PROMPT_CHARS` | Most characters of GitHub material a model call reads (default 60 000, about 15k tokens); busier accounts have their least informative commits thinned to fit. Lower it for small-context models. |

@@ -16,7 +16,9 @@
  * picture through the image proxy (`@/lib/image-proxy`).
  */
 
-import { Octokit } from "octokit";
+import type { Octokit } from "octokit";
+
+import { githubClient } from "@/lib/sources/github";
 
 import { MAX_IMAGES_PER_REPO, pageImage, readmeImages, type RepoImage } from "@/lib/sources/readme-images";
 import { safeFetch } from "@/lib/sources/safe-fetch";
@@ -73,7 +75,7 @@ async function socialImages(octokit: Octokit, repos: string[]): Promise<Map<stri
  * as given. `homepages` names each repo's website, when it has one.
  */
 export async function fetchRepoImages(repos: string[], homepages: Map<string, string | null>, token?: string): Promise<Map<string, RepoImage[]>> {
-  const octokit = new Octokit({ auth: token });
+  const octokit = githubClient(token);
   const social = await socialImages(octokit, repos);
   const images = new Map<string, RepoImage[]>();
 
