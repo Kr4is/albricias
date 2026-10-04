@@ -58,6 +58,11 @@ const SSE_HEADERS = {
   Connection: "keep-alive",
 } as const;
 
+/** A comment line every so often, so the page (and any proxy) can tell a quiet run from a dead connection. */
+const HEARTBEAT_MS = 15_000;
+/** No page event for this long and the run is stopped with an error — longer than a model call may stay silent (`MODEL_IDLE_MS`). */
+const RUN_IDLE_MS = 6 * 60_000;
+
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
@@ -114,14 +119,35 @@ export async function POST(request: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
-      const send = (event: string, data: unknown) => {
+      let lastEvent = Date.now();
+      const write = (text: string) => {
         if (closed) return;
         try {
-          controller.enqueue(encoder.encode(sseEvent(event, data)));
+          controller.enqueue(encoder.encode(text));
         } catch {
           closed = true;
         }
       };
+      const send = (event: string, data: unknown) => {
+        lastEvent = Date.now();
+        write(sseEvent(event, data));
+      };
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      };
+      const watchdog = setInterval(() => {
+        if (Date.now() - lastEvent < RUN_IDLE_MS) return write(": ping\n\n");
+        console.error(`[front-page] run for "${input.githubUsername}" stalled — no progress for ${RUN_IDLE_MS / 1000}s, cancelling`);
+        send("error", { error: "Generation stalled — nothing happened for several minutes, so it was stopped. Try again, or check your AI provider." });
+        run.cancel().catch(() => {});
+        finish();
+      }, HEARTBEAT_MS);
 
       try {
         const output = run.stream({
@@ -145,13 +171,8 @@ export async function POST(request: Request) {
         console.error(`[front-page] run crashed for "${input.githubUsername}" (${input.period}):`, error);
         send("error", { error: describeAiError(error) });
       } finally {
-        if (!closed) {
-          try {
-            controller.close();
-          } catch {
-            // already closed
-          }
-        }
+        clearInterval(watchdog);
+        finish();
       }
     },
   });

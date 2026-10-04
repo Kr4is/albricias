@@ -201,6 +201,9 @@ function rejectedSettings(requestContext: RequestContext): Set<RefusableSetting>
 
 const REFUSED_SETTINGS_KEY = "refusedSettings";
 
+/** How long a model call may go without producing a token before it's stopped (`ALBRICIAS_LLM_IDLE_SECONDS`, default 240). */
+const MODEL_IDLE_MS = Math.max(30, Math.floor(Number(process.env.ALBRICIAS_LLM_IDLE_SECONDS) || 240)) * 1000;
+
 interface StreamedText<T = never> {
   text: string;
   finishReason: string;
@@ -242,37 +245,60 @@ async function streamAgent<T extends object = never>(
 ): Promise<StreamedText<T>> {
   const rejected = rejectedSettings(requestContext);
   for (;;) {
-    const providerOptions = rejected.has("providerOptions") ? undefined : (requestContext.get(CALL_OPTIONS_KEY) as CallOptions | undefined)?.[options.call];
-    const settings = {
-      requestContext,
-      modelSettings: { ...(rejected.has("temperature") ? {} : { temperature: DEFAULT_TEMPERATURE }), maxRetries: 0 },
-      // Our options are plain JSON under the provider's name; Mastra types the key per known provider.
-      ...(providerOptions ? { providerOptions: providerOptions as Record<string, Record<string, never>> } : {}),
+    // A provider that goes quiet (a hung gateway, a dropped connection) would otherwise leave the
+    // visitor on "Planning the front page…" forever: no token for IDLE_MS aborts the call.
+    const abort = new AbortController();
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        timedOut = true;
+        abort.abort();
+      }, MODEL_IDLE_MS);
     };
-    const output = options.schema
-      ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
-      : await agent.stream(prompt, settings);
-    let sent = false;
-    for await (const delta of output.textStream) {
-      sent = true;
-      await options.onDelta?.(delta);
-    }
-    const [text, finishReason] = await Promise.all([output.text, output.finishReason]);
-    if (finishReason === "error") {
-      const message = describeAiError(output.error);
-      // A model that refuses one of our settings (a reasoning model's fixed
-      // temperature; a provider that doesn't know `chat_template_kwargs`)
-      // is asked again without it, and never sent it again this run.
-      const setting = sent ? null : refusedSetting(message);
-      if (setting && !rejected.has(setting)) {
-        rejected.add(setting);
-        console.warn(`[front-page] the model refused ${setting === "temperature" ? "a temperature" : "the thinking switch"} — asking again without it: ${message.slice(0, 160)}`);
-        continue;
+    const idleError = () => new Error(`The AI provider sent nothing for ${MODEL_IDLE_MS / 1000} seconds, so the call was stopped. Check the provider or gateway is reachable and the model is up (a slow thinking model may need the Thinking setting on "Outline only" or "Off").`);
+    arm();
+    try {
+      const providerOptions = rejected.has("providerOptions") ? undefined : (requestContext.get(CALL_OPTIONS_KEY) as CallOptions | undefined)?.[options.call];
+      const settings = {
+        requestContext,
+        abortSignal: abort.signal,
+        modelSettings: { ...(rejected.has("temperature") ? {} : { temperature: DEFAULT_TEMPERATURE }), maxRetries: 0 },
+        // Our options are plain JSON under the provider's name; Mastra types the key per known provider.
+        ...(providerOptions ? { providerOptions: providerOptions as Record<string, Record<string, never>> } : {}),
+      };
+      const output = options.schema
+        ? await agent.stream(prompt, { ...settings, structuredOutput: { schema: options.schema, jsonPromptInjection: true, errorStrategy: "warn" } })
+        : await agent.stream(prompt, settings);
+      let sent = false;
+      for await (const delta of output.textStream) {
+        sent = true;
+        arm();
+        await options.onDelta?.(delta);
       }
-      throw new Error(message);
+      const [text, finishReason] = await Promise.all([output.text, output.finishReason]);
+      if (timedOut) throw idleError();
+      if (finishReason === "error") {
+        const message = describeAiError(output.error);
+        // A model that refuses one of our settings (a reasoning model's fixed
+        // temperature; a provider that doesn't know `chat_template_kwargs`)
+        // is asked again without it, and never sent it again this run.
+        const setting = sent ? null : refusedSetting(message);
+        if (setting && !rejected.has(setting)) {
+          rejected.add(setting);
+          console.warn(`[front-page] the model refused ${setting === "temperature" ? "a temperature" : "the thinking switch"} — asking again without it: ${message.slice(0, 160)}`);
+          continue;
+        }
+        throw new Error(message);
+      }
+      const object = options.schema ? ((await output.object.catch(() => undefined)) as T | undefined) : undefined;
+      return { text: text ?? "", finishReason: finishReason ?? "unknown", object: object ?? undefined };
+    } catch (error) {
+      throw timedOut ? idleError() : error;
+    } finally {
+      clearTimeout(timer);
     }
-    const object = options.schema ? ((await output.object.catch(() => undefined)) as T | undefined) : undefined;
-    return { text: text ?? "", finishReason: finishReason ?? "unknown", object: object ?? undefined };
   }
 }
 

@@ -38,6 +38,9 @@ const LAYOUT_OPTIONS: { id: LayoutIndex; label: string }[] = [
  */
 const STORAGE_KEY = "albricias:generate-form";
 
+/** Without a byte from the server (its heartbeat included) for this long, the stream is given up on. */
+const STALL_MS = 60_000;
+
 const PILL_ACTIVE = "bg-ink text-white border-ink";
 const PILL_INACTIVE = "bg-white text-ink border-stone-300 hover:border-ink";
 
@@ -185,65 +188,79 @@ export default function AppClient() {
       }
 
       const reader = response.body.getReader();
+      // The server sends a heartbeat every 15s; a minute of nothing means the connection is gone.
+      let lastBytes = Date.now();
+      let stalled = false;
+      const watchdog = setInterval(() => {
+        if (Date.now() - lastBytes < STALL_MS) return;
+        stalled = true;
+        reader.cancel().catch(() => {});
+      }, 5_000);
       const decoder = new TextDecoder();
       let buffer = "";
       let sawFirstSection = false;
       let streamError: string | null = null;
       let sawDone = false;
 
-      for (;;) {
-        const { value, done: readerDone } = await reader.read();
-        if (readerDone) break;
-        buffer += decoder.decode(value, { stream: true });
+      try {
+        for (;;) {
+          const { value, done: readerDone } = await reader.read();
+          if (readerDone) break;
+          lastBytes = Date.now();
+          buffer += decoder.decode(value, { stream: true });
 
-        let separatorIndex: number;
-        while ((separatorIndex = buffer.indexOf("\n\n")) !== -1) {
-          const raw = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + 2);
-          const message = parseSseMessage(raw);
-          if (!message) continue;
+          let separatorIndex: number;
+          while ((separatorIndex = buffer.indexOf("\n\n")) !== -1) {
+            const raw = buffer.slice(0, separatorIndex);
+            buffer = buffer.slice(separatorIndex + 2);
+            const message = parseSseMessage(raw);
+            if (!message) continue;
 
-          if (message.event === "meta") {
-            const data = message.data as IssueMeta & { warnings: string[] };
-            setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, weather: data.weather });
-            setWarnings(data.warnings ?? []);
-          } else if (message.event === "layout") {
-            setLayout((message.data as { layout: LayoutIndex }).layout);
-          } else if (message.event === "status") {
-            setStatusMessage((message.data as { message: string }).message);
-          } else if (message.event === "section-start") {
-            const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string; image?: ArticleImageRef | null; blocks?: ArticleBlock[] };
-            setArticles((prev) =>
-              [
-                ...prev,
-                { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, image: data.image ?? null, blocks: data.blocks ?? [] },
-              ].sort((a, b) => readingOrder(a.id) - readingOrder(b.id)),
-            );
-            setStreamingIds((prev) => new Set(prev).add(data.index));
-            if (!sawFirstSection) {
-              sawFirstSection = true;
-              setPhase("result");
+            if (message.event === "meta") {
+              const data = message.data as IssueMeta & { warnings: string[] };
+              setIssueMeta({ vol: data.vol, dateLabel: data.dateLabel, weather: data.weather });
+              setWarnings(data.warnings ?? []);
+            } else if (message.event === "layout") {
+              setLayout((message.data as { layout: LayoutIndex }).layout);
+            } else if (message.event === "status") {
+              setStatusMessage((message.data as { message: string }).message);
+            } else if (message.event === "section-start") {
+              const data = message.data as { index: number; heading: string; category: string; author: string | null; deck: string; image?: ArticleImageRef | null; blocks?: ArticleBlock[] };
+              setArticles((prev) =>
+                [
+                  ...prev,
+                  { id: data.index, title: data.heading, content: "", category: data.category, author: data.author, deck: data.deck, image: data.image ?? null, blocks: data.blocks ?? [] },
+                ].sort((a, b) => readingOrder(a.id) - readingOrder(b.id)),
+              );
+              setStreamingIds((prev) => new Set(prev).add(data.index));
+              if (!sawFirstSection) {
+                sawFirstSection = true;
+                setPhase("result");
+              }
+            } else if (message.event === "section-delta") {
+              const data = message.data as { index: number; delta: string };
+              setArticles((prev) => prev.map((a) => (a.id === data.index ? { ...a, content: a.content + data.delta } : a)));
+            } else if (message.event === "section-end") {
+              const data = message.data as { index: number; failed?: boolean };
+              setStreamingIds((prev) => {
+                const next = new Set(prev);
+                next.delete(data.index);
+                return next;
+              });
+              if (data.failed) setArticles((prev) => prev.filter((a) => a.id !== data.index));
+            } else if (message.event === "done") {
+              setTitle((message.data as { title: string }).title);
+              sawDone = true;
+            } else if (message.event === "error") {
+              streamError = (message.data as { error: string }).error;
             }
-          } else if (message.event === "section-delta") {
-            const data = message.data as { index: number; delta: string };
-            setArticles((prev) => prev.map((a) => (a.id === data.index ? { ...a, content: a.content + data.delta } : a)));
-          } else if (message.event === "section-end") {
-            const data = message.data as { index: number; failed?: boolean };
-            setStreamingIds((prev) => {
-              const next = new Set(prev);
-              next.delete(data.index);
-              return next;
-            });
-            if (data.failed) setArticles((prev) => prev.filter((a) => a.id !== data.index));
-          } else if (message.event === "done") {
-            setTitle((message.data as { title: string }).title);
-            sawDone = true;
-          } else if (message.event === "error") {
-            streamError = (message.data as { error: string }).error;
           }
         }
+      } finally {
+        clearInterval(watchdog);
       }
 
+      if (stalled) throw new Error("The connection to the server was lost — nothing arrived for a minute. Try again.");
       if (streamError) throw new Error(streamError);
       if (!sawDone) throw new Error("The connection ended before generation finished.");
       setFinished(true);
