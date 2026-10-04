@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "¡Albricias! — how an edition is made",
+    "output": "docs/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:Kr4is/albricias.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "c8734b0de44d526ec6d7244ef180fc39936248ef"
+    }
+  },
+  "components": [
+    {
+      "id": "visitor",
+      "type": "external",
+      "label": "Visitor",
+      "sublabel": "any browser",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "wizard",
+      "type": "frontend",
+      "label": "Setup wizard",
+      "sublabel": "byline · sources · AI · press",
+      "pos": [
+        320,
+        300
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/components/SetupWizard.tsx",
+          "line": 58,
+          "label": "four steps"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "localStorage",
+      "sublabel": "form, key, token",
+      "pos": [
+        320,
+        120
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/components/AppClient.tsx",
+          "line": 102,
+          "label": "load"
+        },
+        {
+          "path": "web/src/components/AppClient.tsx",
+          "line": 129,
+          "label": "save"
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Edition page",
+      "sublabel": "6 layouts · fill · PNG",
+      "pos": [
+        320,
+        480
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/components/issue/IssueLayout.tsx",
+          "line": 15,
+          "label": "six layouts"
+        },
+        {
+          "path": "web/src/components/usePageFill.ts",
+          "line": 73,
+          "label": "page fill"
+        },
+        {
+          "path": "web/src/components/ExportActions.tsx",
+          "line": 166,
+          "label": "PNG export"
+        }
+      ]
+    },
+    {
+      "id": "generate",
+      "type": "backend",
+      "label": "/api/generate",
+      "sublabel": "zod-validated · SSE",
+      "pos": [
+        600,
+        300
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "stateless",
+      "sources": [
+        {
+          "path": "web/src/app/api/generate/route.ts",
+          "line": 86,
+          "label": "POST"
+        },
+        {
+          "path": "web/src/app/api/generate/route.ts",
+          "line": 61,
+          "label": "SSE"
+        }
+      ]
+    },
+    {
+      "id": "image",
+      "type": "backend",
+      "label": "/api/image",
+      "sublabel": "signed · https only",
+      "pos": [
+        600,
+        480
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/app/api/image/route.ts",
+          "line": 16,
+          "label": "GET"
+        },
+        {
+          "path": "web/src/lib/image-proxy.ts",
+          "line": 40,
+          "label": "signature check"
+        },
+        {
+          "path": "web/src/lib/sources/safe-fetch.ts",
+          "line": 59,
+          "label": "guarded fetch"
+        }
+      ]
+    },
+    {
+      "id": "workflow",
+      "type": "backend",
+      "label": "front-page workflow",
+      "sublabel": "Mastra · gather to assemble",
+      "pos": [
+        880,
+        300
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/mastra/workflows/front-page.ts",
+          "line": 553,
+          "end_line": 572,
+          "label": "step chain"
+        }
+      ]
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub API",
+      "sublabel": "public · or token-gated private",
+      "pos": [
+        880,
+        120
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/sources/github.ts",
+          "line": 115,
+          "end_line": 116,
+          "label": "client + owner check"
+        },
+        {
+          "path": "web/src/lib/sources/github.ts",
+          "line": 379,
+          "label": "token owner"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM provider",
+      "sublabel": "OpenAI · Gemini · gateway",
+      "pos": [
+        1190,
+        300
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "visitor's key",
+      "sources": [
+        {
+          "path": "web/src/lib/ai/resolve.ts",
+          "line": 31,
+          "label": "buildAiModel"
+        },
+        {
+          "path": "web/src/mastra/agents.ts",
+          "line": 12,
+          "label": "agents"
+        }
+      ]
+    },
+    {
+      "id": "hosts",
+      "type": "external",
+      "label": "Picture hosts",
+      "sublabel": "READMEs, social cards",
+      "pos": [
+        1190,
+        480
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/sources/repo-images.ts",
+          "line": 75,
+          "label": "fetchRepoImages"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Browser",
+      "wraps": [
+        "wizard",
+        "storage",
+        "page"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Next.js server",
+      "wraps": [
+        "generate",
+        "image",
+        "workflow"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "visitor-wizard",
+      "from": "visitor",
+      "to": "wizard",
+      "label": "fills in"
+    },
+    {
+      "id": "wizard-storage",
+      "from": "wizard",
+      "to": "storage",
+      "label": "remembers",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "wizard-generate",
+      "from": "wizard",
+      "to": "generate",
+      "label": "POST",
+      "variant": "emphasis"
+    },
+    {
+      "id": "generate-workflow",
+      "from": "generate",
+      "to": "workflow",
+      "label": "run.stream",
+      "variant": "emphasis"
+    },
+    {
+      "id": "workflow-github",
+      "from": "workflow",
+      "to": "github",
+      "label": "activity",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "workflow-llm",
+      "from": "workflow",
+      "to": "llm",
+      "label": "outline + prose"
+    },
+    {
+      "id": "generate-page",
+      "from": "generate",
+      "to": "page",
+      "label": "SSE events",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          685,
+          430
+        ],
+        [
+          405,
+          430
+        ]
+      ]
+    },
+    {
+      "id": "page-image",
+      "from": "page",
+      "to": "image",
+      "label": "pictures",
+      "variant": "dashed"
+    },
+    {
+      "id": "image-hosts",
+      "from": "image",
+      "to": "hosts",
+      "label": "fetch, guarded",
+      "variant": "dashed"
+    },
+    {
+      "id": "page-visitor",
+      "from": "page",
+      "to": "visitor",
+      "label": "reads, exports",
+      "fromSide": "left",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Who can see what",
+      "items": [
+        "Public (default): the server's GITHUB_TOKEN, or none at all",
+        "Private (opt-in): the visitor's own token, checked to belong to the named account"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "The workflow",
+      "items": [
+        "gather, then pictures alongside plan, then review",
+        "illustrate and review use no model",
+        "write-section runs two at a time, then assemble"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Nothing is kept",
+      "items": [
+        "Keys and tokens live in one request's context",
+        "Only the visitor's browser remembers the form"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Local development only",
+      "items": [
+        "Mastra Studio, DuckDB traces and scorers via /api/mastra",
+        "/dev/layouts renders every layout on made-up articles"
+      ]
+    }
+  ]
+}
