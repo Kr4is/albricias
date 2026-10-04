@@ -173,7 +173,7 @@ export default function AppClient() {
           githubUsername: form.githubUsername.trim(),
           period: form.period,
           includePrivate: form.includePrivate,
-          githubToken: form.includePrivate ? form.githubToken.trim() : undefined,
+          githubToken: form.githubToken.trim() || undefined,
           llmProvider: form.llmProvider,
           llmApiKey: form.llmApiKey.trim(),
           llmModel: form.llmModel.trim() || undefined,

@@ -139,6 +139,8 @@ export async function fetchGithubActivity({
 
   const octokit = githubClient(token);
   if (includePrivate) await assertTokenOwner(octokit, username);
+  // A public edition stays public even on a token that could see more.
+  const visibility = includePrivate ? "" : " is:public";
 
   /** The user's repositories, newest first by `sort` — all of them with `includePrivate`, else only the public ones. */
   const listRepos = (sort: "pushed" | "created"): AsyncIterable<{ data: RepoListing[] }> =>
@@ -168,7 +170,7 @@ export async function fetchGithubActivity({
   // ---------------------------------------------------------------------
   jobs.push(
     collect("Commits", async (activities) => {
-      const q = `author:${username} author-date:${startDate}..${endDate}`;
+      const q = `author:${username} author-date:${startDate}..${endDate}${visibility}`;
       const pages = octokit.paginate.iterator("GET /search/commits", {
         q,
         per_page: 100,
@@ -192,7 +194,7 @@ export async function fetchGithubActivity({
   // ---------------------------------------------------------------------
   jobs.push(
     collect("PRs", async (activities) => {
-      const q = `author:${username} type:pr created:${startDate}..${endDate}`;
+      const q = `author:${username} type:pr created:${startDate}..${endDate}${visibility}`;
       const pages = octokit.paginate.iterator("GET /search/issues", {
         q,
         per_page: 100,
@@ -216,7 +218,7 @@ export async function fetchGithubActivity({
   // ---------------------------------------------------------------------
   jobs.push(
     collect("PR reviews", async (activities) => {
-      const q = `reviewed-by:${username} type:pr updated:${startDate}..${endDate}`;
+      const q = `reviewed-by:${username} type:pr updated:${startDate}..${endDate}${visibility}`;
       const pages = octokit.paginate.iterator("GET /search/issues", {
         q,
         per_page: 100,
@@ -240,7 +242,7 @@ export async function fetchGithubActivity({
   // ---------------------------------------------------------------------
   jobs.push(
     collect("Issues", async (activities) => {
-      const q = `author:${username} type:issue created:${startDate}..${endDate}`;
+      const q = `author:${username} type:issue created:${startDate}..${endDate}${visibility}`;
       const pages = octokit.paginate.iterator("GET /search/issues", {
         q,
         per_page: 100,
@@ -390,8 +392,8 @@ export async function fetchGithubActivity({
     const when = failure.rateLimit.resetsAt ? ` It resets at ${failure.rateLimit.resetsAt}.` : "";
     throw new Error(
       token
-        ? `GitHub's rate limit for this token is used up.${when} Try again then.`
-        : `GitHub's rate limit for anonymous requests is used up.${when} The operator can raise it by setting GITHUB_TOKEN on the server, or include your private activity with a token of your own.`,
+        ? `GitHub's rate limit for this token is used up.${when} Try again then, or add a GitHub token of your own in the Sources step.`
+        : `GitHub's rate limit for anonymous requests is used up.${when} Add a GitHub token of your own in the Sources step (no scopes needed for public activity) and print again — or try again then.`,
     );
   }
   return activity;

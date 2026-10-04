@@ -119,6 +119,33 @@ npm run build         # production build
   one (`BROWSER=firefox` for Firefox); `check:layouts` needs
   `npx playwright-core install chromium`, or `CHROMIUM_PATH` pointing at one.
 
+## Deploying
+
+The published image (`ghcr.io/kr4is/albricias`, built by CI on every push to
+`master`) is stateless; a compose file for it needs only the port and, for
+any shared deployment, a GitHub token:
+
+```yaml
+services:
+  web:
+    image: ghcr.io/kr4is/albricias:latest
+    ports: ["3000:3000"]
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}   # from a .env next to this file
+    restart: unless-stopped
+```
+
+**Why a token:** without `GITHUB_TOKEN` every public edition is fetched
+anonymously — 60 requests an hour for the whole IP, shared by every visitor —
+and once that runs out GitHub refuses until the hour resets (the visitor is
+told, and can add a token of their own). To create one: GitHub → Settings →
+Developer settings → Personal access tokens → *Fine-grained tokens* →
+Generate new token, **Public repositories (read-only)**, no permissions
+needed (or a classic token with no scopes). Put it in `.env` as
+`GITHUB_TOKEN=…`, then `docker compose up -d` to recreate the container with
+it. `curl https://<your-host>/api/version` shows `"githubAuth": "token"` once
+it's picked up. The token is only ever used for public data.
+
 ## Which version is running
 
 The page footer shows the app version and the commit it was built from

@@ -229,7 +229,7 @@ export default function SetupWizard({
                 >
                   <span className="block font-bold uppercase tracking-widest">Public activity only</span>
                   <span className="block font-body text-xs font-normal mt-1 opacity-80">
-                    Nothing to paste: only what anyone can already see on GitHub.
+                    Nothing required: only what anyone can already see on GitHub.
                   </span>
                 </button>
                 <button
@@ -244,37 +244,47 @@ export default function SetupWizard({
                 </button>
               </div>
 
-              {form.includePrivate && (
-                <div>
-                  <div className="flex items-baseline justify-between">
-                    <label className={LABEL_CLASS} htmlFor="githubToken">GitHub Token</label>
-                    {form.githubToken && (
-                      <button type="button" onClick={() => setForm({ githubToken: "" })} className={FORGET_CLASS}>
-                        Forget token
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    id="githubToken"
-                    name="githubToken"
-                    type="password"
-                    autoComplete="current-password"
-                    className={INPUT_CLASS}
-                    value={form.githubToken}
-                    onChange={(e) => setForm({ githubToken: e.target.value })}
-                    placeholder="ghp_… or github_pat_…"
-                  />
-                  <p className={HINT_CLASS}>
-                    Read-only is enough: a classic token with the <code>repo</code> scope, or a fine-grained one with
-                    read access to your repositories&apos; contents, issues and pull requests. It must belong to{" "}
-                    <strong>{form.githubUsername || "your account"}</strong>. Saved in this browser only.
-                  </p>
-                  <p className={HINT_CLASS}>
-                    Private repository names and commit messages go to your AI provider and appear on the page — share
-                    the result accordingly.
-                  </p>
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <label className={LABEL_CLASS} htmlFor="githubToken">
+                    GitHub Token {form.includePrivate ? "" : "(optional)"}
+                  </label>
+                  {form.githubToken && (
+                    <button type="button" onClick={() => setForm({ githubToken: "" })} className={FORGET_CLASS}>
+                      Forget token
+                    </button>
+                  )}
                 </div>
-              )}
+                <input
+                  id="githubToken"
+                  name="githubToken"
+                  type="password"
+                  autoComplete="current-password"
+                  className={INPUT_CLASS}
+                  value={form.githubToken}
+                  onChange={(e) => setForm({ githubToken: e.target.value })}
+                  placeholder="ghp_… or github_pat_…"
+                />
+                {form.includePrivate ? (
+                  <>
+                    <p className={HINT_CLASS}>
+                      Read-only is enough: a classic token with the <code>repo</code> scope, or a fine-grained one with
+                      read access to your repositories&apos; contents, issues and pull requests. It must belong to{" "}
+                      <strong>{form.githubUsername || "your account"}</strong>. Saved in this browser only.
+                    </p>
+                    <p className={HINT_CLASS}>
+                      Private repository names and commit messages go to your AI provider and appear on the page —
+                      share the result accordingly.
+                    </p>
+                  </>
+                ) : (
+                  <p className={HINT_CLASS}>
+                    Only if GitHub says its rate limit is used up: a token of your own, with no scopes at all, gets a
+                    much bigger allowance. Public activity only — it never reads private repositories. Saved in this
+                    browser only.
+                  </p>
+                )}
+              </div>
             </>
           )}
 
@@ -351,7 +361,10 @@ export default function SetupWizard({
               <dt className={LABEL_CLASS}>Period</dt>
               <dd>{PERIOD_HINTS[form.period]}</dd>
               <dt className={LABEL_CLASS}>Sources</dt>
-              <dd>{form.includePrivate ? "Public and private activity" : "Public activity only"}</dd>
+              <dd>
+                {form.includePrivate ? "Public and private activity" : "Public activity only"}
+                {form.githubToken ? " · with your GitHub token" : ""}
+              </dd>
               <dt className={LABEL_CLASS}>AI</dt>
               <dd>
                 {PROVIDERS.find((p) => p.id === form.llmProvider)?.label}
@@ -360,7 +373,20 @@ export default function SetupWizard({
             </dl>
           )}
 
-          {error && <p className="font-body text-sm text-red-800">{error}</p>}
+          {error && (
+            <p className="font-body text-sm text-red-800">
+              {error}
+              {/* A rate-limit error points at the token field. */}
+              {/Sources step/.test(error) && step !== "sources" && (
+                <>
+                  {" "}
+                  <button type="button" onClick={() => setStepIndex(1)} className="underline underline-offset-2 hover:text-ink">
+                    Go to Sources
+                  </button>
+                </>
+              )}
+            </p>
+          )}
           {problem && !last && <p className="font-body text-xs text-stone-500 italic">{problem}</p>}
 
           <div className="flex gap-2 mt-2">

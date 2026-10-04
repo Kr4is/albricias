@@ -30,10 +30,11 @@ const baseFields = {
   githubUsername: z.string().trim().min(1).max(100),
   period: z.enum(CADENCES),
   /**
-   * Off (the default): only the user's public activity is read, with the
-   * server's own `GITHUB_TOKEN` when it has one, else unauthenticated — the
-   * visitor supplies nothing. On: the visitor's own `githubToken` (with
-   * access to their private repositories) reads everything it can see.
+   * Off (the default): only the user's public activity is read — with the
+   * visitor's own `githubToken` when they gave one (a higher rate limit, no
+   * scopes needed), else the server's `GITHUB_TOKEN`, else unauthenticated.
+   * On: the `githubToken` (required, with access to their private
+   * repositories) also reads what only it can see.
    */
   includePrivate: z.boolean().default(false),
   githubToken: z.string().trim().min(1).optional(),
@@ -100,8 +101,8 @@ export async function POST(request: Request) {
 
   const requestContext = new RequestContext();
   requestContext.set(MODEL_KEY, buildAiModel(input));
-  // Public runs carry no visitor token: `runGithubToken` falls back to the server's.
-  if (input.includePrivate) requestContext.set(GITHUB_TOKEN_KEY, input.githubToken);
+  // No visitor token: `runGithubToken` falls back to the server's.
+  if (input.githubToken) requestContext.set(GITHUB_TOKEN_KEY, input.githubToken);
   const thinking = "thinking" in input ? input.thinking : "full";
   const off = thinkingOff(input.llmProvider);
   const callOptions: CallOptions = { outline: thinking === "off" ? off : undefined, sections: thinking === "full" ? undefined : off };
