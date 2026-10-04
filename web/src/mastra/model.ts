@@ -6,10 +6,11 @@
  *   CALL_OPTIONS_KEY   each call's provider options (the thinking choice)
  *   GITHUB_TOKEN_KEY   the token `gather`/`pictures` read GitHub with
  *
- * From the app, all three are the visitor's own: `/api/generate` builds
- * the model from their provider + BYO key (`buildAiModel`), and their
- * GitHub token — if they supplied one — travels alongside it, so a visitor
- * can generate without the operator's `GITHUB_TOKEN` ever being asked.
+ * From the app, the model is the visitor's own: `/api/generate` builds it
+ * from their provider + BYO key (`buildAiModel`). Their GitHub token travels
+ * alongside it only when they asked for their private activity too; a
+ * public edition reads GitHub with the operator's `GITHUB_TOKEN`, or with
+ * none at all.
  *
  * From Mastra Studio (`npm run studio`), a run has no visitor, so the
  * agents fall back to a model configured in `.env` — `ALBRICIAS_LLM_*`,
@@ -28,7 +29,7 @@ export const MODEL_KEY = "model";
 /** The request-context key for each call's provider options — how the visitor's thinking choice reaches the model. */
 export const CALL_OPTIONS_KEY = "callOptions";
 
-/** The request-context key for the run's GitHub token — the visitor's own, when they supplied one. */
+/** The request-context key for the run's GitHub token — the visitor's own, set only for a run that includes their private activity. */
 export const GITHUB_TOKEN_KEY = "githubToken";
 
 /** Provider options per kind of call; absent = the model's own default. */
@@ -70,7 +71,7 @@ export function runModel({ requestContext }: { requestContext: RequestContext })
   return model ? asMastraModel(model) : studioModel();
 }
 
-/** The run's GitHub token: the visitor's own, or else the server's `GITHUB_TOKEN` (a Studio run's only option). */
+/** The run's GitHub token: the visitor's own, or else the server's `GITHUB_TOKEN` (a Studio run's only option); none = unauthenticated. */
 export function runGithubToken(requestContext: RequestContext): string | undefined {
   return (requestContext.get(GITHUB_TOKEN_KEY) as string | undefined) || process.env.GITHUB_TOKEN;
 }

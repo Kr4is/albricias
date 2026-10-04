@@ -144,7 +144,7 @@ const overviewSchema = z.object({
   languages: z.array(z.object({ language: z.string(), events: z.number() })).describe("Languages of the repositories worked in, weighted by events"),
   timeline: z
     .array(z.object({ bucket: z.string(), events: z.number(), topRepo: z.string().nullable() }))
-    .describe("Events per day (weekly/daily periods) or per ISO week (monthly), with the busiest repository in each"),
+    .describe("Events per day (a week) or per ISO week (a month or quarter), with the busiest repository in each"),
 });
 
 export const dossierSchema = z.object({

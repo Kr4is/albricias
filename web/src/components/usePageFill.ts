@@ -10,11 +10,10 @@
  *   1. Fill: if the page is shorter than `TARGET_VIEWPORTS` × the viewport,
  *      `--issue-scale` (see `.issue-page` in globals.css) rises in
  *      `SCALE_STEP`s up to `MAX_SCALE`.
- *   2. Fold: with every secondary story on the V1/V4 side rails, each
- *      story is measured once and `planFold` works out how many fit beside
- *      the lead, and (V1) which rail each goes on (`onPlacement`); the rest
- *      move to the balanced band below. A safety loop then drops one more
- *      story while a rail still runs past the lead.
+ *   2. Fold: with every secondary story on V4's side rail, each story is
+ *      measured once and `planFold` works out how many fit beside the lead
+ *      (`onFold`); the rest move to the balanced band below. A safety loop
+ *      then drops one more story while the rail still runs past the lead.
  *   3. Level: `levelFlows` tunes each multi-column flow's type size so its
  *      columns end on the same line; `balanceColumns` evens out the
  *      side-by-side columns — a short column's type grows a little, then
@@ -36,7 +35,7 @@
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { balanceColumns, foldOverflows, levelFlows, MAX_SPREAD_GAP_PX, planFold, resetBalance, type FoldPlan } from "@/lib/balance";
+import { balanceColumns, foldOverflows, levelFlows, MAX_SPREAD_GAP_PX, planFold, resetBalance } from "@/lib/balance";
 import { isSpaciousLayout, pickSpaciousLayout, type LayoutIndex } from "@/lib/layout";
 
 /** Minimum page height, in viewport heights — tuned by eye, adjust here. */
@@ -78,7 +77,7 @@ export function usePageFill({
   total,
   allowRepick,
   onRepick,
-  onPlacement,
+  onFold,
 }: {
   ref: RefObject<HTMLElement | null>;
   /** Generation finished — nothing is measured while text is still streaming in. */
@@ -88,16 +87,16 @@ export function usePageFill({
   /** `false` once the visitor has chosen a layout by hand — their choice is never overridden. */
   allowRepick: boolean;
   onRepick: (layout: LayoutIndex) => void;
-  /** Sets the layout's `fold` / `leftRailIds` (`null` = every secondary story on the rails, dealt by rough length). */
-  onPlacement: (placement: FoldPlan | null) => void;
+  /** Sets the layout's `fold` (`null` = every secondary story on the rail). */
+  onFold: (fold: number | null) => void;
 }) {
   const repicked = useRef(false);
   // Read through a ref so a new callback identity each render doesn't re-trigger the pass.
   const onRepickRef = useRef(onRepick);
-  const onPlacementRef = useRef(onPlacement);
+  const onFoldRef = useRef(onFold);
   useEffect(() => {
     onRepickRef.current = onRepick;
-    onPlacementRef.current = onPlacement;
+    onFoldRef.current = onFold;
   });
 
   // Column widths change with the window, and every measurement with them.
@@ -125,14 +124,28 @@ export function usePageFill({
     let cancelled = false;
     node.style.setProperty("--issue-scale", "1");
     resetBalance(node);
+    delete node.dataset.settled;
 
     (async () => {
+      // Marks the end of a pass — what `scripts/check-layouts.ts` waits for
+      // before measuring. Not set when the pass switched layouts: the new
+      // layout re-runs it.
+      let switched = false;
+      try {
+        switched = await fill(node, layout);
+      } finally {
+        if (!cancelled && !switched) node.dataset.settled = "1";
+      }
+    })();
+
+    /** Runs the pass; `true` when it ended by switching layout. */
+    async function fill(node: HTMLElement, layout: LayoutIndex): Promise<boolean> {
       // Start from every story above the fold — a previous pass's fold was
       // measured for another layout or window width.
-      onPlacementRef.current(null);
+      onFoldRef.current(null);
       await Promise.all([imagesSettled(node), document.fonts?.ready]);
       await nextPaint();
-      if (cancelled || window.innerWidth < MIN_VIEWPORT_WIDTH) return;
+      if (cancelled || window.innerWidth < MIN_VIEWPORT_WIDTH) return false;
 
       const target = window.innerHeight * TARGET_VIEWPORTS;
       let scale = 1;
@@ -141,19 +154,19 @@ export function usePageFill({
         node.style.setProperty("--issue-scale", String(scale));
       }
 
-      let plan = planFold(node);
-      if (plan) {
-        onPlacementRef.current(plan);
+      let fold = planFold(node);
+      if (fold !== null) {
+        onFoldRef.current(fold);
         await nextPaint();
-        if (cancelled) return;
+        if (cancelled) return false;
       }
-      for (let step = 0; plan && step < MAX_FOLD_STEPS; step += 1) {
+      for (let step = 0; fold !== null && step < MAX_FOLD_STEPS; step += 1) {
         const overflow = foldOverflows(node);
         if (!overflow) break;
-        plan = { fold: overflow.fold - 1, left: plan.left };
-        onPlacementRef.current(plan);
+        fold = overflow.fold - 1;
+        onFoldRef.current(fold);
         await nextPaint();
-        if (cancelled) return;
+        if (cancelled) return false;
       }
 
       levelFlows(node);
@@ -161,11 +174,12 @@ export function usePageFill({
 
       const short = node.getBoundingClientRect().height < target;
       const holey = widestGap > MAX_SPREAD_GAP_PX;
-      if (!short && !holey) return;
-      if (!allowRepick || repicked.current || isSpaciousLayout(layout)) return;
+      if (!short && !holey) return false;
+      if (!allowRepick || repicked.current || isSpaciousLayout(layout)) return false;
       repicked.current = true;
-      onRepickRef.current(pickSpaciousLayout(total));
-    })();
+      onRepickRef.current(pickSpaciousLayout());
+      return true;
+    }
 
     return () => {
       cancelled = true;

@@ -69,8 +69,14 @@ async function* paginateItems<T>(
 export interface GithubFetchOptions extends Period {
   /** GitHub login whose activity is chronicled. */
   username: string;
-  /** A GitHub personal access token — the visitor's own, or the server's `GITHUB_TOKEN` (`runGithubToken`). */
-  token: string;
+  /**
+   * A GitHub personal access token. Absent, requests go unauthenticated
+   * (public data, GitHub's lowest rate limits). With `includePrivate` it
+   * must be the user's own, with access to their private repositories.
+   */
+  token?: string;
+  /** Also report on the repositories only the token can see (the token must belong to `username`). */
+  includePrivate?: boolean;
   /**
    * Called once per event-type section that failed, with a human-readable
    * reason (e.g. `"Starred repos fetch failed: Bad credentials"`) — so a
@@ -90,6 +96,7 @@ export interface GithubFetchOptions extends Period {
 export async function fetchGithubActivity({
   username,
   token,
+  includePrivate = false,
   periodStart,
   periodEnd,
   onWarning,
@@ -106,6 +113,14 @@ export async function fetchGithubActivity({
   const endDate = isoDate(new Date(periodEnd.getTime() - 86_400_000));
 
   const octokit = new Octokit({ auth: token });
+  if (includePrivate) await assertTokenOwner(octokit, username);
+
+  /** The user's repositories, newest first by `sort` — all of them with `includePrivate`, else only the public ones. */
+  const listRepos = (sort: "pushed" | "created"): AsyncIterable<{ data: RepoListing[] }> =>
+    (includePrivate
+      ? octokit.paginate.iterator("GET /user/repos", { visibility: "all", affiliation: "owner", sort, direction: "desc", per_page: 100 })
+      : octokit.paginate.iterator("GET /users/{username}/repos", { username, sort, direction: "desc", per_page: 100 })) as AsyncIterable<{ data: RepoListing[] }>;
+
   /**
    * One event type's fetch, run alongside the others: whatever it pushed
    * before failing is kept, and the failure reported, never thrown.
@@ -224,13 +239,8 @@ export async function fetchGithubActivity({
   // ---------------------------------------------------------------------
   jobs.push(
     collect("Releases", async (activities) => {
-      const repoPages = octokit.paginate.iterator("GET /users/{username}/repos", {
-        username,
-        per_page: 100,
-        sort: "pushed",
-      });
       const repos: string[] = [];
-      for await (const repoObj of paginateItems(repoPages)) {
+      for await (const repoObj of paginateItems(listRepos("pushed"))) {
         if (repoObj.full_name?.includes("/")) repos.push(repoObj.full_name);
       }
       // One request per repository — RELEASE_LOOKUPS at a time, not one by one.
@@ -268,13 +278,7 @@ export async function fetchGithubActivity({
   // ---------------------------------------------------------------------
   jobs.push(
     collect("Repos-created", async (activities) => {
-      const pages = octokit.paginate.iterator("GET /users/{username}/repos", {
-        username,
-        per_page: 100,
-        sort: "created",
-        direction: "desc",
-      });
-      for await (const repoObj of paginateItems(pages)) {
+      for await (const repoObj of paginateItems(listRepos("created"))) {
         const createdAt = parseTimestamp(repoObj.created_at);
         if (!inPeriod(createdAt, period)) {
           // Sorted newest-first: once we pass the period there is nothing left.
@@ -357,6 +361,31 @@ export async function fetchGithubActivity({
 
   // Concatenated in the fixed order above, whatever order they finish in.
   return (await Promise.all(jobs)).flat();
+}
+
+/** The few fields read off a repository listing — `GET /user/repos` and `GET /users/{u}/repos` both carry them. */
+interface RepoListing {
+  full_name?: string;
+  description?: string | null;
+  html_url?: string;
+  created_at?: string | null;
+}
+
+/**
+ * Throws unless `octokit`'s token belongs to `username` — `GET /user/repos`
+ * lists the *token owner's* repositories, so a stranger's name with someone
+ * else's token would report on the wrong person's private work.
+ */
+async function assertTokenOwner(octokit: Octokit, username: string): Promise<void> {
+  try {
+    const { data } = await octokit.request("GET /user");
+    if (data.login.toLowerCase() !== username.toLowerCase()) {
+      throw new Error(`That token belongs to "${data.login}", not "${username}" — private activity can only be included for your own account.`);
+    }
+  } catch (error) {
+    if (error instanceof RequestError && error.status === 401) throw new Error("GitHub rejected that token — check it's valid and hasn't expired.");
+    throw error;
+  }
 }
 
 /**
@@ -460,7 +489,7 @@ const MAX_DETAIL_LOOKUPS = 10;
  */
 export async function fetchRepoDetails(
   activity: ActivityItem[],
-  token: string,
+  token?: string,
 ): Promise<Map<string, RepoDetails>> {
   const details = new Map<string, RepoDetails>();
   for (const item of activity) {

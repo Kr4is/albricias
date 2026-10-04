@@ -22,9 +22,9 @@ export default function IssueV5({
     <>
 
       {/* V5: EDITORIAL GRID */}
-      <div className="flex flex-col gap-10">
+      <div className="flex flex-col gap-6">
         {/* TOP SECTION: TWO LEADS (Half and Half) */}
-        <div className="issue-flow columns-1 md:columns-2 gap-10 border-b-2 border-black pb-10">
+        <div className="issue-flow columns-1 md:columns-2 gap-10 border-b-2 border-black pb-6">
           {leads.map((article) => (
             <article key={article.id} className="mb-8 last:mb-0">
               <div className="mb-2">
@@ -47,11 +47,7 @@ export default function IssueV5({
         {rest.length > 0 && (
           <>
             {/* MIDDLE DIVIDER */}
-            <div className="relative text-center -mt-14">
-              <span className="bg-paper px-4 font-sans text-xs font-bold uppercase tracking-widest text-stone-500">
-                More News
-              </span>
-            </div>
+            <h3 className="text-center font-sans text-xs font-bold uppercase tracking-widest text-stone-500">More News</h3>
 
             {/* BOTTOM SECTION: 4 COLUMNS */}
             <div className="issue-flow columns-1 sm:columns-2 lg:columns-4 gap-8 border-t border-stone-300 pt-4">

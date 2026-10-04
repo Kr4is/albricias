@@ -1,28 +1,22 @@
 /**
- * Period bounds and volume numbers for daily/weekly/monthly editions.
+ * Period bounds and volume numbers for weekly/monthly/quarterly editions.
  *
  * `isoWeekPeriodBounds` is kept consistent with `isoWeek`/`editionWeather` in
  * `edition-helpers.ts` so the two files agree on what a "week" is.
  */
 
-import {
-  CADENCE_DAILY,
-  CADENCE_WEEKLY,
-  type Cadence,
-  type EditionPeriod,
-  isoWeek,
-} from "@/lib/edition-helpers";
+import { type Cadence, type EditionPeriod, isoWeek, quarterOf } from "@/lib/edition-helpers";
 
 interface PeriodBounds {
   periodStart: Date;
   periodEnd: Date;
 }
 
-/** Calendar-month bounds: `[first of month, first of next month)`, UTC. */
-function monthPeriodBounds(year: number, month: number): PeriodBounds {
+/** `months` calendar months from `[first of month, +months)`, UTC. */
+function monthsBounds(year: number, month: number, months: number): PeriodBounds {
   return {
     periodStart: new Date(Date.UTC(year, month - 1, 1)),
-    periodEnd: new Date(Date.UTC(year, month, 1)),
+    periodEnd: new Date(Date.UTC(year, month - 1 + months, 1)),
   };
 }
 
@@ -41,52 +35,38 @@ function isoWeekPeriodBounds(year: number, week: number): PeriodBounds {
   return { periodStart, periodEnd };
 }
 
-/** Bounds of the single UTC calendar day containing `date` — `[00:00 UTC that day, 00:00 UTC the next day)`. */
-function dayBounds(date: Date): PeriodBounds {
-  const periodStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const periodEnd = new Date(periodStart);
-  periodEnd.setUTCDate(periodStart.getUTCDate() + 1);
-  return { periodStart, periodEnd };
-}
-
-/** Bounds of the period containing `date`, under `cadence`. */
+/** Bounds of the period of `cadence` containing `date`. */
 function periodBoundsForDate(cadence: Cadence, date: Date): PeriodBounds {
-  if (cadence === CADENCE_WEEKLY) {
-    const { year, week } = isoWeek(date);
-    return isoWeekPeriodBounds(year, week);
+  const year = date.getUTCFullYear();
+  if (cadence === "weekly") {
+    const { year: weekYear, week } = isoWeek(date);
+    return isoWeekPeriodBounds(weekYear, week);
   }
-  return monthPeriodBounds(date.getUTCFullYear(), date.getUTCMonth() + 1);
+  if (cadence === "quarterly") return monthsBounds(year, (quarterOf(date) - 1) * 3 + 1, 3);
+  return monthsBounds(year, date.getUTCMonth() + 1, 1);
 }
 
 /**
  * The masthead's volume line.
- * Daily: `"VOL. 2026 NO. 267"` (day of year). Weekly: `"VOL. 2026 NO. W10"`. Monthly: `"VOL. 2026 NO. 3"`.
+ * Weekly: `"VOL. 2026 NO. W10"`. Monthly: `"VOL. 2026 NO. 3"`. Quarterly: `"VOL. 2026 NO. Q1"`.
  */
 export function defaultEditionVol(period: EditionPeriod): string {
-  if (period.cadence === CADENCE_DAILY) {
-    const { periodStart } = period;
-    const dayOfYear = Math.floor(
-      (Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate()) -
-        Date.UTC(periodStart.getUTCFullYear(), 0, 1)) /
-        86_400_000,
-    ) + 1;
-    return `VOL. ${periodStart.getUTCFullYear()} NO. ${dayOfYear}`;
-  }
-  if (period.cadence === CADENCE_WEEKLY) {
+  if (period.cadence === "weekly") {
     const { year, week } = isoWeek(period.periodStart);
     return `VOL. ${year} NO. W${week}`;
   }
   const year = period.periodStart.getUTCFullYear();
-  const month = period.periodStart.getUTCMonth() + 1;
-  return `VOL. ${year} NO. ${month}`;
+  if (period.cadence === "quarterly") return `VOL. ${year} NO. Q${quarterOf(period.periodStart)}`;
+  return `VOL. ${year} NO. ${period.periodStart.getUTCMonth() + 1}`;
 }
 
 /**
- * The period an edition requested `now` covers. Weekly and monthly: the
- * current week/month. Daily: *yesterday* — "today" is always near-empty
- * this early in the day, yesterday has a full day of activity.
+ * The period an edition requested `now` covers: the last *complete* week,
+ * month or quarter. The current one is always part-way through — on the 4th
+ * a "monthly" edition would have four days to report on.
  */
 export function editionBounds(cadence: Cadence, now: Date = new Date()): PeriodBounds {
-  if (cadence === CADENCE_DAILY) return dayBounds(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-  return periodBoundsForDate(cadence, now);
+  const { periodStart: currentStart } = periodBoundsForDate(cadence, now);
+  // One millisecond before the current period began lies in the previous one.
+  return periodBoundsForDate(cadence, new Date(currentStart.getTime() - 1));
 }

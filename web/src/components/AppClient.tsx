@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import IssueLayout from "@/components/issue/IssueLayout";
 import GeneratingAnimation from "@/components/GeneratingAnimation";
 import ExportActions from "@/components/ExportActions";
 import { usePageFill } from "@/components/usePageFill";
 import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
-import type { FoldPlan } from "@/lib/balance";
-import type { AiProviderId, ThinkingMode } from "@/lib/ai/resolve";
 import type { ArticleBlock, ArticleImageRef } from "@/lib/article-blocks";
+import { CADENCES } from "@/lib/periods";
+import SetupWizard, { DEFAULT_FORM, PROVIDERS, THINKING, firstIncompleteStep, type SetupForm } from "@/components/SetupWizard";
 
-type Period = "daily" | "weekly" | "monthly";
 type Phase = "config" | "generating" | "result";
 
 interface IssueMeta {
@@ -20,37 +19,18 @@ interface IssueMeta {
   weather: string;
 }
 
-const PROVIDERS: { id: AiProviderId; label: string }[] = [
-  { id: "openai", label: "OpenAI" },
-  { id: "gemini", label: "Google Gemini" },
-  { id: "litellm", label: "LLM Gateway" },
-];
-
-/** Where a thinking model behind the gateway may reason — most of its time goes there. */
-const THINKING: { id: ThinkingMode; label: string }[] = [
-  { id: "full", label: "Everywhere" },
-  { id: "outline", label: "Outline only" },
-  { id: "off", label: "Off" },
-];
-
-const PERIODS: { id: Period; label: string }[] = [
-  { id: "daily", label: "Daily" },
-  { id: "weekly", label: "Weekly" },
-  { id: "monthly", label: "Monthly" },
-];
-
 /** One label per `IssueV*`, from each file's own one-line self-description. */
 const LAYOUT_OPTIONS: { id: LayoutIndex; label: string }[] = [
-  { id: 1, label: "3-Column" },
+  { id: 1, label: "Banner" },
   { id: 2, label: "Dispatches" },
   { id: 3, label: "Hero" },
-  { id: 4, label: "Asymmetric" },
+  { id: 4, label: "Lead & Briefs" },
   { id: 5, label: "Editorial" },
-  { id: 6, label: "Broadside" },
+  { id: 6, label: "Extra" },
 ];
 
 /**
- * Remembered across visits, including the API key — by explicit request:
+ * The whole setup form, remembered across visits, including the API key — by explicit request:
  * treated like a saved password, not silently. Stored only in this
  * browser's localStorage, never sent anywhere but `/api/generate`; the
  * `autoComplete="current-password"` on the key field also lets the
@@ -58,22 +38,6 @@ const LAYOUT_OPTIONS: { id: LayoutIndex; label: string }[] = [
  */
 const STORAGE_KEY = "albricias:generate-form";
 
-interface SavedForm {
-  githubUsername: string;
-  githubToken: string;
-  period: Period;
-  llmProvider: AiProviderId;
-  llmApiKey: string;
-  llmModel: string;
-  llmBaseUrl: string;
-  thinking: ThinkingMode;
-}
-
-const INPUT_CLASS =
-  "w-full border border-stone-300 bg-white px-3 py-2 font-body text-sm focus:outline-none focus:border-ink";
-const LABEL_CLASS = "font-sans text-[11px] font-bold uppercase tracking-widest text-stone-600 block mb-1";
-const PILL_BASE =
-  "px-4 py-2 font-sans text-xs font-bold uppercase tracking-widest border transition-colors";
 const PILL_ACTIVE = "bg-ink text-white border-ink";
 const PILL_INACTIVE = "bg-white text-ink border-stone-300 hover:border-ink";
 
@@ -109,7 +73,7 @@ export default function AppClient() {
   const [issueMeta, setIssueMeta] = useState<IssueMeta | null>(null);
   const [layout, setLayout] = useState<LayoutIndex | null>(null);
   const [layoutPickedByHand, setLayoutPickedByHand] = useState(false);
-  const [placement, setPlacement] = useState<FoldPlan | null>(null);
+  const [fold, setFold] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [articles, setArticles] = useState<IssueArticle[]>([]);
   const [streamingIds, setStreamingIds] = useState<ReadonlySet<number>>(new Set());
@@ -117,27 +81,19 @@ export default function AppClient() {
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [githubUsername, setGithubUsername] = useState("");
-  const [githubToken, setGithubToken] = useState("");
-  const [period, setPeriod] = useState<Period>("weekly");
-  const [llmProvider, setLlmProvider] = useState<AiProviderId>("openai");
-  const [llmApiKey, setLlmApiKey] = useState("");
-  const [llmModel, setLlmModel] = useState("");
-  const [llmBaseUrl, setLlmBaseUrl] = useState("");
-  const [thinking, setThinking] = useState<ThinkingMode>("full");
+  const [form, setFormState] = useState<SetupForm>(DEFAULT_FORM);
+  const setForm = (patch: Partial<SetupForm>) => setFormState((prev) => ({ ...prev, ...patch }));
 
   // Load once on mount — after render, so a saved value never fights the
-  // server-rendered default during hydration. A lazy useState initializer
+  // server-rendered default during hydration (a lazy useState initializer
   // would read localStorage during the client's hydration pass too, which
-  // mismatches the server-rendered (always-blank) markup — the effect is
-  // the correct tool here, not a lint false-negative.
+  // mismatches the server-rendered markup). The wizard only mounts once
+  // `loaded`, so it opens on the right step for what was saved.
   //
-  // `loaded` gates the save effect below until this one has actually run:
-  // without it, both effects fire in the same pass on mount, and the save
-  // effect's closure still has the *pre-load* default state (its setState
-  // calls haven't been applied to a new render yet) — it would overwrite
-  // whatever this effect just read with those defaults, before the loaded
-  // values ever reach the screen.
+  // `loaded` also gates the save effect below until this one has run: both
+  // effects fire in the same pass on mount, and the save effect's closure
+  // still has the *pre-load* defaults — it would overwrite what this effect
+  // just read before the loaded values ever reach the screen.
   const [loaded, setLoaded] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -145,15 +101,20 @@ export default function AppClient() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as Partial<SavedForm>;
-        if (saved.githubUsername) setGithubUsername(saved.githubUsername);
-        if (saved.githubToken) setGithubToken(saved.githubToken);
-        if (saved.period && PERIODS.some((p) => p.id === saved.period)) setPeriod(saved.period);
-        if (saved.llmProvider && PROVIDERS.some((p) => p.id === saved.llmProvider)) setLlmProvider(saved.llmProvider);
-        if (saved.llmApiKey) setLlmApiKey(saved.llmApiKey);
-        if (saved.llmModel) setLlmModel(saved.llmModel);
-        if (saved.llmBaseUrl) setLlmBaseUrl(saved.llmBaseUrl);
-        if (saved.thinking && THINKING.some((t) => t.id === saved.thinking)) setThinking(saved.thinking);
+        const saved = JSON.parse(raw) as Partial<SetupForm>;
+        // Each value is checked, so a form saved by an older version (a
+        // removed period, say) falls back to the default instead of breaking.
+        const patch: Partial<SetupForm> = {};
+        if (typeof saved.githubUsername === "string") patch.githubUsername = saved.githubUsername;
+        if (typeof saved.githubToken === "string") patch.githubToken = saved.githubToken;
+        if (saved.includePrivate === true) patch.includePrivate = true;
+        if (saved.period && CADENCES.includes(saved.period)) patch.period = saved.period;
+        if (saved.llmProvider && PROVIDERS.some((p) => p.id === saved.llmProvider)) patch.llmProvider = saved.llmProvider;
+        if (typeof saved.llmApiKey === "string") patch.llmApiKey = saved.llmApiKey;
+        if (typeof saved.llmModel === "string") patch.llmModel = saved.llmModel;
+        if (typeof saved.llmBaseUrl === "string") patch.llmBaseUrl = saved.llmBaseUrl;
+        if (saved.thinking && THINKING.some((t) => t.id === saved.thinking)) patch.thinking = saved.thinking;
+        setFormState((prev) => ({ ...prev, ...patch }));
       }
     } catch {
       // Private browsing, blocked storage, malformed JSON — just start blank.
@@ -165,14 +126,11 @@ export default function AppClient() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      const toSave: SavedForm = { githubUsername, githubToken, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
     } catch {
       // Storage unavailable — the form still works, it just won't be remembered.
     }
-  }, [loaded, githubUsername, githubToken, period, llmProvider, llmApiKey, llmModel, llmBaseUrl, thinking]);
-
-  const needsGateway = llmProvider === "litellm";
+  }, [loaded, form]);
 
   const pageRef = useRef<HTMLDivElement>(null);
   usePageFill({
@@ -182,7 +140,7 @@ export default function AppClient() {
     total: articles.length,
     allowRepick: !layoutPickedByHand,
     onRepick: setLayout,
-    onPlacement: setPlacement,
+    onFold: setFold,
   });
 
   function reset() {
@@ -191,7 +149,7 @@ export default function AppClient() {
     setIssueMeta(null);
     setLayout(null);
     setLayoutPickedByHand(false);
-    setPlacement(null);
+    setFold(null);
     setTitle("");
     setArticles([]);
     setStreamingIds(new Set());
@@ -199,8 +157,7 @@ export default function AppClient() {
     setFinished(false);
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function handleSubmit() {
     setError(null);
     reset();
     setPhase("generating");
@@ -210,14 +167,15 @@ export default function AppClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          githubUsername,
-          githubToken: githubToken || undefined,
-          period,
-          llmProvider,
-          llmApiKey: llmApiKey || undefined,
-          llmModel: llmModel || undefined,
-          llmBaseUrl: llmBaseUrl || undefined,
-          thinking: llmProvider === "litellm" ? thinking : undefined,
+          githubUsername: form.githubUsername.trim(),
+          period: form.period,
+          includePrivate: form.includePrivate,
+          githubToken: form.includePrivate ? form.githubToken.trim() : undefined,
+          llmProvider: form.llmProvider,
+          llmApiKey: form.llmApiKey.trim(),
+          llmModel: form.llmModel.trim() || undefined,
+          llmBaseUrl: form.llmBaseUrl.trim() || undefined,
+          thinking: form.llmProvider === "litellm" ? form.thinking : undefined,
         }),
       });
 
@@ -313,10 +271,10 @@ export default function AppClient() {
               </div>
               <ExportActions
                 targetRef={pageRef}
-                filename={`albricias-${githubUsername.replace(/[^A-Za-z0-9-]/g, "") || "edition"}-${period}.png`}
+                filename={`albricias-${form.githubUsername.replace(/[^A-Za-z0-9-]/g, "") || "edition"}-${form.period}.png`}
                 title={title ? `¡Albricias! — ${title}` : "¡Albricias!"}
                 edition={issueMeta}
-                version={`${layout}:${articles.length}:${placement?.fold}:${placement?.left?.join(",")}`}
+                version={`${layout}:${articles.length}:${fold}`}
               />
               <div className="flex flex-wrap items-center justify-center gap-1.5">
                 <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-400 mr-1">
@@ -355,210 +313,22 @@ export default function AppClient() {
             issue={{ dateLabel: issueMeta.dateLabel }}
             articles={articles}
             streamingArticleIds={streamingIds}
-            fold={placement?.fold ?? null}
-            leftRailIds={placement?.left ?? null}
+            fold={fold}
           />
         </div>
       </div>
     );
   }
 
+  // Rendered once the saved form is loaded, so the wizard opens on the right step.
+  if (!loaded) return <div className="min-h-[60vh]" />;
   return (
-    <form onSubmit={handleSubmit} className="py-12">
-      <h1 className="font-headline text-3xl md:text-4xl font-bold text-center mb-2">Print Your Edition</h1>
-      <p className="font-body text-sm text-stone-600 text-center mb-12">
-        Your GitHub activity, set in vintage type.
-      </p>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        <div className="flex flex-col justify-center gap-8 lg:border-r lg:border-stone-300 lg:pr-12">
-          <div>
-            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-500">Notice</span>
-            <h2 className="font-headline text-2xl font-bold mt-1 mb-3">What Happens Next</h2>
-            <p className="font-body text-sm text-stone-600 leading-relaxed max-w-md">
-              We fetch <strong>{githubUsername || "your"}</strong>&apos;s public GitHub
-              activity for the {period} period, hand it to your chosen AI, and
-              set it in type — live, on this page. Everything below is saved
-              in this browser for next time — your API key and GitHub token
-              included, never written to a server-side database or log.
-            </p>
-          </div>
-          <div className="border-t border-stone-300 pt-6">
-            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-stone-500">This Edition</span>
-            <p className="font-headline text-2xl mt-2">
-              {githubUsername ? `${githubUsername}'s ${period} edition` : "Awaiting a byline…"}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-6 max-w-md">
-          <div>
-            <label className={LABEL_CLASS} htmlFor="githubUsername">GitHub Username</label>
-            <input
-              id="githubUsername"
-              className={INPUT_CLASS}
-              value={githubUsername}
-              onChange={(e) => setGithubUsername(e.target.value)}
-              placeholder="octocat"
-              required
-            />
-          </div>
-
-          <div>
-            <div className="flex items-baseline justify-between">
-              <label className={LABEL_CLASS} htmlFor="githubToken">
-                GitHub Token (optional)
-              </label>
-              {githubToken && (
-                <button
-                  type="button"
-                  onClick={() => setGithubToken("")}
-                  className="font-sans text-[10px] uppercase tracking-widest text-stone-400 hover:text-ink mb-1"
-                >
-                  Forget token
-                </button>
-              )}
-            </div>
-            <input
-              id="githubToken"
-              name="githubToken"
-              type="password"
-              autoComplete="current-password"
-              className={INPUT_CLASS}
-              value={githubToken}
-              onChange={(e) => setGithubToken(e.target.value)}
-              placeholder="ghp_… — leave blank to use this site's own"
-            />
-            <p className="font-body text-xs text-stone-500 mt-1">
-              Only needed if this site has none configured, or you&apos;d rather
-              not share its rate limit — a token of your own, no special
-              scopes, gets a much higher GitHub API budget. Saved in this
-              browser only, like the API key above.
-            </p>
-          </div>
-
-          <div>
-            <span className={LABEL_CLASS}>Period</span>
-            <div className="flex gap-2">
-              {PERIODS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setPeriod(option.id)}
-                  className={`${PILL_BASE} flex-1 ${period === option.id ? PILL_ACTIVE : PILL_INACTIVE}`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-stone-300 pt-6">
-            <span className={LABEL_CLASS}>LLM Provider</span>
-            <div className="flex gap-2 mb-2">
-              {PROVIDERS.map((provider) => (
-                <button
-                  key={provider.id}
-                  type="button"
-                  onClick={() => setLlmProvider(provider.id)}
-                  className={`${PILL_BASE} flex-1 ${llmProvider === provider.id ? PILL_ACTIVE : PILL_INACTIVE}`}
-                >
-                  {provider.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-baseline justify-between">
-              <label className={LABEL_CLASS} htmlFor="llmApiKey">API Key</label>
-              {llmApiKey && (
-                <button
-                  type="button"
-                  onClick={() => setLlmApiKey("")}
-                  className="font-sans text-[10px] uppercase tracking-widest text-stone-400 hover:text-ink mb-1"
-                >
-                  Forget key
-                </button>
-              )}
-            </div>
-            <input
-              id="llmApiKey"
-              name="llmApiKey"
-              type="password"
-              autoComplete="current-password"
-              className={INPUT_CLASS}
-              value={llmApiKey}
-              onChange={(e) => setLlmApiKey(e.target.value)}
-              required
-            />
-            <p className="font-body text-xs text-stone-500 mt-1">
-              Saved in this browser only, like any other password — never
-              written to a server-side database or log.
-            </p>
-          </div>
-
-          <div>
-            <label className={LABEL_CLASS} htmlFor="llmModel">
-              Model {needsGateway ? "" : "(optional)"}
-            </label>
-            <input
-              id="llmModel"
-              className={INPUT_CLASS}
-              value={llmModel}
-              onChange={(e) => setLlmModel(e.target.value)}
-              placeholder={llmProvider === "openai" ? "gpt-4o-mini" : llmProvider === "gemini" ? "gemini-2.0-flash" : "llama3.1"}
-              required={needsGateway}
-            />
-          </div>
-
-          {needsGateway && (
-            <div>
-              <label className={LABEL_CLASS} htmlFor="llmBaseUrl">Base URL</label>
-              <input
-                id="llmBaseUrl"
-                className={INPUT_CLASS}
-                value={llmBaseUrl}
-                onChange={(e) => setLlmBaseUrl(e.target.value)}
-                placeholder="https://your-llm-gateway/v1"
-                required
-              />
-            </div>
-          )}
-
-          {needsGateway && (
-            <div>
-              <span className={LABEL_CLASS}>Thinking</span>
-              <div className="flex gap-2">
-                {THINKING.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setThinking(option.id)}
-                    className={`${PILL_BASE} flex-1 ${thinking === option.id ? PILL_ACTIVE : PILL_INACTIVE}`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <p className="font-body text-xs text-stone-500 mt-1">
-                For thinking models (Qwen and the like, on vLLM or SGLang): where
-                they may reason before writing. Reasoning is most of their time —
-                &ldquo;Outline only&rdquo; plans carefully and writes fast.
-              </p>
-            </div>
-          )}
-
-          {error && <p className="font-body text-sm text-red-800">{error}</p>}
-
-          <button
-            type="submit"
-            className="font-sans text-sm font-bold uppercase tracking-widest text-white bg-ink px-6 py-3 hover:opacity-85 transition-opacity mt-2"
-          >
-            Print My Edition
-          </button>
-        </div>
-      </div>
-    </form>
+    <SetupWizard
+      form={form}
+      setForm={setForm}
+      initialStep={firstIncompleteStep(form)}
+      error={error}
+      onSubmit={handleSubmit}
+    />
   );
 }

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check
+      - run: npm run build
+
+  # Renders every front-page layout in Chromium and fails on one that leaves a hole in the paper.
+  layouts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - name: Start the dev server
+        run: |
+          npm run dev > dev.log 2>&1 &
+          for _ in $(seq 1 60); do curl -sf localhost:3000/dev/layouts > /dev/null && exit 0; sleep 2; done
+          cat dev.log; exit 1
+      - run: npm run check:layouts

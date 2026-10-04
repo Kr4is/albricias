@@ -30,14 +30,12 @@ export type LengthTier = "short" | "medium" | "long";
 
 /**
  * How many sections a period's material may support — a quiet period should
- * still propose fewer. Daily floors at 2, not 1: a lead plus the computed
- * boxes alone reads as a thin page, and even one day's activity can almost
- * always be sliced into two honest angles.
+ * still propose fewer.
  */
 export const SECTION_RANGE: Record<Cadence, readonly [number, number]> = {
-  daily: [2, 4],
   weekly: [3, 6],
   monthly: [5, 9],
+  quarterly: [6, 11],
 };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;

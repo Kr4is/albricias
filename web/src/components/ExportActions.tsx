@@ -28,6 +28,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { getFontEmbedCSS, toCanvas } from "html-to-image";
 import EditionMasthead, { type EditionMastheadInfo } from "@/components/EditionMasthead";
+import { withNaturalHeights } from "@/lib/export-style";
 
 /** `paper` in tailwind.config.ts. */
 const PAPER = "#f4f1ea";
@@ -54,12 +55,16 @@ const PIXEL_RATIO = 2;
 let fontCss: Promise<string> | null = null;
 
 function embeddedFonts(nodes: HTMLElement[]): Promise<string> {
-  fontCss ??= Promise.all(nodes.map((node) => getFontEmbedCSS(node, { filter: skipNoPrint })))
-    .then((parts) => parts.join("\n"))
-    .catch((error) => {
-      fontCss = null;
-      throw error;
-    });
+  fontCss ??= (async () => {
+    // Web fonts still loading would be missing from the page's font rules and fall back to a wider face.
+    await document.fonts?.ready;
+    const css = (await Promise.all(nodes.map((node) => getFontEmbedCSS(node, { filter: skipNoPrint })))).join("\n");
+    if (!css.includes("@font-face")) throw new Error("The page's fonts couldn't be embedded — try again in a moment.");
+    return css;
+  })().catch((error) => {
+    fontCss = null;
+    throw error;
+  });
   return fontCss;
 }
 
@@ -158,7 +163,7 @@ export default function ExportActions({
     const masthead = mastheadRef.current;
     if (!node || !masthead) return Promise.reject(new Error("Nothing to export yet."));
     if (!reuse || !cached.current) {
-      cached.current = renderPng(node, masthead);
+      cached.current = withNaturalHeights(() => renderPng(node, masthead));
       cached.current.catch(() => {
         cached.current = null;
       });

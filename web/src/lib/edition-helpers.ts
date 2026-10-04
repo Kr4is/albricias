@@ -5,14 +5,7 @@
 
 import { createHash } from "node:crypto";
 
-export const CADENCE_DAILY = "daily";
-export const CADENCE_WEEKLY = "weekly";
-export const CADENCE_MONTHLY = "monthly";
-
-export type Cadence =
-  | typeof CADENCE_DAILY
-  | typeof CADENCE_WEEKLY
-  | typeof CADENCE_MONTHLY;
+export { type Cadence } from "@/lib/periods";
 
 /** Minimal shape needed by these helpers. */
 export interface EditionPeriod {
@@ -66,16 +59,19 @@ export function isoWeek(date: Date): { year: number; week: number } {
   return { year: thursday.getUTCFullYear(), week };
 }
 
-/** The string fed into the weather hash — one per day, ISO week or month. */
+/** The quarter (1-4) a UTC date falls in. */
+export function quarterOf(date: Date): number {
+  return Math.floor(date.getUTCMonth() / 3) + 1;
+}
+
+/** The string fed into the weather hash — one per ISO week, month or quarter. */
 function periodKey(edition: EditionPeriod): string {
   const start = edition.periodStart;
-  if (edition.cadence === CADENCE_DAILY) {
-    return `${start.getUTCFullYear()}-${start.getUTCMonth() + 1}-${start.getUTCDate()}`;
-  }
-  if (edition.cadence === CADENCE_WEEKLY) {
+  if (edition.cadence === "weekly") {
     const { year, week } = isoWeek(start);
     return `${year}-W${week}`;
   }
+  if (edition.cadence === "quarterly") return `${start.getUTCFullYear()}-Q${quarterOf(start)}`;
   return `${start.getUTCFullYear()}-${start.getUTCMonth() + 1}`;
 }
 
@@ -97,19 +93,17 @@ const MONTHS_LONG = [
 /**
  * Human-readable period label.
  *
- * Daily: `"March 3, 2026"`. Weekly: `"Week of March 3, 2026"`. Monthly: `"March 2026"`.
+ * Weekly: `"Week of March 3, 2026"`. Monthly: `"March 2026"`. Quarterly: `"Q1 2026"`.
  */
 export function periodLabel(edition: EditionPeriod): string {
   const start = edition.periodStart;
   const month = MONTHS_LONG[start.getUTCMonth()];
   const year = start.getUTCFullYear();
 
-  if (edition.cadence === CADENCE_DAILY) {
-    return `${month} ${start.getUTCDate()}, ${year}`;
-  }
-  if (edition.cadence === CADENCE_WEEKLY) {
+  if (edition.cadence === "weekly") {
     return `Week of ${month} ${start.getUTCDate()}, ${year}`;
   }
+  if (edition.cadence === "quarterly") return `Q${quarterOf(start)} ${year}`;
   return `${month} ${year}`;
 }
 

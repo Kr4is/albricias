@@ -12,6 +12,7 @@ import { articleHref } from "@/lib/issue-view";
 import type { IssueLayoutProps } from "@/components/issue/types";
 
 export default function IssueV3({
+  issue,
   articles,
   streamingArticleIds,
 }: IssueLayoutProps) {
@@ -26,13 +27,14 @@ export default function IssueV3({
         {/* HERO SECTION (Full Width) */}
         {main && (
           <div className="relative border-b-2 border-black pb-8">
-            <div className="mb-2">
+            <div className="mb-3 flex items-center justify-between border-b border-black pb-2">
               <span className="font-sans text-xs font-bold uppercase tracking-[0.2em] bg-black text-white px-2 py-1">
                 {main.category}
               </span>
+              <span className="font-sans text-xs uppercase tracking-widest text-stone-500">{issue.dateLabel}</span>
             </div>
             <a href={articleHref()}>
-              <h1 className="font-headline text-5xl lg:text-6xl font-black uppercase leading-none mb-4 hover:opacity-70 transition-opacity">
+              <h1 className="font-headline text-5xl lg:text-7xl font-black uppercase leading-none text-center mb-5 hover:opacity-70 transition-opacity">
                 {main.title}
               </h1>
             </a>

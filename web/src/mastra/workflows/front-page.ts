@@ -44,6 +44,7 @@ import { z } from "zod";
 
 import { describeAiError, refusedSetting, type RefusableSetting } from "@/lib/ai/error";
 import { defaultEditionVol, editionBounds } from "@/lib/cadence";
+import { CADENCES } from "@/lib/periods";
 import { editionWeather, periodLabel as formatPeriodLabel } from "@/lib/edition-helpers";
 import { articleBlockSchema, articleImageSchema, type ArticleImageRef } from "@/lib/article-blocks";
 import { chartsForSection, numbersBox, starsBox } from "@/lib/generation/charts";
@@ -64,7 +65,7 @@ const SECTION_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.ALBRICIAS_
 // Schemas — what Studio shows as each step's input and output
 // ---------------------------------------------------------------------------
 
-const cadenceSchema = z.enum(["daily", "weekly", "monthly"]);
+const cadenceSchema = z.enum(CADENCES);
 const lengthTierSchema = z.enum(["short", "medium", "long"]);
 
 /** A computed box: no prose, only structured blocks. */
@@ -87,7 +88,8 @@ const repoImageSchema = z.object({
 
 const inputSchema = z.object({
   githubUsername: z.string().trim().min(1).max(100).describe("Whose public GitHub activity to report on"),
-  period: cadenceSchema.describe("daily = yesterday; weekly/monthly = the current week/month"),
+  period: cadenceSchema.describe("The last complete week, month or quarter"),
+  includePrivate: z.boolean().default(false).describe("Also report on the user's private repositories (needs their own token)"),
 });
 
 const gatheredSchema = z.object({
@@ -291,7 +293,6 @@ const gather = createStep({
   execute: async ({ inputData, writer, requestContext }) => {
     const out = page(writer);
     const token = runGithubToken(requestContext);
-    if (!token) throw new Error("No GitHub token available — supply your own, or ask the operator to set one.");
 
     const { periodStart, periodEnd } = editionBounds(inputData.period);
     const edition = { cadence: inputData.period, periodStart, periodEnd };
@@ -302,12 +303,13 @@ const gather = createStep({
     const activity = await fetchGithubActivity({
       username: inputData.githubUsername,
       token,
+      includePrivate: inputData.includePrivate,
       periodStart,
       periodEnd,
       onWarning: (message) => warnings.push(message),
     });
     if (activity.length === 0) {
-      throw new Error(`No public GitHub activity found for "${inputData.githubUsername}" in that period.`);
+      throw new Error(`No ${inputData.includePrivate ? "" : "public "}GitHub activity found for "${inputData.githubUsername}" in that period.`);
     }
 
     await out.write({
@@ -350,7 +352,7 @@ const pictures = createStep({
         .map((star) => star.repo),
     ];
     const homepages = new Map(Object.entries(inputData.homepages).map(([name, url]) => [name.toLowerCase(), url]));
-    const found = await fetchRepoImages(repos, new Map(repos.map((repo) => [repo, homepages.get(repo.toLowerCase()) ?? null])), runGithubToken(requestContext) ?? "");
+    const found = await fetchRepoImages(repos, new Map(repos.map((repo) => [repo, homepages.get(repo.toLowerCase()) ?? null])), runGithubToken(requestContext));
     return { images: Object.fromEntries(found) };
   },
 });

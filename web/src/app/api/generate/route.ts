@@ -20,6 +20,7 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
 
+import { CADENCES } from "@/lib/periods";
 import { buildAiModel, thinkingOff, THINKING_MODES } from "@/lib/ai/resolve";
 import { describeAiError } from "@/lib/ai/error";
 import { getMastra } from "@/mastra";
@@ -27,13 +28,14 @@ import { CALL_OPTIONS_KEY, GITHUB_TOKEN_KEY, MODEL_KEY, type CallOptions } from 
 
 const baseFields = {
   githubUsername: z.string().trim().min(1).max(100),
-  period: z.enum(["daily", "weekly", "monthly"]),
+  period: z.enum(CADENCES),
   /**
-   * A visitor's own GitHub personal access token (no special scopes — the
-   * same read-only lookup the server's own `GITHUB_TOKEN` does), so
-   * generating never depends on the operator's rate limit or having set
-   * one at all. Falls back to the server's `GITHUB_TOKEN` when omitted.
+   * Off (the default): only the user's public activity is read, with the
+   * server's own `GITHUB_TOKEN` when it has one, else unauthenticated — the
+   * visitor supplies nothing. On: the visitor's own `githubToken` (with
+   * access to their private repositories) reads everything it can see.
    */
+  includePrivate: z.boolean().default(false),
   githubToken: z.string().trim().min(1).optional(),
 };
 
@@ -87,17 +89,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid request.", details: body.error.flatten() }, { status: 400 });
   }
   const input = body.data;
-  const githubToken = input.githubToken || process.env.GITHUB_TOKEN;
-  if (!githubToken) {
-    return Response.json(
-      { error: "No GitHub token available — this instance has none configured, so you'll need to supply your own (no special scopes needed)." },
-      { status: 400 },
-    );
+  if (input.includePrivate && !input.githubToken) {
+    return Response.json({ error: "Including private activity needs a GitHub token of your own." }, { status: 400 });
   }
 
   const requestContext = new RequestContext();
   requestContext.set(MODEL_KEY, buildAiModel(input));
-  requestContext.set(GITHUB_TOKEN_KEY, githubToken);
+  // Public runs carry no visitor token: `runGithubToken` falls back to the server's.
+  if (input.includePrivate) requestContext.set(GITHUB_TOKEN_KEY, input.githubToken);
   const thinking = "thinking" in input ? input.thinking : "full";
   const off = thinkingOff(input.llmProvider);
   const callOptions: CallOptions = { outline: thinking === "off" ? off : undefined, sections: thinking === "full" ? undefined : off };
@@ -126,9 +125,9 @@ export async function POST(request: Request) {
 
       try {
         const output = run.stream({
-          inputData: { githubUsername: input.githubUsername, period: input.period },
+          inputData: { githubUsername: input.githubUsername, period: input.period, includePrivate: input.includePrivate },
           requestContext,
-          tracingOptions: { metadata: { githubUsername: input.githubUsername, period: input.period, thinking } },
+          tracingOptions: { metadata: { githubUsername: input.githubUsername, period: input.period, includePrivate: input.includePrivate, thinking } },
         });
         for await (const chunk of output.fullStream) {
           const event = pageEvent(chunk);

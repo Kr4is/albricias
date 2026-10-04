@@ -72,7 +72,7 @@ async function socialImages(octokit: Octokit, repos: string[]): Promise<Map<stri
  * The pictures for each of `repos` (see the header), keyed by `owner/name`
  * as given. `homepages` names each repo's website, when it has one.
  */
-export async function fetchRepoImages(repos: string[], homepages: Map<string, string | null>, token: string): Promise<Map<string, RepoImage[]>> {
+export async function fetchRepoImages(repos: string[], homepages: Map<string, string | null>, token?: string): Promise<Map<string, RepoImage[]>> {
   const octokit = new Octokit({ auth: token });
   const social = await socialImages(octokit, repos);
   const images = new Map<string, RepoImage[]>();
