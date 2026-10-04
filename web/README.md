@@ -185,7 +185,7 @@ nothing a visitor generates is written anywhere.
 - `npm run check` — self-checks for the period maths, the setup wizard's
   rules, the outline review, the heading filter, the dossier, the chart desk
   and boxes, finding pictures, and the scorers.
-- `npm run lint` / `npm run typecheck` — lint and typecheck.
+- `npm run lint` / `npm run typecheck` — lint and typecheck (the latter generates Next's route types first, so it works on a clean checkout).
 - `npm run verify` — all three; what the pre-commit hook and CI run.
 - `npm run check:layouts` — every layout × article count in headless
   Chromium (needs `npm run dev` running); fails on a hole in the page.

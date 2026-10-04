@@ -10,7 +10,7 @@
     "lint": "eslint",
     "check": "tsx scripts/check-periods.ts && tsx scripts/check-setup.ts && tsx scripts/check-period-post.ts && tsx scripts/check-outline.ts && tsx scripts/check-dossier.ts && tsx scripts/check-charts.ts && tsx scripts/check-images.ts && tsx scripts/check-scorers.ts && tsx scripts/check-errors.ts",
     "studio": "mastra studio --port 4111 --server-port 3000 --server-api-prefix /api/mastra",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "check:layouts": "tsx scripts/check-layouts.ts",
     "verify": "npm run lint && npm run typecheck && npm run check",
     "prepare": "cd .. && git config core.hooksPath .githooks || true"
