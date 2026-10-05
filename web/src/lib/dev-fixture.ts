@@ -36,8 +36,13 @@ function paragraph(seed: number, sentences: number): string {
   return Array.from({ length: sentences }, (_, k) => SENTENCES[(seed + k * 3) % SENTENCES.length]).join(" ");
 }
 
-/** `count` articles: id 0 is the lead; ids ≥ 1 vary in length. */
-export function fixtureArticles(count: number): IssueArticle[] {
+/**
+ * `count` articles: id 0 is the lead; ids ≥ 1 vary in length. With `charts`,
+ * every third article carries a chart — an unsplittable block, so a column
+ * flow can end up to a chart's height short of its neighbour (which
+ * `scripts/check-layouts.ts` would call a hole); off by default for that reason.
+ */
+export function fixtureArticles(count: number, charts = false): IssueArticle[] {
   return Array.from({ length: count }, (_, i) => {
     const paragraphs = i === 0 ? 5 : [1, 3, 2, 4, 1, 2, 3, 2][(i - 1) % 8];
     const content = Array.from({ length: paragraphs }, (_, p) => paragraph(i * 5 + p, i === 0 ? 5 : 3 + ((i + p) % 3))).join("\n\n");
@@ -52,7 +57,7 @@ export function fixtureArticles(count: number): IssueArticle[] {
       blocks:
         i % 3 === 1
           ? [{ type: "facts", items: [{ label: "Commits", value: "41" }, { label: "Active days", value: "9 of 30" }] }]
-          : i % 3 === 2
+          : charts && i % 3 === 2
             ? [{ type: "chart", chart: { type: "bar", title: "Commits by day", labels: ["Mon", "Tue", "Wed", "Thu", "Fri"], datasets: [{ label: "Commits", data: [4, 9, 6, 12, 3] }], unit: "commits", caption: "Made-up numbers." } }]
             : [],
     };

@@ -4,7 +4,8 @@
  * `/dev/layouts?layout=1&n=5` — one layout on `n` made-up articles, run
  * through the same page-fill pass the generator uses, with the export
  * buttons. `layout` omitted: the layout the generator itself would pick;
- * `repick=1`: the page may switch away from `layout`, as the generator does.
+ * `repick=1`: the page may switch away from `layout`, as the generator does;
+ * `charts=1`: some articles carry a chart.
  */
 
 import { useRef, useState } from "react";
@@ -21,7 +22,7 @@ export default function LayoutFixture() {
   const requested = Number(params.get("layout"));
   const [layout, setLayout] = useState<LayoutIndex>(() => (requested >= 1 && requested <= 6 ? (requested as LayoutIndex) : pickLayoutForContent(count)));
   const [fold, setFold] = useState<number | null>(null);
-  const articles = fixtureArticles(count);
+  const articles = fixtureArticles(count, params.get("charts") === "1");
   const ref = useRef<HTMLDivElement>(null);
   const edition = { vol: "VOL. 2026 NO. 9", dateLabel: "September 2026", weather: "Crisp, 12°C" };
 
