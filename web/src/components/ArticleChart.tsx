@@ -6,7 +6,8 @@
  * page's own type (HTML, not canvas text), thin bars without vertical
  * rules, a filled line, a 24-hour rose, a doughnut with a hole. Drawn in
  * colour but shown grey until hovered (`.reveal`), like the pictures, and
- * never animated: the page holds still. Every spec
+ * still until then too: the chart draws itself in when the pointer arrives
+ * (`replay`), once per visit. Every spec
  * comes from the chart desk (`@/lib/generation/charts`), computed from the
  * dossier — never from a model.
  */
@@ -190,16 +191,39 @@ function configOf(spec: ChartSpec): ChartConfiguration {
   } as ChartConfiguration;
 }
 
+/** How long the draw-in on hover takes. */
+const DRAW_MS = 800;
+
 export default function ArticleChart({ spec }: { spec: ChartSpec }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<Chart | null>(null);
   useEffect(() => {
     if (!canvas.current) return;
     const chart = new Chart(canvas.current, configOf(spec));
-    return () => chart.destroy();
+    chartRef.current = chart;
+    return () => {
+      chart.destroy();
+      chartRef.current = null;
+    };
   }, [spec]);
 
+  /** Back to nothing, then drawn in again; the animation switches itself off when done, so a resize never replays it. */
+  function replay() {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.options.animation = {
+      duration: DRAW_MS,
+      easing: "easeOutQuart",
+      onComplete: () => {
+        chart.options.animation = false;
+      },
+    };
+    chart.reset();
+    chart.update();
+  }
+
   return (
-    <figure className="article-chart reveal">
+    <figure className="article-chart reveal" onMouseEnter={replay}>
       <figcaption className="article-chart-title">{spec.title}</figcaption>
       {/* In em, so the chart grows with the page fill and the column balancer like the type around it. */}
       <div style={{ height: `${heightOf(spec) / 16}em` }}>

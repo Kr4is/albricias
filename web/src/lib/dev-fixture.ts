@@ -49,7 +49,12 @@ export function fixtureArticles(count: number): IssueArticle[] {
       deck: "",
       content,
       image: null,
-      blocks: i % 3 === 1 ? [{ type: "facts", items: [{ label: "Commits", value: "41" }, { label: "Active days", value: "9 of 30" }] }] : [],
+      blocks:
+        i % 3 === 1
+          ? [{ type: "facts", items: [{ label: "Commits", value: "41" }, { label: "Active days", value: "9 of 30" }] }]
+          : i % 3 === 2
+            ? [{ type: "chart", chart: { type: "bar", title: "Commits by day", labels: ["Mon", "Tue", "Wed", "Thu", "Fri"], datasets: [{ label: "Commits", data: [4, 9, 6, 12, 3] }], unit: "commits", caption: "Made-up numbers." } }]
+            : [],
     };
   });
 }
