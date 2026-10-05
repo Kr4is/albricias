@@ -4,7 +4,7 @@
  * An article's picture — one its repository shows of itself (a README
  * screenshot or diagram, its social preview, its website's), served
  * through the app's image proxy — in the paper's vintage treatment
- * (grayscale until hovered, bordered print plate), with its own
+ * (grey until hovered — `.reveal` — in a bordered print plate), with its own
  * description as the caption when it has one. A logo — or any picture
  * that turns out not to be landscape once it loads — is shown whole
  * (`contain`) rather than cropped to the plate's 2:1. A failed load removes the figure
@@ -35,7 +35,7 @@ export default function ArticleImage({
   if (!image || failed) return null;
   const contain = image.fit === "contain" || narrow;
   return (
-    <figure className={`article-image grayscale hover:grayscale-0 transition-all duration-700 ${className}`}>
+    <figure className={`article-image reveal ${className}`}>
       <img
         src={image.src}
         alt={image.alt}

@@ -31,6 +31,21 @@ body {
   text-justify: inter-word;
 }
 
+/* Pictures and charts print in grey and show their colours under the pointer.
+   Where there is no pointer to hover with (touch), they just stay in colour. */
+.reveal {
+  filter: grayscale(1);
+  transition: filter 0.7s;
+}
+.reveal:hover {
+  filter: none;
+}
+@media (hover: none) {
+  .reveal {
+    filter: none;
+  }
+}
+
 /* Fade In Animation */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }

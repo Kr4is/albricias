@@ -4,7 +4,9 @@
  * One chart (`ChartSpec`, `@/lib/article-blocks`) drawn with Chart.js, in
  * the paper's ink-on-newsprint manner: its headline and caption set in the
  * page's own type (HTML, not canvas text), thin bars without vertical
- * rules, a filled line, a 24-hour rose, a doughnut with a hole. Every spec
+ * rules, a filled line, a 24-hour rose, a doughnut with a hole. Drawn in
+ * colour but shown grey until hovered (`.reveal`), like the pictures, and
+ * never animated: the page holds still. Every spec
  * comes from the chart desk (`@/lib/generation/charts`), computed from the
  * dossier — never from a model.
  */
@@ -197,7 +199,7 @@ export default function ArticleChart({ spec }: { spec: ChartSpec }) {
   }, [spec]);
 
   return (
-    <figure className="article-chart">
+    <figure className="article-chart reveal">
       <figcaption className="article-chart-title">{spec.title}</figcaption>
       {/* In em, so the chart grows with the page fill and the column balancer like the type around it. */}
       <div style={{ height: `${heightOf(spec) / 16}em` }}>
