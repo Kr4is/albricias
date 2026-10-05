@@ -9,6 +9,7 @@ import type { IssueArticle } from "@/components/issue/types";
 import type { LayoutIndex } from "@/lib/layout";
 import type { ArticleBlock, ArticleImageRef } from "@/lib/article-blocks";
 import { CADENCES } from "@/lib/periods";
+import { track } from "@/lib/track";
 import SetupWizard, { DEFAULT_FORM, PROVIDERS, THINKING, firstIncompleteStep, type SetupForm } from "@/components/SetupWizard";
 
 type Phase = "config" | "generating" | "result";
@@ -164,6 +165,8 @@ export default function AppClient() {
     setError(null);
     reset();
     setPhase("generating");
+    const properties = { period: form.period, provider: form.llmProvider, private: form.includePrivate };
+    track("edition-started", properties);
 
     try {
       const response = await fetch("/api/generate", {
@@ -264,7 +267,9 @@ export default function AppClient() {
       if (streamError) throw new Error(streamError);
       if (!sawDone) throw new Error("The connection ended before generation finished.");
       setFinished(true);
+      track("edition-printed", properties);
     } catch (err) {
+      track("edition-failed", properties);
       setError(err instanceof Error ? err.message : String(err));
       reset();
     }

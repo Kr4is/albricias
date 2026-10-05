@@ -30,6 +30,7 @@ import { Chart } from "chart.js";
 import { getFontEmbedCSS, toCanvas } from "html-to-image";
 import EditionMasthead, { type EditionMastheadInfo } from "@/components/EditionMasthead";
 import { withNaturalHeights } from "@/lib/export-style";
+import { track } from "@/lib/track";
 
 /** `paper` in tailwind.config.ts. */
 const PAPER = "#f4f1ea";
@@ -239,12 +240,14 @@ export default function ExportActions({
 
   const onDownload = () =>
     run(async () => {
+      track("export", { action: "download" });
       downloadBlob(await png(), filename);
       return null;
     });
 
   const onCopy = () =>
     run(async () => {
+      track("export", { action: "copy" });
       if (typeof window.ClipboardItem === "undefined" || !navigator.clipboard?.write) {
         downloadBlob(await png(), filename);
         return "Your browser can't copy images — downloaded it instead.";
@@ -257,6 +260,7 @@ export default function ExportActions({
 
   const onShare = () =>
     run(async () => {
+      track("export", { action: "share" });
       const file = new File([await png(true)], filename, { type: "image/png" });
       try {
         await navigator.share({ files: [file], title, text: title });

@@ -13,7 +13,11 @@
  */
 
 import type { Metadata } from "next";
+import Analytics from "@/components/Analytics";
 import "./globals.css";
+
+// Read per request: the analytics and version settings come from the environment the image runs in.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "¡Albricias!",
@@ -41,6 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="text-ink antialiased min-h-screen flex flex-col fade-in">
         {children}
+        <Analytics />
       </body>
     </html>
   );

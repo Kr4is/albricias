@@ -74,6 +74,7 @@ optional.
 | Variable | Purpose |
 | --- | --- |
 | `GITHUB_TOKEN` | Server-side token for **public** editions (no scopes needed). Without one, GitHub's anonymous limits apply (60 requests/hour per IP, 10/min on search) — enough for a few editions, then GitHub refuses until the hour resets; **set one on any shared deployment** (`/api/version` shows whether the instance has one). Never used for private activity. |
+| `UMAMI_SCRIPT_URL`, `UMAMI_WEBSITE_ID` | Optional [Umami](https://umami.is) analytics: the URL of your instance's script (`https://umami.example.com/script.js`) and the site's ID. Both set, page views and a few events are tracked; either unset, nothing loads. `UMAMI_DOMAINS` (optional) limits tracking to those hostnames. Read at runtime, so the Docker image takes them from its environment. |
 | `IMAGE_PROXY_SECRET` | Key the image proxy signs picture URLs with. Unset: derived from `GITHUB_TOKEN`, or random at boot. |
 | `ALBRICIAS_SECTION_CONCURRENCY` | Sections written at once (default 2). `1` for gateways that drop concurrent connections. |
 | `ALBRICIAS_PROMPT_CHARS` | Most characters of GitHub material a model call reads (default 60 000, about 15k tokens); busier accounts have their least informative commits thinned to fit. Lower it for small-context models. |
@@ -175,3 +176,9 @@ The visitor's LLM key and (for private editions) GitHub token travel in one
 request's context and are gone when it ends; nothing is written to a
 database or log. Public editions never use a visitor's token. The only
 persistence is the visitor's own browser.
+
+If the operator enables [Umami](https://umami.is), it records page views and
+four events — `edition-started`, `edition-printed`, `edition-failed` (each
+with the period, the AI provider and whether private activity was included)
+and `export` (copy, download or share). Umami sets no cookies and the script
+honours Do Not Track; no username, key, token or edition content is sent.
