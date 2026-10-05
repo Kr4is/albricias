@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { Chart } from "chart.js";
 import { getFontEmbedCSS, toCanvas } from "html-to-image";
 import EditionMasthead, { type EditionMastheadInfo } from "@/components/EditionMasthead";
 import { withNaturalHeights } from "@/lib/export-style";
@@ -42,7 +43,22 @@ const MARGIN = 40;
 /** Same exclusion the print stylesheet makes. */
 const skipNoPrint = (el: HTMLElement) => !(el instanceof HTMLElement && el.classList.contains("no-print"));
 
-const PIXEL_RATIO = 2;
+/**
+ * Pixels per CSS pixel, best first. The page's smallest type is 9px, so the
+ * image has to hold up when zoomed in: 4× where the canvas allows it. A
+ * canvas past ~16k px a side or ~120M px in all fails to render in Chrome and
+ * Safari, so a very long page steps down (`pixelRatios`).
+ */
+const PIXEL_RATIOS = [4, 3, 2];
+const MAX_SIDE_PX = 16_000;
+const MAX_AREA_PX = 120_000_000;
+
+/** The ratios of `PIXEL_RATIOS` a page of this CSS size fits in, best first (1 when none do). */
+function pixelRatios(cssWidth: number, cssHeight: number): number[] {
+  const fits = (r: number) => r * cssWidth <= MAX_SIDE_PX && r * cssHeight <= MAX_SIDE_PX && r * r * cssWidth * cssHeight <= MAX_AREA_PX;
+  const ok = PIXEL_RATIOS.filter(fits);
+  return ok.length > 0 ? ok : [1];
+}
 
 /**
  * The inlined `@font-face` CSS (fonts as data URLs), built once per page
@@ -76,11 +92,11 @@ function embeddedFonts(nodes: HTMLElement[]): Promise<string> {
  * hidden too; only the capture root's own style can be overridden, which is
  * what pulls the off-screen masthead back to the origin.
  */
-async function renderPng(issue: HTMLElement, masthead: HTMLElement): Promise<Blob> {
+async function renderPng(issue: HTMLElement, masthead: HTMLElement, ratio: number): Promise<Blob> {
   const width = Math.ceil(issue.getBoundingClientRect().width);
   masthead.style.width = `${width}px`;
   const fontEmbedCSS = await embeddedFonts([masthead, issue]);
-  const common = { backgroundColor: PAPER, pixelRatio: PIXEL_RATIO, filter: skipNoPrint, fontEmbedCSS, width };
+  const common = { backgroundColor: PAPER, pixelRatio: ratio, filter: skipNoPrint, fontEmbedCSS, width };
 
   const head = await toCanvas(masthead, {
     ...common,
@@ -93,7 +109,7 @@ async function renderPng(issue: HTMLElement, masthead: HTMLElement): Promise<Blo
     style: { margin: "0" },
   });
 
-  const margin = MARGIN * PIXEL_RATIO;
+  const margin = MARGIN * ratio;
   const canvas = document.createElement("canvas");
   canvas.width = body.width + margin * 2;
   canvas.height = head.height + body.height + margin * 2;
@@ -107,6 +123,44 @@ async function renderPng(issue: HTMLElement, masthead: HTMLElement): Promise<Blo
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) throw new Error("The page couldn't be rendered to an image.");
   return blob;
+}
+
+/**
+ * Charts are canvases, drawn at the screen's pixel density; copied into the
+ * export as they are they'd be a blur next to its crisp type. So for the
+ * length of a render each is redrawn at the export's density.
+ */
+async function withSharpCharts<T>(ratio: number, run: () => Promise<T>): Promise<T> {
+  const charts = Object.values(Chart.instances);
+  const before = charts.map((chart) => chart.options.devicePixelRatio);
+  for (const chart of charts) {
+    chart.options.devicePixelRatio = ratio;
+    chart.resize();
+  }
+  try {
+    return await run();
+  } finally {
+    charts.forEach((chart, i) => {
+      chart.options.devicePixelRatio = before[i];
+      chart.resize();
+    });
+  }
+}
+
+/** The page as a PNG at the best pixel ratio the browser can render, stepping down if one fails. */
+async function renderSharpPng(issue: HTMLElement, masthead: HTMLElement): Promise<Blob> {
+  const cssWidth = Math.ceil(issue.getBoundingClientRect().width) + MARGIN * 2;
+  const cssHeight = Math.ceil(issue.getBoundingClientRect().height + masthead.getBoundingClientRect().height) + MARGIN * 2;
+  const ratios = pixelRatios(cssWidth, cssHeight);
+  let failure: unknown;
+  for (const ratio of ratios) {
+    try {
+      return await withSharpCharts(ratio, () => renderPng(issue, masthead, ratio));
+    } catch (error) {
+      failure = error;
+    }
+  }
+  throw failure;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -163,7 +217,7 @@ export default function ExportActions({
     const masthead = mastheadRef.current;
     if (!node || !masthead) return Promise.reject(new Error("Nothing to export yet."));
     if (!reuse || !cached.current) {
-      cached.current = withNaturalHeights(() => renderPng(node, masthead));
+      cached.current = withNaturalHeights(() => renderSharpPng(node, masthead));
       cached.current.catch(() => {
         cached.current = null;
       });

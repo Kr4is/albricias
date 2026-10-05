@@ -58,8 +58,16 @@ const INK = "#1a1a1a";
 const INK_LIGHT = "#5a5650";
 const RULE = "#e2ded6";
 const PAPER = "#fdfcf9";
-/** Ink, oxblood, ochre, sage, indigo, stone — distinct in hue and still apart in grayscale print. */
-const PALETTE = ["#1a1a1a", "#8a3b2b", "#b8862e", "#4a5a4a", "#3b3269", "#8a8478"];
+/** Oxblood, indigo, ochre, sage, teal, stone — every chart in colour (the page greys them until hovered), distinct in hue and still apart in grey print. */
+const PALETTE = ["#8a3b2b", "#3b3269", "#b8862e", "#4a6a4a", "#2f6f73", "#8a8478"];
+/** The rose's four parts of the day: night, morning, afternoon, evening. */
+const DAY_PARTS = ["#3b3269", "#b8862e", "#8a3b2b", "#2f6f73"];
+
+/** `#rrggbb` as `rgba(r, g, b, alpha)`. */
+function withAlpha(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 /** "Other" is always the quietest tone. */
 const OTHER = "#cfc9be";
 const SANS = "'Libre Franklin', sans-serif";
@@ -103,9 +111,9 @@ function configOf(spec: ChartSpec): ChartConfiguration {
         datasets: spec.datasets.map((dataset) => ({
           label: dataset.label,
           data: dataset.data,
-          // A rose is one series in one ink, its petals shaded by value; a doughnut, one tone per part.
+          // A rose is one series, a tone per part of the day (six hours each), its petals shaded by value; a doughnut, one tone per part.
           backgroundColor: round
-            ? dataset.data.map((value) => `rgba(26, 26, 26, ${0.15 + 0.75 * (value / Math.max(1, ...dataset.data))})`)
+            ? dataset.data.map((value, h) => withAlpha(DAY_PARTS[Math.floor(h / 6) % DAY_PARTS.length], 0.3 + 0.7 * (value / Math.max(1, ...dataset.data))))
             : spec.labels.map((label, j) => colorFor(label, j)),
           borderColor: PAPER,
           borderWidth: round ? 1 : 2,
@@ -162,7 +170,7 @@ function configOf(spec: ChartSpec): ChartConfiguration {
               label: dataset.label,
               data: dataset.data,
               borderColor: color,
-              backgroundColor: "rgba(26, 26, 26, 0.08)",
+              backgroundColor: withAlpha(color, 0.14),
               fill: spec.datasets.length === 1 ? "origin" : false,
               borderWidth: 2,
               tension: 0.3,
@@ -211,13 +219,17 @@ export default function ArticleChart({ spec }: { spec: ChartSpec }) {
   function replay() {
     const chart = chartRef.current;
     if (!chart) return;
-    chart.options.animation = {
+    // A rose and a doughnut grow from the centre and sweep round — the defaults this object replaces.
+    const draw = {
       duration: DRAW_MS,
-      easing: "easeOutQuart",
+      easing: "easeOutQuart" as const,
+      animateRotate: true,
+      animateScale: true,
       onComplete: () => {
         chart.options.animation = false;
       },
     };
+    chart.options.animation = draw;
     chart.reset();
     chart.update();
   }

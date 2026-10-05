@@ -6,6 +6,7 @@
  */
 
 import type { IssueArticle } from "@/components/issue/types";
+import type { ChartSpec } from "@/lib/article-blocks";
 
 const SENTENCES = [
   "The week opened with a quiet refactor that grew teeth by Wednesday.",
@@ -29,6 +30,14 @@ const TITLES = [
   "Late-Night Commits Rise",
   "Stars Gather Over New Project",
   "Docs Catch Up With Code",
+];
+
+/** The chart shapes the desk draws, with made-up numbers. */
+const CHARTS: ChartSpec[] = [
+  { type: "bar", title: "Commits by day", labels: ["Mon", "Tue", "Wed", "Thu", "Fri"], datasets: [{ label: "Commits", data: [4, 9, 6, 12, 3] }], unit: "commits", caption: "Made-up numbers." },
+  { type: "polarArea", title: "The working day", labels: Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}h`), datasets: [{ label: "Commits", data: Array.from({ length: 24 }, (_, h) => (h < 7 ? 1 : Math.round(10 * Math.sin(((h - 6) / 18) * Math.PI)) + 1)) }], unit: "commits", caption: "Commits by hour." },
+  { type: "doughnut", title: "The mix of work", labels: ["feat", "fix", "docs", "Other"], datasets: [{ label: "Commits", data: [20, 12, 5, 8] }], unit: "commits" },
+  { type: "line", title: "Week by week", labels: ["Week 36", "Week 37", "Week 38", "Week 39"], datasets: [{ label: "Events", data: [14, 30, 22, 41] }], unit: "events" },
 ];
 
 /** Paragraph `i` of `sentences` sentences, rotating through the stock lines. */
@@ -58,7 +67,7 @@ export function fixtureArticles(count: number, charts = false): IssueArticle[] {
         i % 3 === 1
           ? [{ type: "facts", items: [{ label: "Commits", value: "41" }, { label: "Active days", value: "9 of 30" }] }]
           : charts && i % 3 === 2
-            ? [{ type: "chart", chart: { type: "bar", title: "Commits by day", labels: ["Mon", "Tue", "Wed", "Thu", "Fri"], datasets: [{ label: "Commits", data: [4, 9, 6, 12, 3] }], unit: "commits", caption: "Made-up numbers." } }]
+            ? [{ type: "chart", chart: CHARTS[Math.floor(i / 3) % CHARTS.length] }]
             : [],
     };
   });
