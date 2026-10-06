@@ -19,6 +19,10 @@
  *     product hosts nothing, so there's no URL to hand a share-intent link,
  *     and those links can't carry an image file.
  *
+ * Save PDF is the odd one out: it opens the print dialog (the page already
+ * has a print stylesheet), whose "Save as PDF" keeps the text as real,
+ * selectable text — what other services need as input. No PDF library.
+ *
  * The last rendered PNG is kept until the page changes (`version`): Share
  * must run inside the click's user activation, which a multi-second render
  * can outlast — reusing that blob makes a retry instant. Copy and Download
@@ -274,6 +278,15 @@ export default function ExportActions({
       }
     });
 
+  /** The browser's own print path (the page's `@media print` rules) — the one export that keeps the text selectable. The tab title becomes the PDF's default file name. */
+  function onPdf() {
+    track("export", { action: "pdf" });
+    const previous = document.title;
+    document.title = filename.replace(/\.png$/, "");
+    window.addEventListener("afterprint", () => (document.title = previous), { once: true });
+    window.print();
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
       {/* Off-screen, never display:none — it must lay out and load its font to be captured. */}
@@ -286,6 +299,9 @@ export default function ExportActions({
         </button>
         <button type="button" onClick={onDownload} disabled={busy} className={BUTTON}>
           Download
+        </button>
+        <button type="button" onClick={onPdf} disabled={busy} className={BUTTON}>
+          Save PDF
         </button>
         {canShareFiles && (
           <button type="button" onClick={onShare} disabled={busy} className={BUTTON}>
