@@ -119,6 +119,11 @@ npm run build         # production build
   `npx tsx scripts/export-fixture.ts 1 6 out.png` runs the real PNG export on
   one (`BROWSER=firefox` for Firefox); `check:layouts` needs
   `npx playwright-core install chromium`, or `CHROMIUM_PATH` pointing at one.
+- **Sample editions** — the pictures on the landing page and `/examples`
+  (`web/public/examples/`) are the real PNG export of three invented editions
+  in `web/src/lib/sample-editions.ts`. To remake one, with `npm run dev`
+  running: `npx tsx scripts/export-fixture.ts 1 1 out.png "&sample=1"`, then
+  `magick out.png -resize 2400x -quality 88 public/examples/edition-1.webp`.
 
 ## Deploying
 

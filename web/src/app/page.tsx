@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ExampleGallery from "@/components/ExampleGallery";
 import NewspaperShell from "@/components/NewspaperShell";
 
 export const metadata: Metadata = { title: "¡Albricias! — Your GitHub, Set in Vintage Type" };
@@ -10,7 +11,7 @@ const STEPS = [
   },
   {
     title: "Pick a period",
-    body: "Yesterday's commits, this week's pull requests, or a whole month of releases and stars.",
+    body: "A week of commits, a month of pull requests, or a whole quarter of releases and stars.",
   },
   {
     title: "Bring your own AI",
@@ -54,6 +55,15 @@ export default function LandingPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="py-12 border-t border-ink border-double">
+        <h2 className="font-headline text-2xl md:text-3xl font-bold text-center mb-2">Fresh off the press</h2>
+        <p className="font-body text-sm text-stone-500 italic text-center mb-8">
+          Invented people and repositories — this is what your own would look like.{" "}
+          <a href="/examples" className="underline underline-offset-4 hover:text-ink">See them larger</a>
+        </p>
+        <ExampleGallery />
       </div>
 
       <div className="max-w-2xl mx-auto text-center py-10 border-t border-ink border-double">

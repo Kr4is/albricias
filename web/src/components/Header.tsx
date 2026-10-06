@@ -9,7 +9,7 @@
 
 import { newspaperConfig } from "@/lib/newspaper";
 
-export type Endpoint = "home" | "app";
+export type Endpoint = "home" | "examples" | "app";
 
 export interface HeaderProps {
   endpoint: Endpoint;
@@ -71,6 +71,12 @@ export default async function Header({ endpoint }: HeaderProps) {
             className={`${NAV_LINK} ${endpoint === "home" ? "decoration-current" : "decoration-transparent"}`}
           >
             Home
+          </a>
+          <a
+            href="/examples"
+            className={`${NAV_LINK} ${endpoint === "examples" ? "decoration-current" : "decoration-transparent"}`}
+          >
+            Examples
           </a>
           <a
             href="/app"
