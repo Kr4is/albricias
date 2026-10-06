@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ExampleGallery from "@/components/ExampleGallery";
+import ExampleCards from "@/components/ExampleCards";
 import NewspaperShell from "@/components/NewspaperShell";
 
 export const metadata: Metadata = { title: "¡Albricias! — Sample Editions" };
@@ -10,12 +10,12 @@ export default function ExamplesPage() {
       <div className="max-w-2xl mx-auto py-10 text-center">
         <h1 className="font-headline text-3xl md:text-5xl font-bold leading-tight mb-4">What the press turns out.</h1>
         <p className="font-body text-stone-700 leading-relaxed">
-          Three editions, as the PNG export saves them. The people, repositories and numbers are invented — a week,
-          a month and a quarter, each set in a different layout. Click one to see it full size.
+          One edition for each cadence — a week, a month, a quarter — each in a different layout. Open one to read it
+          whole. The people, repositories and numbers are invented.
         </p>
       </div>
-      <ExampleGallery />
-      <div className="text-center py-12">
+      <ExampleCards />
+      <div className="text-center py-14">
         <a
           href="/app"
           className="inline-flex items-center font-sans text-sm font-bold uppercase tracking-widest text-white bg-ink px-8 py-4 hover:opacity-85 transition-opacity"

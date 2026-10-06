@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import ExampleGallery from "@/components/ExampleGallery";
+import Link from "next/link";
+import ExampleCards from "@/components/ExampleCards";
 import NewspaperShell from "@/components/NewspaperShell";
 
 export const metadata: Metadata = { title: "¡Albricias! — Your GitHub, Set in Vintage Type" };
@@ -57,14 +58,21 @@ export default function LandingPage() {
         ))}
       </div>
 
-      <div className="py-12 border-t border-ink border-double">
-        <h2 className="font-headline text-2xl md:text-3xl font-bold text-center mb-2">Fresh off the press</h2>
-        <p className="font-body text-sm text-stone-500 italic text-center mb-8">
-          Invented people and repositories — this is what your own would look like.{" "}
-          <a href="/examples" className="underline underline-offset-4 hover:text-ink">See them larger</a>
+      <section className="py-14 border-t border-ink border-double">
+        <div className="max-w-xl mx-auto text-center mb-12">
+          <h2 className="font-headline text-3xl md:text-4xl font-bold leading-tight mb-3">See what it prints</h2>
+          <p className="font-body text-stone-600 leading-relaxed">
+            A week, a month and a quarter, set by the same press as yours. The people and repositories are invented;
+            the pages are not. Open one to read it whole.
+          </p>
+        </div>
+        <ExampleCards />
+        <p className="text-center mt-12">
+          <Link href="/examples" className="font-sans text-[10px] font-bold uppercase tracking-widest border-b border-ink pb-0.5 hover:opacity-70">
+            All sample editions →
+          </Link>
         </p>
-        <ExampleGallery />
-      </div>
+      </section>
 
       <div className="max-w-2xl mx-auto text-center py-10 border-t border-ink border-double">
         <p className="font-body text-sm text-stone-500 italic">
